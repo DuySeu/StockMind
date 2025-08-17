@@ -1,8 +1,15 @@
-# Stock market retrieve information application
+# StockMind (Stock market retrieve information application)
 
-This project use LLM model to retrieve all releated information about specific stock in VN.
+StockMind is an AI-powered assistant designed to simplify access to financial information and insights about the Vietnamese stock market. By combining financial data retrieval with intelligent analysis, StockMind helps investors and analysts make informed decisions more efficiently.
 
-This application is fully using open source framework anh service
+StockMind is fully using open source framework anh service
+
+With StockMind, users can:
+ • Retrieve and preview official financial statements of any listed company.
+ • Access a comprehensive set of fundamental analysis indicators (P/E, P/S, ROA, ROE, EPS, etc.).
+ • Evaluate stocks using the Piotroski F-Score, with a clear breakdown of all nine criteria.
+ • Track financial events that may impact stock performance, including announcements, dividends, and regulatory updates.
+ • (Optional extension) Analyze market sentiment from news and reports to capture investor mood beyond the numbers.
 
 ## Use case
 
