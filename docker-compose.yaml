@@ -1,0 +1,93 @@
+networks:
+  app-network:
+    driver: bridge
+
+services:
+  backend:
+    image: backend:latest
+    build: .
+    ports:
+      - "8080:8000"
+    networks:
+      - app-network
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: idp_db
+      POSTGRES_PORT: 5432
+      S3_BUCKET_NAME: mb-idp-ap-southeast-1-302010997939
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: always
+  pinazu:
+    image: 302010997939.dkr.ecr.ap-southeast-1.amazonaws.com/genai-apps/pinazu-core:main
+    ports:
+      - "8081:8081"
+    networks:
+      - app-network
+    volumes:
+      - ./configs/config.yaml:/home/apps/configs/config.yaml
+    depends_on:
+      - nats
+      - db
+    command:
+      - "serve"
+      - "all"
+      - "-config"
+      - "/home/apps/configs/config.yaml"
+
+  pinazu-worker:
+    image: worker:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    networks:
+      - app-network
+    volumes:
+      - ./configs/config.yaml:/home/apps/configs/config.yaml
+    environment:
+      - AWS_REGION=ap-southeast-1
+      - AWS_DEFAULT_REGION=ap-southeast-1
+      - CACHE_BUCKET=test-bucket-302010997939-ap-southeast-1
+    depends_on:
+      - nats
+      - db
+    command:
+      - "serve"
+      - "worker"
+      - "-config"
+      - "/home/apps/configs/config.yaml"
+  nats:
+    image: nats:linux
+    networks:
+      - app-network
+    volumes:
+      - ./configs/nats.conf:/etc/nats/nats.conf
+    command:
+      - "-config"
+      - "/etc/nats/nats.conf"
+      - "-js"
+      - "-m"
+      - "8222"
+    container_name: nats_server
+
+  db:
+    container_name: idp_database
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: idp_db
+    ports:
+      - "5432:5432"
+    networks:
+      - app-network
+    volumes:
+      - db_data:/var/lib/postgresql/data
+volumes:
+  db_data:

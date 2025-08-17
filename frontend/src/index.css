@@ -1,0 +1,30 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-primary: var(--color-primary);
+}
+
+:root {
+  font-family: "Manrope";
+  line-height: 1.5;
+  font-weight: 400;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-primary: #e56423;
+  --primary-rgb: 8, 76, 45;
+}
+
+.ant-steps-item-title {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.customButton span {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
