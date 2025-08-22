@@ -1,14 +1,11 @@
 import time
 import logging
+import json
 
-from core import LLMWorker
-from retrieval import Retrieval
-from simple_prompt import text_to_query_prompt, prompt, prompt_for_web_search
-from tool_call import Tool_Call
-from tool_schema import get_realtime_tool, generate_chart_tool, generate_OTP_tool
-from execute_chart_tool import execute_chart
-from execute_OTP_tool import execute_OTP
-from execute_web_search_tool import execute_web_search
+from simple_prompt import prompt
+from agent import Agent
+from tool_schema import get_stock_price_tool
+from execute_stockprice_tool import get_stock_price
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -16,39 +13,73 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+MODEL_CONFIG = {"max_tokens": 2048, "temperature": 0.7}
+
+
+def process_tool_call(response, input_list):
+    if response.finish_reason == "tool_calls":
+        tool_calls = response.message.tool_calls
+
+        if tool_calls:
+            input_list.append(
+                {
+                    "role": "assistant",
+                    "tool_calls": tool_calls,
+                }
+            )
+
+            # Execute the first tool call
+            tool_call = tool_calls[0]
+            function_name = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+
+            # Execute the tool based on function name
+            if function_name == "get_stock_price":
+                stock_code = function_args.get("stock_code")
+                if stock_code:
+                    try:
+                        result = get_stock_price(stock_code)
+
+                        input_list.append(
+                            {
+                                "tool_call_id": tool_call.id,
+                                "role": "tool",
+                                "content": str(result),
+                            }
+                        )
+                    except Exception as e:
+                        input_list.append(
+                            {
+                                "tool_call_id": tool_call.id,
+                                "role": "tool",
+                                "content": f"Error: {str(e)}",
+                            }
+                        )
+    return input_list
+
 
 def main():
     print(time.strftime("%H:%M:%S", time.localtime()))
-    request = "I want to subscribe to 4G packet."
-    # request = "Vietnamobile was established in which year?"
-    config = {"max_tokens": 2048, "temperature": 0.7, "top_k": 250}
+    request = "What is the stock price of VNM?"
+    input_list = [
+        {"role": "user", "content": request},
+    ]
 
-    retrieve_worker = Retrieval(
-        user_query=request,
-        inference_config=config,
-    )
-
-    retrieval_results = retrieve_worker.retrieve_context(
-        kbId="YPHXAPJE6I",
-        numberOfResults=3,
-    )
-    # logging.info(f"Retrieved result: {retrieval_results}")
-
-    contexts, sources, scores = retrieve_worker.get_contexts(retrieval_results)
-    # link = retrieve_worker.generate_presigned_urls(sources)
-    # logging.info(f"Presigned Urls: {contexts}")
-
-    test = Tool_Call(
+    agent = Agent(
         system_prompt=prompt,
-        tools=generate_OTP_tool,
-        inference_config=config,
-        execute_tool=execute_OTP,
+        inference_config=MODEL_CONFIG,
+        tools=get_stock_price_tool,
     )
 
-    result = test.invoke_stream(request)
+    response = agent.invoke_tool(input_list)
+    print(f"Response: {response.message.content}")
 
-    # print(f"Result: {result}")
-    # print(result.get("answer"))
+    full_input_list = process_tool_call(response, input_list)
+
+    final_result = agent.invoke_model(full_input_list, stream=True)
+    for piece in final_result:
+        print(piece, end="", flush=True)
+    print()
 
 
 if __name__ == "__main__":

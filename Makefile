@@ -6,6 +6,8 @@ ECR_REGISTRY = $(ACCOUNT_ID).dkr.ecr.$(REGION).amazonaws.com
 
 clean:
 	docker-compose down --volumes
+	docker system prune -f
+	docker volume rm stock_market_database_data
 
 build:
 	docker-compose build

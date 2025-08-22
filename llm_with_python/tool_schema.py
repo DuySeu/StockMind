@@ -106,3 +106,23 @@ generate_OTP_tool = [
         },
     }
 ]
+
+get_stock_price_tool = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_stock_price",
+            "description": "Get the current stock price of a given stock",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "stock_code": {
+                        "type": "string",
+                        "description": "The stock code, e.g. VNM",
+                    },
+                },
+                "required": ["stock_code"],
+            },
+        },
+    }
+]

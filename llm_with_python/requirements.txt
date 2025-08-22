@@ -4,3 +4,7 @@ boto3
 pandas
 pydantic
 duckduckgo-search
+openai
+
+python-dotenv
+vnstock3
