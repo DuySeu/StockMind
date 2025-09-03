@@ -6,10 +6,10 @@ python3 -m venv venv
 
 source venv/bin/activate
 
-# Now install boto3 inside the virtual environment
+# Now install requirement library inside the virtual environment
 
-pip install boto3
+pip install -r requirements.txt
 
 # Run your script using the virtual environment's Python
 
-python main.py
+python3 main.py
