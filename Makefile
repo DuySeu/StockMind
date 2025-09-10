@@ -1,29 +1,66 @@
-TAG = 1.0.0
-REGION = ap-southeast-1
-ACCOUNT_ID = 271540607717
-ACCOUNT_ID = 302010997939
-ECR_REGISTRY = $(ACCOUNT_ID).dkr.ecr.$(REGION).amazonaws.com
+# Simple Makefile for a Go project
 
-clean:
-	docker-compose down --volumes
-	docker system prune -f
-	docker volume rm stock_market_database_data
+# Build the application
+all: build test
 
 build:
-	docker-compose build
+	@echo "Building..."
+	
+	
+	@go build -o main cmd/api/main.go
 
-run: build
-	docker-compose up -d
+# Run the application
+run:
+	@go run cmd/api/main.go &
+	@npm install --prefer-offline --no-fund --prefix ./frontend
+	@npm run dev --prefix ./frontend
+# Create DB container
+docker-run:
+	@if docker compose up --build 2>/dev/null; then \
+		: ; \
+	else \
+		echo "Falling back to Docker Compose V1"; \
+		docker-compose up --build; \
+	fi
 
-down:
-	docker-compose down
+# Shutdown DB container
+docker-down:
+	@if docker compose down 2>/dev/null; then \
+		: ; \
+	else \
+		echo "Falling back to Docker Compose V1"; \
+		docker-compose down; \
+	fi
 
-restart: down run
+# Test the application
+test:
+	@echo "Testing..."
+	@go test ./... -v
+# Integrations Tests for the application
+itest:
+	@echo "Running integration tests..."
+	@go test ./internal/database -v
 
-login:
-	aws ecr get-login-password --region $(REGION) | docker login --username AWS --password-stdin 271540607717.dkr.ecr.$(REGION).amazonaws.com
-	aws ecr get-login-password --region $(REGION) | docker login --username AWS --password-stdin 302010997939.dkr.ecr.$(REGION).amazonaws.com
-	aws ecr get-login-password --region $(REGION) | docker login --username AWS --password-stdin $(ECR_REGISTRY)
+# Clean the binary
+clean:
+	@echo "Cleaning..."
+	@rm -f main
 
-logout:
-	docker logout $(ECR_REGISTRY)
+# Live Reload
+watch:
+	@if command -v air > /dev/null; then \
+            air; \
+            echo "Watching...";\
+        else \
+            read -p "Go's 'air' is not installed on your machine. Do you want to install it? [Y/n] " choice; \
+            if [ "$$choice" != "n" ] && [ "$$choice" != "N" ]; then \
+                go install github.com/air-verse/air@latest; \
+                air; \
+                echo "Watching...";\
+            else \
+                echo "You chose not to install air. Exiting..."; \
+                exit 1; \
+            fi; \
+        fi
+
+.PHONY: all build run test clean watch docker-run docker-down itest

@@ -1,31 +1,31 @@
-FROM 271540607717.dkr.ecr.ap-southeast-1.amazonaws.com/secure-vl-base/nodejs:20 AS fe_build
+FROM golang:1.25.1-alpine AS build
 
-COPY --chown=apps:apps web /home/apps
+WORKDIR /app
 
-WORKDIR /home/apps
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN npm install && \
-    npm run build
+COPY . .
 
-FROM 271540607717.dkr.ecr.ap-southeast-1.amazonaws.com/secure-vl-base/python:3.12
+RUN go build -o main cmd/api/main.go
 
-USER apps
-# Set working directory
-WORKDIR /home/apps
+FROM alpine:3.20.1 AS prod
+WORKDIR /app
+COPY --from=build /app/main /app/main
+EXPOSE ${PORT}
+CMD ["./main"]
 
-# Copy requirements and install Python dependencies
-COPY backend/requirements.txt .
-RUN uv venv deploy && \
-    source deploy/bin/activate && \
-    uv pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY backend .
-# Copy schema files to the container
-COPY --chown=apps:apps schema /home/apps/schema
-COPY --from=fe_build --chown=apps:apps --chmod=755 /home/apps/dist /home/apps/frontend
-COPY --chown=apps:apps --chmod=755 entrypoint.sh /home/apps/entrypoint.sh
+FROM node:20 AS frontend_builder
+WORKDIR /frontend
 
-ENTRYPOINT [ "/home/apps/entrypoint.sh" ]
-# Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/. .
+RUN npm run build
+
+FROM node:23-slim AS frontend
+RUN npm install -g serve
+COPY --from=frontend_builder /frontend/dist /app/dist
+EXPOSE 5173
+CMD ["serve", "-s", "/app/dist", "-l", "5173"]
