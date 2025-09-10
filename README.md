@@ -11,6 +11,12 @@ With StockMind, users can:
  • Track financial events that may impact stock performance, including announcements, dividends, and regulatory updates.
  • (Optional extension) Analyze market sentiment from news and reports to capture investor mood beyond the numbers.
 
+## Tech Stack
+
+- Backend: Golang
+- Frontend: React
+- Tool Server: Python(vnstock3)
+
 ## Use case
 
 ### 1. Retrieve Financial Statements

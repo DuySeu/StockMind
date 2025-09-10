@@ -1,6 +1,6 @@
-# Project golang-backend
+# Project StockMind
 
-One Paragraph of project description goes here
+StockMind is an AI-powered assistant designed to simplify access to financial information and insights about the Vietnamese stock market. By combining financial data retrieval with intelligent analysis, StockMind helps investors and analysts make informed decisions more efficiently.
 
 ## Getting Started
 

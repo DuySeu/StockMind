@@ -17,7 +17,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_SCHEMA: ${DB_SCHEMA}
     depends_on:
-      db:
+      stockmind_db:
         condition: service_healthy
     networks:
       - stockmind
@@ -33,8 +33,8 @@ services:
       - 5173:5173
     networks:
       - stockmind
-  db:
-    image: postgres:latest
+  stockmind_db:
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_DATABASE}
@@ -43,7 +43,7 @@ services:
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - psql_volume_bp:/var/lib/postgresql/data
+      - stockmind_db_volume:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "sh -c 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}'"]
       interval: 5s
@@ -54,6 +54,6 @@ services:
       - stockmind
 
 volumes:
-  psql_volume_bp:
+  stockmind_db_volume:
 networks:
   stockmind:
