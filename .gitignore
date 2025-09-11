@@ -32,3 +32,6 @@ main
 # OS X generated file
 .DS_Store
 
+# Tools server
+tools_server/venv
+tools_server/*/__pycache__/
