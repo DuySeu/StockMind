@@ -61,7 +61,7 @@ func Start(ctx context.Context, protocol string) error {
 		getStockPrice,
 	)
 
-	// Start the stdio server
+	// Start the server
 	switch protocol {
 	case "stdio":
 		fmt.Println("Starting MCP server with stdio protocol")

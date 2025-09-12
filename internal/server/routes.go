@@ -104,19 +104,21 @@ func (s *Server) llmHandler(w http.ResponseWriter, r *http.Request) {
 	// 1) Create MCP client over stdio
 	ctx := r.Context()
 
-	tr := transport.NewStdio("go", []string{"run", "./cmd/mcp"})
+	tr := transport.NewStdio("go", []string{"run", "./cmd/mcp/main.go"})
 	cli := client.NewClient(tr)
 
 	if err := cli.Start(ctx); err != nil {
 		http.Error(w, fmt.Sprintf("failed to start MCP client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	// _, err := cli.Initialize(ctx, mcp.InitializeRequest{})
-	// if err != nil {
-	// 	http.Error(w, fmt.Sprintf("failed to initialize MCP client: %v", err), http.StatusInternalServerError)
-	// 	return
-	// }
 	defer cli.Close()
+
+	// Initialize the MCP client
+	_, err := cli.Initialize(ctx, mcp.InitializeRequest{})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to initialize MCP client: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// 2) Fetch tools from MCP
 	toolsResp, err := cli.ListTools(ctx, mcp.ListToolsRequest{})

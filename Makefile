@@ -8,10 +8,11 @@ build:
 	
 	
 	@go build -o main cmd/api/main.go
+	@go build -o mcp cmd/mcp/main.go
 
 # Run the application
 run:
-	@go run cmd/api/main.go &
+	@go run cmd/api/main.go & go run cmd/mcp/main.go &
 	@npm install --prefer-offline --no-fund --prefix ./frontend
 	@npm run dev --prefix ./frontend
 # Create DB container
