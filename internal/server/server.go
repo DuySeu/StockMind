@@ -4,26 +4,24 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"stockmind/internal/database"
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/joho/godotenv/autoload"
-
-	"stockmind/internal/database"
 )
 
 type Server struct {
 	port int
-
-	db database.Service
+	db   *database.Queries
 }
 
-func NewServer() *http.Server {
+func NewServer(dbPool *pgxpool.Pool) *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
 		port: port,
-
-		db: database.New(),
+		db:   database.New(dbPool),
 	}
 
 	// Declare Server config

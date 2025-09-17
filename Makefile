@@ -4,15 +4,13 @@
 all: build test
 
 build:
-	@echo "Building..."
+	@echo "Building..."	
 	
-	
-	@go build -o main cmd/api/main.go
-	@go build -o mcp cmd/mcp/main.go
+	@go build -o main cmd/main.go
 
 # Run the application
 run:
-	@go run cmd/api/main.go & go run cmd/mcp/main.go &
+	@go run cmd/main.go server &
 	@npm install --prefer-offline --no-fund --prefix ./frontend
 	@npm run dev --prefix ./frontend
 # Create DB container

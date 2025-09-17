@@ -34,7 +34,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 	}))
 
 	r.Get("/", s.HelloWorldHandler)
-	r.Get("/health", s.healthHandler)
 
 	r.Route("/v1", func(r chi.Router) {
 		// Websocket
@@ -84,11 +83,6 @@ func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(jsonResp)
 }
 
-func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
-	jsonResp, _ := json.Marshal(s.db.Health())
-	_, _ = w.Write(jsonResp)
-}
-
 func (s *Server) llmHandler(w http.ResponseWriter, r *http.Request) {
 	var req Message
 
@@ -104,21 +98,25 @@ func (s *Server) llmHandler(w http.ResponseWriter, r *http.Request) {
 	// 1) Create MCP client over stdio
 	ctx := r.Context()
 
-	tr := transport.NewStdio("go", []string{"run", "./cmd/mcp/main.go"})
-	cli := client.NewClient(tr)
+	tr := transport.NewStdio("go", []string{}, "run", "cmd/mcp/main.go")
+	err := tr.Start(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to start MCP client: %v", err), http.StatusInternalServerError)
+		return
+	}
 
+	cli := client.NewClient(tr)
 	if err := cli.Start(ctx); err != nil {
 		http.Error(w, fmt.Sprintf("failed to start MCP client: %v", err), http.StatusInternalServerError)
 		return
 	}
-	defer cli.Close()
-
 	// Initialize the MCP client
-	_, err := cli.Initialize(ctx, mcp.InitializeRequest{})
+	_, err = cli.Initialize(ctx, mcp.InitializeRequest{})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to initialize MCP client: %v", err), http.StatusInternalServerError)
 		return
 	}
+	defer cli.Close()
 
 	// 2) Fetch tools from MCP
 	toolsResp, err := cli.ListTools(ctx, mcp.ListToolsRequest{})

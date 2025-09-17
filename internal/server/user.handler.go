@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"stockmind/internal/database"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
-	var req database.CreateUserRequest
+	var req database.CreateUserParams
 
 	// Parse JSON request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -25,13 +24,14 @@ func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user object
-	user := &database.User{
-		Name:  req.Name,
-		Email: req.Email,
+	user := &database.CreateUserParams{
+		Name:     req.Name,
+		Email:    req.Email,
+		Provider: req.Provider,
 	}
 
 	// Create user in database
-	if err := s.db.CreateUser(user); err != nil {
+	if _, err := s.db.CreateUser(r.Context(), *user); err != nil {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -49,7 +49,7 @@ func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get users from database
-	users, err := s.db.GetUsers()
+	users, err := s.db.GetUsers(r.Context())
 	if err != nil {
 		http.Error(w, "Failed to get users: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -67,15 +67,10 @@ func (s *Server) GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from URL parameter
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
 
 	// Get user from database
-	user, err := s.db.GetUserByID(id)
+	user, err := s.db.GetUserByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -93,14 +88,9 @@ func (s *Server) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from URL parameter
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
 
-	var req database.UpdateUserRequest
+	var req database.UpdateUserParams
 
 	// Parse JSON request body
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -109,19 +99,18 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user exists
-	existingUser, err := s.db.GetUserByID(id)
+	existingUser, err := s.db.GetUserByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
 	// Update user fields (only update provided fields)
-	user := &database.User{
-		ID:        existingUser.ID,
-		Name:      existingUser.Name,
-		Email:     existingUser.Email,
-		CreatedAt: existingUser.CreatedAt,
-		UpdatedAt: existingUser.UpdatedAt,
+	user := &database.UpdateUserParams{
+		ID:       existingUser.ID,
+		Name:     existingUser.Name,
+		Email:    existingUser.Email,
+		Provider: existingUser.Provider,
 	}
 
 	// Update fields if provided
@@ -133,15 +122,8 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update user in database
-	if err := s.db.UpdateUser(id, user); err != nil {
+	if err := s.db.UpdateUser(r.Context(), *user); err != nil {
 		http.Error(w, "Failed to update user: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Get updated user
-	updatedUser, err := s.db.GetUserByID(id)
-	if err != nil {
-		http.Error(w, "Failed to get updated user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -149,7 +131,7 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	// Return updated user
-	if err := json.NewEncoder(w).Encode(updatedUser); err != nil {
+	if err := json.NewEncoder(w).Encode(user); err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
@@ -157,22 +139,17 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	// Get user ID from URL parameter
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Invalid user ID", http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
 
 	// Check if user exists
-	_, err = s.db.GetUserByID(id)
+	_, err := s.db.GetUserByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
 	// Delete user from database
-	if err := s.db.DeleteUser(id); err != nil {
+	if err := s.db.DeleteUser(r.Context(), id); err != nil {
 		http.Error(w, "Failed to delete user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
