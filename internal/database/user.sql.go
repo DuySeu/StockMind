@@ -7,6 +7,8 @@ package database
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 const createUser = `-- name: CreateUser :one
@@ -39,7 +41,7 @@ const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id string) error {
+func (q *Queries) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteUser, id)
 	return err
 }
@@ -48,7 +50,7 @@ const getUserByID = `-- name: GetUserByID :one
 SELECT id, name, email, provider, created_at, updated_at FROM users WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
@@ -98,10 +100,10 @@ UPDATE users SET name = $2, email = $3, provider = $4 WHERE id = $1 RETURNING id
 `
 
 type UpdateUserParams struct {
-	ID       string `db:"id" json:"id"`
-	Name     string `db:"name" json:"name"`
-	Email    string `db:"email" json:"email"`
-	Provider string `db:"provider" json:"provider"`
+	ID       uuid.UUID `db:"id" json:"id"`
+	Name     string    `db:"name" json:"name"`
+	Email    string    `db:"email" json:"email"`
+	Provider string    `db:"provider" json:"provider"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) error {

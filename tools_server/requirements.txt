@@ -1,9 +1,0 @@
-# Library for StockMind tool server
-logsim
-fastapi
-uvicorn[standard]
-jinja2
-starlette
-python-multipart
-
-vnstock

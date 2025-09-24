@@ -5,28 +5,39 @@
 package database
 
 import (
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type Message struct {
-	ID        string             `db:"id" json:"id"`
-	Content   []byte             `db:"content" json:"content"`
-	ThreadID  string             `db:"thread_id" json:"thread_id"`
+type AgentFlow struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Name      string             `db:"name" json:"name"`
+	Config    AgentFlowConfig    `db:"config" json:"config"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
-type Thread struct {
-	ID          string             `db:"id" json:"id"`
+type Session struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
 	Title       string             `db:"title" json:"title"`
-	Description string             `db:"description" json:"description"`
-	CreatedBy   pgtype.UUID        `db:"created_by" json:"created_by"`
+	Description pgtype.Text        `db:"description" json:"description"`
+	AgentFlowID uuid.UUID          `db:"agent_flow_id" json:"agent_flow_id"`
+	CreatedBy   uuid.UUID          `db:"created_by" json:"created_by"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type SessionHistory struct {
+	ID         uuid.UUID          `db:"id" json:"id"`
+	SessionID  uuid.UUID          `db:"session_id" json:"session_id"`
+	Node       string             `db:"node" json:"node"`
+	Content    []byte             `db:"content" json:"content"`
+	StopReason StopReason         `db:"stop_reason" json:"stop_reason"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type User struct {
-	ID        string             `db:"id" json:"id"`
+	ID        uuid.UUID          `db:"id" json:"id"`
 	Name      string             `db:"name" json:"name"`
 	Email     string             `db:"email" json:"email"`
 	Provider  string             `db:"provider" json:"provider"`

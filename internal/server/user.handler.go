@@ -6,6 +6,7 @@ import (
 	"stockmind/internal/database"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +71,7 @@ func (s *Server) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Get user from database
-	user, err := s.db.GetUserByID(r.Context(), id)
+	user, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -99,7 +100,7 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user exists
-	existingUser, err := s.db.GetUserByID(r.Context(), id)
+	existingUser, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -107,7 +108,7 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Update user fields (only update provided fields)
 	user := &database.UpdateUserParams{
-		ID:       existingUser.ID,
+		ID:       uuid.Must(uuid.Parse(id)),
 		Name:     existingUser.Name,
 		Email:    existingUser.Email,
 		Provider: existingUser.Provider,
@@ -142,14 +143,14 @@ func (s *Server) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Check if user exists
-	_, err := s.db.GetUserByID(r.Context(), id)
+	_, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
 	// Delete user from database
-	if err := s.db.DeleteUser(r.Context(), id); err != nil {
+	if err := s.db.DeleteUser(r.Context(), uuid.Must(uuid.Parse(id))); err != nil {
 		http.Error(w, "Failed to delete user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

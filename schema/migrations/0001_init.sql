@@ -21,7 +21,7 @@ $$ LANGUAGE plpgsql;
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(50) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     provider VARCHAR(255) NOT NULL,
@@ -29,21 +29,71 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Threads table
-CREATE TABLE IF NOT EXISTS threads (
-    id VARCHAR(50) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+-- Session table
+CREATE TABLE IF NOT EXISTS sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
     title VARCHAR(255) NOT NULL,
-    description TEXT NOT NULL,
-    created_by UUID NOT NULL,
+    description TEXT,
+    agent_flow_id UUID NOT NULL REFERENCES agent_flows(id) ON DELETE CASCADE,
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Messages table
-CREATE TABLE IF NOT EXISTS messages (
-    id VARCHAR(50) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+CREATE TABLE IF NOT EXISTS session_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    node TEXT NOT NULL,
     content JSONB NOT NULL,
-    thread_id VARCHAR(50) NOT NULL,
+    stop_reason TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Agent flow table
+CREATE TABLE IF NOT EXISTS agent_flows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    name VARCHAR(255) NOT NULL,
+    config JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Default Agent Flow
+INSERT INTO agent_flows (id, name, config) VALUES
+('01993ca8-a62e-79e3-995c-a46e25a4a2a2', 'Default Flow', 
+'{
+    "agents": {
+        "NormalChat": {
+            "provider": "anthropic",
+            "description": "Handles general chat interactions.",
+            "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "systemPrompt": "You are a helpful assistant.",
+            "maxTokens": 8192,
+            "thinkingToken": 1024,
+            "temperature": 0.7,
+            "topP": 0.9,
+            "topK": 40,
+            "tools": [],
+            "mcpServers": []
+        }
+    },
+    "nodes": [
+        {
+            "id": "start",
+            "type": "start",
+            "next": "NormalChat"
+        },
+        {
+            "id": "NormalChat",
+            "type": "agent",
+            "agentName": "NormalChat",
+            "next": "end",
+            "output": {
+                "type": "text",
+                "contentFormat": "{{.message}}",
+                "contentRole": "assistant"
+            }
+        }
+    ]
+}');

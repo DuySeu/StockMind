@@ -15,24 +15,12 @@ services:
       DB_DATABASE: ${DB_DATABASE}
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_SCHEMA: ${DB_SCHEMA}
     depends_on:
       stockmind_db:
         condition: service_healthy
     networks:
       - stockmind
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: frontend
-    restart: unless-stopped
-    depends_on:
-      - app
-    ports:
-      - 5173:5173
-    networks:
-      - stockmind
+
   stockmind_db:
     image: postgres:17-alpine
     restart: unless-stopped

@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func MigrateDb(db *pgxpool.Pool) error {
+func MigrateDB(db *pgxpool.Pool) error {
 	// Set the base filesystem for goose migrations
 	goose.SetBaseFS(os.DirFS("schema"))
 

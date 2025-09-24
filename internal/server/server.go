@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"stockmind/internal/agent"
 	"stockmind/internal/database"
 	"strconv"
 	"time"
@@ -13,15 +14,17 @@ import (
 )
 
 type Server struct {
-	port int
-	db   *database.Queries
+	port  int
+	db    *database.Queries
+	agent *agent.AgentService
 }
 
-func NewServer(dbPool *pgxpool.Pool) *http.Server {
+func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService) *http.Server {
 	port, _ := strconv.Atoi(os.Getenv("PORT"))
 	NewServer := &Server{
-		port: port,
-		db:   database.New(dbPool),
+		port:  port,
+		db:    database.New(dbPool),
+		agent: agent,
 	}
 
 	// Declare Server config

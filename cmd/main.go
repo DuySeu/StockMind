@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"stockmind/internal/agent"
+	"stockmind/internal/database"
 	"stockmind/internal/mcp"
 	"stockmind/internal/server"
 
@@ -97,10 +99,13 @@ func runServer(ctx context.Context, port string) error {
 
 	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
 
+	// Create a database connection pool
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
 		return fmt.Errorf("failed to parse database URL: %v", err)
 	}
+	poolConfig.MaxConns = 10
+
 	dbPool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create database pool: %v", err)
@@ -112,9 +117,24 @@ func runServer(ctx context.Context, port string) error {
 		log.Printf("Failed to ping database: %v", err)
 		return err
 	}
+
+	// Run Migration
+	err = database.MigrateDB(dbPool)
+	if err != nil {
+		log.Println("Failed to migrate database", "error", err)
+		return err
+	}
 	log.Println("Database connection established")
 
-	server := server.NewServer(dbPool)
+	// Create an agent service
+	agent, err := agent.NewService(ctx, dbPool, database.ModelProviderOpenAI)
+	if err != nil {
+		log.Println("Failed to create agent service", "error", err)
+		return err
+	}
+
+	// Create a server for the application
+	server := server.NewServer(dbPool, agent)
 
 	// Create a done channel to signal when the shutdown is complete
 	done := make(chan bool, 1)

@@ -3,22 +3,20 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
-	core "stockmind/internal/llm"
+	"os"
+	"path"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-
-	"github.com/mark3labs/mcp-go/client"
-	"github.com/mark3labs/mcp-go/client/transport"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/sashabaranov/go-openai"
+	"github.com/google/uuid"
 )
 
 type Message struct {
-	Content string `json:"content"`
+	Content   string    `json:"content"`
+	SessionId uuid.UUID `json:"session_id"`
 }
 
 func (s *Server) RegisterRoutes() http.Handler {
@@ -33,12 +31,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 		MaxAge:           300,
 	}))
 
-	r.Get("/", s.HelloWorldHandler)
+	// SPA
+	r.Handle("/*", spaHandler())
 
 	r.Route("/v1", func(r chi.Router) {
+
 		// Websocket
 		r.Get("/ws", s.websocketHandler)
-		r.Post("/llm", s.llmHandler)
+		r.Post("/chat", s.chatHandler)
 
 		// Users
 		r.Route("/users", func(r chi.Router) {
@@ -71,81 +71,104 @@ func (s *Server) RegisterRoutes() http.Handler {
 	return r
 }
 
-func (s *Server) HelloWorldHandler(w http.ResponseWriter, r *http.Request) {
-	resp := make(map[string]string)
-	resp["message"] = "Hello World"
-
-	jsonResp, err := json.Marshal(resp)
-	if err != nil {
-		log.Fatalf("error handling JSON marshal. Err: %v", err)
+func spaHandler() http.HandlerFunc {
+	spaFS := os.DirFS("web/dist")
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Any path not ending with a file extension is served as index.html
+		if path.Ext(r.URL.Path) == "" || r.URL.Path == "/" {
+			http.ServeFileFS(w, r, spaFS, "index.html")
+			return
+		}
+		f, err := spaFS.Open(strings.TrimPrefix(path.Clean(r.URL.Path), "/"))
+		if err == nil {
+			defer f.Close()
+		}
+		if os.IsNotExist(err) {
+			w.Write([]byte("Content not found"))
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		http.FileServer(http.FS(spaFS)).ServeHTTP(w, r)
 	}
-
-	_, _ = w.Write(jsonResp)
 }
 
-func (s *Server) llmHandler(w http.ResponseWriter, r *http.Request) {
-	var req Message
+func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
+	// SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
-	_ = json.NewDecoder(r.Body).Decode(&req)
-
-	agent := core.Agent{
-		SystemPrompt: "You are a helpful assistant.",
-		ModelId:      core.GLM_4_5_AIR,
-		MaxTokens:    2048,
-		Temperature:  0.7,
+	// Parse body
+	var body Message
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		fmt.Println("invalid body: %w", err)
+		return
 	}
-
-	// 1) Create MCP client over stdio
-	ctx := r.Context()
-
-	tr := transport.NewStdio("go", []string{}, "run", "cmd/mcp/main.go")
-	err := tr.Start(ctx)
+	if body.Content == "" {
+		fmt.Println("content is required")
+		return
+	}
+	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
+	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
+	var sessionId *uuid.UUID
+	if body.SessionId != uuid.Nil {
+		sessionId = &body.SessionId
+	}
+	// sessionId := uuid.Must(uuid.Parse("01994b58-6631-7c98-bcc0-c1e02e436a89"))
+	// session, err := lm.GetOrCreateSession(&userID, &agentID, &sessionId, nil)
+	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionId, nil)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to start MCP client: %v", err), http.StatusInternalServerError)
+		fmt.Println("Failed to get or create session", "error", err)
 		return
 	}
-
-	cli := client.NewClient(tr)
-	if err := cli.Start(ctx); err != nil {
-		http.Error(w, fmt.Sprintf("failed to start MCP client: %v", err), http.StatusInternalServerError)
-		return
-	}
-	// Initialize the MCP client
-	_, err = cli.Initialize(ctx, mcp.InitializeRequest{})
+	// Initilize session
+	err = session.Initialize()
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to initialize MCP client: %v", err), http.StatusInternalServerError)
+		fmt.Println("Failed to initialize session", "error", err)
 		return
 	}
-	defer cli.Close()
-
-	// 2) Fetch tools from MCP
-	toolsResp, err := cli.ListTools(ctx, mcp.ListToolsRequest{})
+	inThinkingBlock := false
+	session.AddChatCallback(func(content string, thinking bool, endBlock bool) error {
+		if thinking {
+			if !inThinkingBlock {
+				inThinkingBlock = true
+			}
+			writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": content}})
+		} else {
+			if inThinkingBlock {
+				inThinkingBlock = false
+			}
+			writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": content}})
+		}
+		if endBlock {
+			writeSSE(w, map[string]any{"type": "complete"})
+		}
+		return nil
+	})
+	err = session.HumanInput(body.Content)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to list tools: %v", err), http.StatusInternalServerError)
+		fmt.Println("Failed to send human input", "error", err)
 		return
 	}
-
-	// 3) Map MCP tool descriptors to OpenAI function tools
-	var oaTools []openai.Tool
-	for _, t := range toolsResp.Tools {
-		oaTools = append(oaTools, openai.Tool{
-			Type: openai.ToolTypeFunction,
-			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.InputSchema, // JSON Schema from MCP
-			},
-		})
+	nLoop := 0
+	for !session.IsHumanTurn() {
+		err = session.ContinueTurn()
+		if err != nil {
+			fmt.Println("Failed to continue turn", "error", err)
+			return
+		}
+		nLoop++
+		if nLoop > 10 {
+			fmt.Println("Too many loops, something is wrong")
+			return
+		}
 	}
-	agent.Tools = oaTools
+}
 
-	// 4) Call the agent
-	response, err := agent.Invoke(req.Content)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Error invoking agent: %v", err), http.StatusInternalServerError)
-		return
+func writeSSE(w http.ResponseWriter, v any) {
+	data, _ := json.Marshal(v)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
 	}
-
-	jsonResp, _ := json.Marshal(response)
-	_, _ = w.Write(jsonResp)
 }
