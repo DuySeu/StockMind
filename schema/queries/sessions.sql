@@ -5,7 +5,7 @@ INSERT INTO sessions (id, created_by, agent_flow_id, title) VALUES ($1, $2, $3, 
 SELECT * FROM sessions WHERE id = $1;
 
 -- name: UpdateSessionTurnCount :exec
--- UPDATE sessions SET turn_count = $2 WHERE id = $1;
+UPDATE sessions SET turn_count = $2 WHERE id = $1;
 
 -- name: SessionAddChatHistory :one
 INSERT INTO session_history (id, session_id, content, stop_reason, node) VALUES ($1, $2, $3, $4, $5) RETURNING *;

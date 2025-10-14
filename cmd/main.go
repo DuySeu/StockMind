@@ -97,7 +97,7 @@ func main() {
 func runServer(ctx context.Context, port string) error {
 	log.Printf("Running server on port: %s", port)
 
-	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
+	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_DEV_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
 
 	// Create a database connection pool
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)

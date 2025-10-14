@@ -12,7 +12,7 @@ import (
 )
 
 const createSession = `-- name: CreateSession :one
-INSERT INTO sessions (id, created_by, agent_flow_id, title) VALUES ($1, $2, $3, $4) RETURNING id, title, description, agent_flow_id, created_by, created_at, updated_at
+INSERT INTO sessions (id, created_by, agent_flow_id, title) VALUES ($1, $2, $3, $4) RETURNING id, title, description, turn_count, agent_flow_id, created_by, created_at, updated_at
 `
 
 type CreateSessionParams struct {
@@ -34,6 +34,7 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 		&i.ID,
 		&i.Title,
 		&i.Description,
+		&i.TurnCount,
 		&i.AgentFlowID,
 		&i.CreatedBy,
 		&i.CreatedAt,
@@ -52,7 +53,7 @@ func (q *Queries) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
 }
 
 const getSessionByID = `-- name: GetSessionByID :one
-SELECT id, title, description, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE id = $1
+SELECT id, title, description, turn_count, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE id = $1
 `
 
 func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, error) {
@@ -62,6 +63,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id uuid.UUID) (Session, er
 		&i.ID,
 		&i.Title,
 		&i.Description,
+		&i.TurnCount,
 		&i.AgentFlowID,
 		&i.CreatedBy,
 		&i.CreatedAt,
@@ -102,7 +104,7 @@ func (q *Queries) GetSessionHistoryBySessionID(ctx context.Context, sessionID uu
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, title, description, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE created_by = $1 ORDER BY created_at ASC
+SELECT id, title, description, turn_count, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE created_by = $1 ORDER BY created_at ASC
 `
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, createdBy uuid.UUID) ([]Session, error) {
@@ -118,6 +120,7 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, createdBy uuid.UUID) 
 			&i.ID,
 			&i.Title,
 			&i.Description,
+			&i.TurnCount,
 			&i.AgentFlowID,
 			&i.CreatedBy,
 			&i.CreatedAt,
@@ -131,6 +134,38 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, createdBy uuid.UUID) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const sessionAddChatHistory = `-- name: SessionAddChatHistory :one
+INSERT INTO session_history (id, session_id, content, stop_reason, node) VALUES ($1, $2, $3, $4, $5) RETURNING id, session_id, node, content, stop_reason, created_at
+`
+
+type SessionAddChatHistoryParams struct {
+	ID         uuid.UUID    `db:"id" json:"id"`
+	SessionID  uuid.UUID    `db:"session_id" json:"session_id"`
+	Content    MessageUnion `db:"content" json:"content"`
+	StopReason StopReason   `db:"stop_reason" json:"stop_reason"`
+	Node       string       `db:"node" json:"node"`
+}
+
+func (q *Queries) SessionAddChatHistory(ctx context.Context, arg SessionAddChatHistoryParams) (SessionHistory, error) {
+	row := q.db.QueryRow(ctx, sessionAddChatHistory,
+		arg.ID,
+		arg.SessionID,
+		arg.Content,
+		arg.StopReason,
+		arg.Node,
+	)
+	var i SessionHistory
+	err := row.Scan(
+		&i.ID,
+		&i.SessionID,
+		&i.Node,
+		&i.Content,
+		&i.StopReason,
+		&i.CreatedAt,
+	)
+	return i, err
 }
 
 const updateSessionName = `-- name: UpdateSessionName :exec
@@ -148,26 +183,15 @@ func (q *Queries) UpdateSessionName(ctx context.Context, arg UpdateSessionNamePa
 }
 
 const updateSessionTurnCount = `-- name: UpdateSessionTurnCount :exec
-
-INSERT INTO session_history (id, session_id, content, stop_reason, node) VALUES ($1, $2, $3, $4, $5) RETURNING id, session_id, node, content, stop_reason, created_at
+UPDATE sessions SET turn_count = $2 WHERE id = $1
 `
 
 type UpdateSessionTurnCountParams struct {
-	ID         uuid.UUID  `db:"id" json:"id"`
-	SessionID  uuid.UUID  `db:"session_id" json:"session_id"`
-	Content    []byte     `db:"content" json:"content"`
-	StopReason StopReason `db:"stop_reason" json:"stop_reason"`
-	Node       string     `db:"node" json:"node"`
+	ID        uuid.UUID `db:"id" json:"id"`
+	TurnCount int32     `db:"turn_count" json:"turn_count"`
 }
 
-// UPDATE sessions SET turn_count = $2 WHERE id = $1;
 func (q *Queries) UpdateSessionTurnCount(ctx context.Context, arg UpdateSessionTurnCountParams) error {
-	_, err := q.db.Exec(ctx, updateSessionTurnCount,
-		arg.ID,
-		arg.SessionID,
-		arg.Content,
-		arg.StopReason,
-		arg.Node,
-	)
+	_, err := q.db.Exec(ctx, updateSessionTurnCount, arg.ID, arg.TurnCount)
 	return err
 }

@@ -142,7 +142,7 @@ func (sm *SessionManager) HumanInput(message string) error {
 	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
-		Data:       humanMsg,
+		Content:    humanMsg,
 		StopReason: database.StopReasonUserInput,
 		Node:       "start",
 	})
@@ -209,7 +209,7 @@ func newHumanMessage(message string, provider database.ModelProvider) (database.
 	case database.ModelProviderOpenAI:
 		return database.MessageUnion{
 			OfOpenAI: &openai.ChatCompletionMessage{
-				Role:    "user",
+				Role:    openai.ChatMessageRoleUser,
 				Content: message,
 			},
 		}, nil
@@ -246,7 +246,7 @@ func (sm *SessionManager) continueTurnHumanInput() error {
 	// Not last history, all history
 	messages := make([]*database.MessageUnion, 0, len(sm.history))
 	for i := range sm.history {
-		messages = append(messages, &sm.history[i].Data)
+		messages = append(messages, &sm.history[i].Content)
 	}
 	// Call the agent to complete the turn
 	result, stopReason, err := agent.Completion(sm.ctx, messages, sm.chatCallback)
@@ -258,7 +258,7 @@ func (sm *SessionManager) continueTurnHumanInput() error {
 	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
-		Data:       result,
+		Content:    result,
 		StopReason: stopReason,
 		Node:       nextNode.ID,
 	})
@@ -282,7 +282,7 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	if agent == nil {
 		return fmt.Errorf("agent %s not found in session manager", *lastNode.AgentName)
 	}
-	message, err := agent.ToolUse(sm.ctx, &lastHistory.Data)
+	message, err := agent.ToolUse(sm.ctx, &lastHistory.Content)
 	if err != nil {
 		return fmt.Errorf("failed to call tool use on agent %s: %w", *lastNode.AgentName, err)
 	}
@@ -291,7 +291,7 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
-		Data:       message,
+		Content:    message,
 		StopReason: database.StopReasonToolResult,
 		Node:       lastNode.ID,
 	})
@@ -317,7 +317,7 @@ func (sm *SessionManager) continueTurnToolResult() error {
 	}
 	messages := make([]*database.MessageUnion, 0, len(sm.history))
 	for i := range sm.history {
-		messages = append(messages, &sm.history[i].Data)
+		messages = append(messages, &sm.history[i].Content)
 	}
 	// Call the agent to complete the turn
 	result, stopReason, err := agent.Completion(sm.ctx, messages, sm.chatCallback)
@@ -329,7 +329,7 @@ func (sm *SessionManager) continueTurnToolResult() error {
 	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
-		Data:       result,
+		Content:    result,
 		StopReason: stopReason,
 		Node:       lastNode.ID,
 	})

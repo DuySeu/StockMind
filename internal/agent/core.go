@@ -9,7 +9,6 @@ import (
 	mcp_client "github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // Model ID in OpenRouter support function calling and free (https://openrouter.ai/models)
@@ -27,12 +26,6 @@ const (
 
 func init() {
 	_ = godotenv.Load()
-}
-
-type ToolWrapper struct {
-	openaiTool openai.Tool
-	mcpTool    mcp.Tool
-	// anthropicTool anthropic.ToolUnionParam
 }
 
 // type Agent struct {

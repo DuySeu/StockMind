@@ -21,7 +21,7 @@ $$ LANGUAGE plpgsql;
 
 -- Users table
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL UNIQUE,
     provider VARCHAR(255) NOT NULL,
@@ -29,11 +29,21 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Agent flow table
+CREATE TABLE IF NOT EXISTS agent_flows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    config JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Session table
 CREATE TABLE IF NOT EXISTS sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title VARCHAR(255) NOT NULL,
     description TEXT,
+    turn_count INT4 NOT NULL DEFAULT 0,
     agent_flow_id UUID NOT NULL REFERENCES agent_flows(id) ON DELETE CASCADE,
     created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -42,21 +52,12 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 -- Messages table
 CREATE TABLE IF NOT EXISTS session_history (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     node TEXT NOT NULL,
     content JSONB NOT NULL,
     stop_reason TEXT NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Agent flow table
-CREATE TABLE IF NOT EXISTS agent_flows (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    name VARCHAR(255) NOT NULL,
-    config JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Default Agent Flow
@@ -75,7 +76,14 @@ INSERT INTO agent_flows (id, name, config) VALUES
             "topP": 0.9,
             "topK": 40,
             "tools": [],
-            "mcpServers": []
+            "mcpServers": [
+                {
+                    "name": "stocks-mcp",
+                    "protocol": "stdio",
+                    "command": "go",
+                    "args": ["run", "cmd/main.go", "mcp"]
+                }
+            ]
         }
     },
     "nodes": [

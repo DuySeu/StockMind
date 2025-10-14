@@ -21,6 +21,7 @@ type Session struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	Title       string             `db:"title" json:"title"`
 	Description pgtype.Text        `db:"description" json:"description"`
+	TurnCount   int32              `db:"turn_count" json:"turn_count"`
 	AgentFlowID uuid.UUID          `db:"agent_flow_id" json:"agent_flow_id"`
 	CreatedBy   uuid.UUID          `db:"created_by" json:"created_by"`
 	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
@@ -31,7 +32,7 @@ type SessionHistory struct {
 	ID         uuid.UUID          `db:"id" json:"id"`
 	SessionID  uuid.UUID          `db:"session_id" json:"session_id"`
 	Node       string             `db:"node" json:"node"`
-	Content    []byte             `db:"content" json:"content"`
+	Content    MessageUnion       `db:"content" json:"content"`
 	StopReason StopReason         `db:"stop_reason" json:"stop_reason"`
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
