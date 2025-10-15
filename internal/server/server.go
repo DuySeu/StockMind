@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"stockmind/internal/agent"
 	"stockmind/internal/database"
 	"strconv"
@@ -19,10 +18,13 @@ type Server struct {
 	agent *agent.AgentService
 }
 
-func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService) *http.Server {
-	port, _ := strconv.Atoi(os.Getenv("PORT"))
+func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, port string) *http.Server {
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		portInt = 8080
+	}
 	NewServer := &Server{
-		port:  port,
+		port:  portInt,
 		db:    database.New(dbPool),
 		agent: agent,
 	}

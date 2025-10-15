@@ -20,31 +20,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-func gracefulShutdown(apiServer *http.Server, done chan bool) {
-	// Create context that listens for the interrupt signal from the OS.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	// Listen for the interrupt signal.
-	<-ctx.Done()
-
-	log.Println("shutting down gracefully, press Ctrl+C again to force")
-	stop() // Allow Ctrl+C to force shutdown
-
-	// The context is used to inform the server it has 5 seconds to finish
-	// the request it is currently handling
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := apiServer.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown with error: %v", err)
-	}
-
-	log.Println("Server exiting")
-
-	// Notify the main goroutine that the shutdown is complete
-	done <- true
-}
-
 func main() {
 	app := cli.Command{
 		Name:    "stock_mind",
@@ -60,10 +35,29 @@ func main() {
 						Value: "8080",
 						Usage: "Port to run the server on",
 					},
+					&cli.StringFlag{
+						Name:    "mcp-protocol",
+						Aliases: []string{"p"},
+						Usage:   "MCP protocol (stdio, http)",
+						Value:   "stdio",
+					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					port := cmd.String("port")
-					return runServer(ctx, port)
+					mcpProtocol := cmd.String("mcp-protocol")
+
+					runContext, shutdown, err := runServer(ctx, port, mcpProtocol)
+					if err != nil {
+						log.Printf("Failed to run server: %v", err)
+						return err
+					}
+
+					signalCtx, cancel := signal.NotifyContext(runContext, syscall.SIGINT, syscall.SIGTERM)
+					defer cancel()
+
+					<-signalCtx.Done()
+					shutdown()
+					return nil
 				},
 			},
 			{
@@ -94,35 +88,51 @@ func main() {
 	}
 }
 
-func runServer(ctx context.Context, port string) error {
+func runMCP(ctx context.Context, protocol string) error {
+	log.Printf("Running MCP server with protocol: %s", protocol)
+	return mcp.Start(ctx, protocol)
+}
+
+func runServer(ctx context.Context, port string, mcpProtocol string) (context.Context, func(), error) {
 	log.Printf("Running server on port: %s", port)
+
+	var mcpShutdown func()
+	if mcpProtocol == "http" {
+		// Create MCP service and HTTP server
+		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
+		err := mcp.Start(ctx, mcpProtocol)
+		if err != nil {
+			log.Printf("Failed to start MCP: %v", err)
+			return nil, nil, err
+		}
+	}
 
 	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_DEV_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
 
 	// Create a database connection pool
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)
 	if err != nil {
-		return fmt.Errorf("failed to parse database URL: %v", err)
+		return nil, nil, fmt.Errorf("failed to parse database URL: %v", err)
 	}
 	poolConfig.MaxConns = 10
 
 	dbPool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create database pool: %v", err)
+		return nil, nil, fmt.Errorf("failed to create database pool: %v", err)
 	}
 
 	// Test the database connection
 	err = dbPool.Ping(ctx)
 	if err != nil {
 		log.Printf("Failed to ping database: %v", err)
-		return err
+		return nil, nil, err
 	}
 
 	// Run Migration
 	err = database.MigrateDB(dbPool)
 	if err != nil {
 		log.Println("Failed to migrate database", "error", err)
-		return err
+		return nil, nil, err
 	}
 	log.Println("Database connection established")
 
@@ -130,31 +140,42 @@ func runServer(ctx context.Context, port string) error {
 	agent, err := agent.NewService(ctx, dbPool, database.ModelProviderOpenAI)
 	if err != nil {
 		log.Println("Failed to create agent service", "error", err)
-		return err
+		return nil, nil, err
 	}
 
 	// Create a server for the application
-	server := server.NewServer(dbPool, agent)
+	server := server.NewServer(dbPool, agent, port)
+	runContext, cancel := context.WithCancel(ctx)
 
 	// Create a done channel to signal when the shutdown is complete
-	done := make(chan bool, 1)
+	stopCh := make(chan struct{})
 
-	// Run graceful shutdown in a separate goroutine
-	go gracefulShutdown(server, done)
+	go func() {
+		defer close(stopCh)
 
-	err = server.ListenAndServe()
-	if err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("http server error: %s", err)
-	}
+		log.Printf("Server starting on port: %s", port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("unexpected server closure: %v", err)
+			cancel()
+		}
+	}()
 
-	// Wait for the graceful shutdown to complete
-	<-done
-	log.Println("Graceful shutdown complete.")
+	return runContext, func() {
+		// Create shutdown context with timeout
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
 
-	return nil
-}
+		// Shutdown MCP server first if it was started
+		if mcpShutdown != nil {
+			log.Printf("Shutting down MCP server...")
+			mcpShutdown()
+		}
 
-func runMCP(ctx context.Context, protocol string) error {
-	log.Printf("Running MCP server with protocol: %s", protocol)
-	return mcp.Start(ctx, protocol)
+		// Then shutdown HTTP server
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("stopping server: %v", err)
+		}
+
+		<-stopCh
+	}, nil
 }

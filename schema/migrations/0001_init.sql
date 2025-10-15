@@ -66,9 +66,9 @@ INSERT INTO agent_flows (id, name, config) VALUES
 '{
     "agents": {
         "NormalChat": {
-            "provider": "anthropic",
+            "provider": "openai",
             "description": "Handles general chat interactions.",
-            "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "modelId": "NEMOTRON_NANO_9B_V2",
             "systemPrompt": "You are a helpful assistant.",
             "maxTokens": 8192,
             "thinkingToken": 1024,

@@ -174,7 +174,7 @@ func (sm *SessionManager) ContinueTurn() error {
 	case database.StopReasonAgentDone:
 		// Call next node. If no next node then end the turn
 		if lastNode.Next == nil {
-			fmt.Printf("No next node, turn is complete. To continue, add new human input", "session_id", sm.session.ID.String())
+			fmt.Printf("No next node, turn is complete. To continue, add new human input %s\n", sm.session.ID.String())
 			return nil
 		}
 		nextNode := sm.nodes[*lastNode.Next]
