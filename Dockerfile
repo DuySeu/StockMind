@@ -1,65 +1,59 @@
-# Multi-stage build for StockMind application
-# Stage 1: Build Go backend
-FROM golang:1.25.1-alpine AS backend-builder
+# Dockerfile for StockMind Application
+# Build: docker build -t stockmind-backend .
+# Run: docker run -p 8080:8080 stockmind-backend
+
+# =============================================================================
+# Build Stage
+# =============================================================================
+FROM golang:1.25.1-alpine AS backend
 
 WORKDIR /app
 
-# Install git and ca-certificates for go mod download
-RUN apk add --no-cache git ca-certificates
-
-# Copy go mod files
 COPY go.mod go.sum ./
+
 RUN go mod download
 
-# Copy source code and build
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main cmd/main.go
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
 
-# Stage 2: Build React frontend
-FROM node:20-alpine AS frontend-builder
+RUN go build -o app ./cmd/main.go
 
-WORKDIR /frontend
+FROM node:20-alpine AS frontend
 
-# Copy package files
-COPY frontend/package*.json ./
-RUN npm ci --only=production
+WORKDIR /home/apps
+COPY --chown=apps:apps ./frontend /home/apps
 
-# Copy source and build
-COPY frontend/ .
-RUN npm run build
+RUN npm ci && \
+    npm run build
 
-# Stage 3: Production image with nginx
-FROM nginx:alpine AS production
+# =============================================================================
+# Runtime Stage
+# =============================================================================
+FROM alpine:latest
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Cài curl để healthcheck
+RUN apk add --no-cache curl ca-certificates
 
-# Copy built backend binary
-COPY --from=backend-builder /app/main /usr/local/bin/stockmind
+# Copy backend binary
+COPY --from=backend /app/app /usr/local/bin/stockmind
 
-# Copy built frontend
-COPY --from=frontend-builder /frontend/dist /usr/share/nginx/html
+# Copy frontend dist vào thư mục mà Go server expect (frontend/dist)
+COPY --from=frontend /home/apps/dist /app/frontend/dist
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
-
-# Copy startup script
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-# Create non-root user
+# Tạo user để chạy ứng dụng
 RUN addgroup -g 1001 -S stockmind && \
     adduser -S stockmind -u 1001 -G stockmind
 
-# Set working directory
 WORKDIR /app
 
-# Expose ports
-EXPOSE 80 8080
+# Expose port 8080 (Go server chạy trên port này)
+EXPOSE 8080
 
-# Health check
+# Healthcheck kiểm tra port 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:80/health || exit 1
+    CMD curl -f http://localhost:8080/v1/health || exit 1
 
-# Use custom entrypoint
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# Chạy ứng dụng với user stockmind
+USER stockmind
+
+CMD ["/usr/local/bin/stockmind", "server", "--port", "8080"]

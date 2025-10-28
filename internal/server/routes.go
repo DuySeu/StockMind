@@ -72,7 +72,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 }
 
 func spaHandler() http.HandlerFunc {
-	spaFS := os.DirFS("web/dist")
+	spaFS := os.DirFS("frontend/dist")
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Any path not ending with a file extension is served as index.html
 		if path.Ext(r.URL.Path) == "" || r.URL.Path == "/" {
