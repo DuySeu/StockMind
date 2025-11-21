@@ -17,10 +17,16 @@ import (
 	"stockmind/internal/server"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/urfave/cli/v3"
 )
 
 func main() {
+	// Load .env file first
+	if err := godotenv.Load(); err != nil {
+		fmt.Printf("Warning: Failed to load .env file: %v\n", err)
+	}
+
 	app := cli.Command{
 		Name:    "stock_mind",
 		Usage:   "StockMind is an AI-powered assistant designed to simplify access to financial information and insights about the Vietnamese stock market.",
@@ -107,7 +113,7 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		}
 	}
 
-	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_DEV_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
+	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
 
 	// Create a database connection pool
 	poolConfig, err := pgxpool.ParseConfig(dbUrl)

@@ -1,10 +1,11 @@
 import SideBar from "@/components/containers/SideBar";
+import { chatWithLLM } from "@/api/chat";
 import { Button } from "@/components/ui/button";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { useForm, type FieldValues } from "react-hook-form";
 import { Form, FormControl, FormDescription, FormField, FormItem } from "@/components/ui/form";
-import { Send, Sun } from "lucide-react";
+import { Calendar, Home, Inbox, Search, Send, Settings, Sun } from "lucide-react";
 import MessageList from "@/components/containers/MessageList";
 import { useState } from "react";
 
@@ -13,8 +14,36 @@ type Message = {
   content: Record<string, unknown>[];
 };
 
+const sidebarItems = [
+  {
+    title: "Home",
+    url: "#",
+    icon: Home,
+  },
+  {
+    title: "Inbox",
+    url: "#",
+    icon: Inbox,
+  },
+  {
+    title: "Calendar",
+    url: "#",
+    icon: Calendar,
+  },
+  {
+    title: "Search",
+    url: "#",
+    icon: Search,
+  },
+  {
+    title: "Settings",
+    url: "#",
+    icon: Settings,
+  },
+];
+
 const HomePage = () => {
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId] = useState<string | null>(null);
   const [isFirstMessage, setIsFirstMessage] = useState<boolean>(true);
   const [messages, setMessages] = useState<Message[]>([]);
 
@@ -34,141 +63,99 @@ const HomePage = () => {
 
     setMessages([...messages, { role: "user", content: [{ type: "text", text: data.input.trim() }] }]);
 
-    const assistantIndex = messages.length;
-    setMessages([...messages, { role: "assistant", content: [] }]);
+    const assistantIndex = messages.length + 1;
+    setMessages((prev) => [...prev, { role: "assistant", content: [] }]);
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
-
-        body: JSON.stringify({ message: data.input.trim(), conversationId: conversationId }),
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-
-        let newlineIndex;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          const line = buffer.slice(0, newlineIndex).trimEnd();
-          buffer = buffer.slice(newlineIndex + 1);
-
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              switch (data.type) {
-                case "thinking_delta": {
-                  const delta = data.data?.thinking ?? "";
-                  const current = messages[assistantIndex].content ?? [];
-                  const updated = [...messages];
-                  const newContent = [...current];
-                  let idx = newContent.findIndex((c) => c.type === "thinking");
-                  if (idx === -1) {
-                    newContent.push({
-                      type: "thinking",
-                      thinking: "",
-                      signature: "",
-                      is_open: true,
-                    });
-                    idx = newContent.length - 1;
-                  }
-                  const block = newContent[idx];
-                  newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
-                  updated[assistantIndex] = { role: "assistant", content: newContent };
-                  setMessages(updated);
-                  break;
-                }
-                case "text_delta": {
-                  const delta = data.data?.text ?? "";
-                  const current = messages[assistantIndex].content ?? [];
-                  const updated = [...messages];
-                  const newContent = [...current];
-                  let idx = newContent.findIndex((c) => c.type === "text");
-                  if (idx === -1) {
-                    newContent.push({ type: "text", text: "" });
-                    idx = newContent.length - 1;
-                  }
-                  const block = newContent[idx];
-                  newContent[idx] = { ...block, text: (block.text ?? "") + delta };
-                  updated[assistantIndex] = { role: "assistant", content: newContent };
-                  setMessages(updated);
-                  break;
-                }
-                case "message_stop":
-                case "complete": {
-                  if (data.data) {
-                    setConversationId(data.data);
-                  }
-                  const current = messages[assistantIndex].content ?? [];
-                  const updated = [...messages];
-                  const newContent = [...current];
-                  let idx = newContent.findIndex((c) => c.type === "thinking");
-                  if (idx === -1) {
-                    newContent.push({
-                      type: "thinking",
-                      thinking: "",
-                      signature: "",
-                      is_open: false,
-                    });
-                    idx = newContent.length - 1;
-                  }
-                  const block = newContent[idx];
-                  newContent[idx] = { ...block, is_open: false };
-                  updated[assistantIndex] = { role: "assistant", content: newContent };
-                  setMessages(updated);
-                  break;
-                }
-                case "error": {
-                  const error = data.error ?? "Unknown error";
-                  const updated = [...messages];
-                  updated[assistantIndex] = {
-                    role: "assistant",
-                    content: [{ type: "text", text: `Error: ${error}` }],
-                  };
-                  setMessages(updated);
-                  break;
-                }
-                default:
-                  break;
+    await chatWithLLM(
+      data.input.trim(),
+      conversationId || undefined,
+      (data) => {
+        switch (data.type) {
+          case "thinking_delta": {
+            const delta = data.data?.thinking ?? "";
+            setMessages((prev) => {
+              const updated = [...prev];
+              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
+              const newContent = [...(currentMessage.content || [])];
+              
+              let idx = newContent.findIndex((c) => c.type === "thinking");
+              if (idx === -1) {
+                newContent.push({
+                  type: "thinking",
+                  thinking: "",
+                  signature: "",
+                  is_open: true,
+                });
+                idx = newContent.length - 1;
               }
-            } catch (error) {
-              console.error("Error parsing JSON:", error);
-            }
+              const block = newContent[idx];
+              newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
+              updated[assistantIndex] = { ...currentMessage, content: newContent };
+              return updated;
+            });
+            break;
+          }
+          case "text_delta": {
+            const delta = data.data?.text ?? "";
+            setMessages((prev) => {
+              const updated = [...prev];
+              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
+              const newContent = [...(currentMessage.content || [])];
+
+              let idx = newContent.findIndex((c) => c.type === "text");
+              if (idx === -1) {
+                newContent.push({ type: "text", text: "" });
+                idx = newContent.length - 1;
+              }
+              const block = newContent[idx];
+              newContent[idx] = { ...block, text: (block.text ?? "") + delta };
+              updated[assistantIndex] = { ...currentMessage, content: newContent };
+              return updated;
+            });
+            break;
+          }
+          case "complete": {
+            // if (data.data) {
+            //   setConversationId(data.data);
+            // }
+             setMessages((prev) => {
+              const updated = [...prev];
+              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
+              const newContent = [...(currentMessage.content || [])];
+
+              let idx = newContent.findIndex((c) => c.type === "thinking");
+              if (idx !== -1) {
+                 const block = newContent[idx];
+                 newContent[idx] = { ...block, is_open: false };
+                 updated[assistantIndex] = { ...currentMessage, content: newContent };
+              }
+              return updated;
+            });
+            break;
           }
         }
+      },
+      (error) => {
+        console.error("Error sending message:", error);
+        setMessages((prev) => {
+            const updated = [...prev];
+            updated[assistantIndex] = {
+                role: "assistant",
+                content: [{ type: "text", text: "Error sending message" }],
+            };
+            return updated;
+        });
       }
-    } catch (error) {
-      console.error("Error parsing JSON:", error);
-      const updated = [...messages];
-      updated[assistantIndex] = {
-        role: "assistant",
-        content: [{ type: "text", text: "Error sending message" }],
-      };
-      setMessages(updated);
-    } finally {
-      if (isFirstMessage) {
+    );
+    
+    if (isFirstMessage) {
         setIsFirstMessage(false);
-      }
     }
   };
 
   return (
     <SidebarProvider>
-      <SideBar />
+      <SideBar items={sidebarItems} />
       <main className="w-full flex flex-col">
         <header className="flex justify-between items-center bg-secondary p-2">
           <SidebarTrigger />

@@ -160,18 +160,25 @@ func (sm *SessionManager) ContinueTurn() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("ContinueTurn called (session: %s, node: %s, stop_reason: %s)\n",
+		sm.session.ID, lastNode.ID, lastHistory.StopReason)
+
 	switch lastHistory.StopReason {
 	case database.StopReasonUserInput:
+		fmt.Println("Handling UserInput -> calling continueTurnHumanInput")
 		// Continue with next agent node
 		// Suppose to be start node
 		err = sm.continueTurnHumanInput()
 	case database.StopReasonToolCall:
+		fmt.Println("Handling ToolCall -> calling continueTurnToolCall")
 		// Still agent node, call tools, append tool result to history
 		err = sm.continueTurnToolCall()
 	case database.StopReasonToolResult:
+		fmt.Println("Handling ToolResult -> calling continueTurnToolResult")
 		// Still agent node, call the agent again
 		err = sm.continueTurnToolResult()
 	case database.StopReasonAgentDone:
+		fmt.Println("Handling AgentDone -> checking for next node")
 		// Call next node. If no next node then end the turn
 		if lastNode.Next == nil {
 			fmt.Printf("No next node, turn is complete. To continue, add new human input %s\n", sm.session.ID.String())
@@ -275,6 +282,9 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("continueTurnToolCall: executing tools (node: %s, agent: %s)\n",
+		lastNode.ID, *lastNode.AgentName)
+
 	if lastNode.Type != database.NodeTypeAgent {
 		return fmt.Errorf("last node %s is not an agent node, cannot continue turn", lastNode.ID)
 	}
@@ -284,8 +294,11 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	}
 	message, err := agent.ToolUse(sm.ctx, &lastHistory.Content)
 	if err != nil {
+		fmt.Printf("continueTurnToolCall: tool execution failed: %v\n", err)
 		return fmt.Errorf("failed to call tool use on agent %s: %w", *lastNode.AgentName, err)
 	}
+	fmt.Printf("continueTurnToolCall: tools executed successfully, storing results\n")
+
 	// Store the result to history
 	historyID := uuid.Must(uuid.NewV7())
 	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
@@ -299,6 +312,7 @@ func (sm *SessionManager) continueTurnToolCall() error {
 		return fmt.Errorf("failed to add chat history: %w", err)
 	}
 	sm.history = append(sm.history, history)
+	fmt.Printf("continueTurnToolCall: tool results stored (history_id: %s)\n", historyID)
 	return nil
 }
 

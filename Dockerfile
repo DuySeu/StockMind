@@ -15,6 +15,7 @@ RUN go mod download
 
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY schema/ ./schema/
 
 RUN go build -o app ./cmd/main.go
 
@@ -37,19 +38,22 @@ RUN apk add --no-cache curl ca-certificates
 # Copy backend binary
 COPY --from=backend /app/app /usr/local/bin/stockmind
 
-# Copy frontend dist vào thư mục mà Go server expect (frontend/dist)
+# Copy migrations từ backend stage (COPY trước khi tạo user)
+COPY --from=backend /app/schema/migrations /app/schema/migrations
+
+# Copy frontend dist
 COPY --from=frontend /home/apps/dist /app/frontend/dist
 
-# Tạo user để chạy ứng dụng
+# Tạo user và set permissions cho migrations
 RUN addgroup -g 1001 -S stockmind && \
-    adduser -S stockmind -u 1001 -G stockmind
+    adduser -S stockmind -u 1001 -G stockmind && \
+    chown -R stockmind:stockmind /app/schema/migrations && \
+    chmod -R 755 /app/schema/migrations
 
 WORKDIR /app
 
-# Expose port 8080 (Go server chạy trên port này)
 EXPOSE 8080
 
-# Healthcheck kiểm tra port 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/v1/health || exit 1
 

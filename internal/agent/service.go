@@ -70,10 +70,10 @@ func (s *AgentService) GetOrCreateSession(userID, agentFlowID, sessionID *uuid.U
 		// Get Agent Flow Configuration
 		agentFlow, err = s.queries.GetAgentFlowById(s.ctx, *agentFlowID)
 		if err != nil {
-			fmt.Errorf("Failed to get agent flow by ID", "error", err, "agent_flow_id", *agentFlowID)
+			log.Printf("failed to get agent flow by ID: %v (agent_flow_id: %s)", err, *agentFlowID)
 			return nil, err
 		}
-		fmt.Errorf("Creating new session", "user_id", *userID, "agent_flow_id", *agentFlowID, "agent_flow_name", agentFlow.Name)
+		log.Printf("creating new session (user_id: %s, agent_flow_id: %s, agent_flow_name: %s)", *userID, *agentFlowID, agentFlow.Name)
 		newSessionName := "New Session"
 		if sessionName != nil && *sessionName != "" {
 			newSessionName = *sessionName
@@ -85,24 +85,24 @@ func (s *AgentService) GetOrCreateSession(userID, agentFlowID, sessionID *uuid.U
 			Title:       newSessionName,
 		})
 		if err != nil {
-			fmt.Errorf("Failed to create new session", "error", err)
+			log.Printf("failed to create new session: %v", err)
 			return nil, err
 		}
-		fmt.Errorf("New session created", "session_id", *sessionID, "user_id", *userID)
+		log.Printf("new session created (session_id: %s, user_id: %s)", *sessionID, *userID)
 	} else {
 		// Fetch existing session from the database
 		session, err = s.queries.GetSessionByID(s.ctx, *sessionID)
 		if err != nil {
-			fmt.Errorf("Failed to get session by ID", "error", err, "session_id", *sessionID)
+			log.Printf("failed to get session by ID: %v (session_id: %s)", err, *sessionID)
 			return nil, err
 		}
 		// Get Agent Flow Configuration
 		agentFlow, err = s.queries.GetAgentFlowById(s.ctx, session.AgentFlowID)
 		if err != nil {
-			fmt.Errorf("Failed to get agent flow by ID", "error", err, "agent_flow_id", session.AgentFlowID)
+			log.Printf("failed to get agent flow by ID: %v (agent_flow_id: %s)", err, session.AgentFlowID)
 			return nil, err
 		}
-		fmt.Errorf("Existing session fetched", "session_id", *sessionID, "user_id", session.CreatedBy, "agent_flow_id", session.AgentFlowID, "agent_flow_name", agentFlow.Name)
+		log.Printf("existing session fetched (session_id: %s, user_id: %s, agent_flow_id: %s, agent_flow_name: %s)", *sessionID, session.CreatedBy, session.AgentFlowID, agentFlow.Name)
 	}
 
 	ctx, cancel := context.WithCancel(s.ctx)

@@ -19,46 +19,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import {
-  Calendar,
-  CreditCard,
-  EllipsisVertical,
-  Home,
-  Inbox,
-  LogOut,
-  Search,
-  Settings,
-  UserCircle,
-} from "lucide-react";
+import { CreditCard, EllipsisVertical, LogOut, UserCircle, type LucideProps } from "lucide-react";
 
-const SideBar = () => {
-  const sidebarItems = [
-    {
-      title: "Home",
-      url: "#",
-      icon: Home,
-    },
-    {
-      title: "Inbox",
-      url: "#",
-      icon: Inbox,
-    },
-    {
-      title: "Calendar",
-      url: "#",
-      icon: Calendar,
-    },
-    {
-      title: "Search",
-      url: "#",
-      icon: Search,
-    },
-    {
-      title: "Settings",
-      url: "#",
-      icon: Settings,
-    },
-  ];
+interface Item {
+  title: string;
+  url: string;
+  icon: React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>>;
+}
+
+const SideBar = ({ items }: { items: Item[] }) => {
   return (
     <Sidebar>
       <SidebarHeader>StockMind</SidebarHeader>
@@ -67,7 +36,7 @@ const SideBar = () => {
           <SidebarGroupLabel>Session History</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {sidebarItems.map((item) => (
+              {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <a href={item.url}>

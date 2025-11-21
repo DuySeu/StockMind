@@ -71,7 +71,6 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 		a.mcpClients[mcpCfg.Name] = mcpClient
 	}
 
-	fmt.Println("MCP clients initialized", "count", len(a.mcpClients))
 	// Fetch all tools from MCP and put them to tools array
 	for mcpName, mcpClient := range a.mcpClients {
 		// Assume very litle tools, so we can fetch all at once
@@ -81,7 +80,6 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 		if err != nil {
 			return nil, fmt.Errorf("failed to list tools from MCP: %w", err)
 		}
-		fmt.Println("Fetched tools from MCP", "mcp_name", mcpName, "tool_count", len(res.Tools))
 		tools := res.Tools
 		// Rename tool names to include MCP name as prefix to avoid name collision
 		for i := range tools {

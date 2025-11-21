@@ -1,5 +1,23 @@
 # Simple Makefile for a Go project
 
+DOCKER_USERNAME=duy0207
+IMAGE_NAME=stockmind
+IMAGE_TAG=latest
+
+# Build Docker image
+docker-build:
+	@echo "Building Docker image..."
+	docker build -t $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG) .
+
+# Push image to Docker Hub
+docker-push: docker-build
+	@echo "Pushing image to Docker Hub..."
+	docker push $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG)
+
+# Build and push in one command
+docker-deploy: docker-build docker-push
+	@echo "Deployed $(DOCKER_USERNAME)/$(IMAGE_NAME):$(IMAGE_TAG) to Docker Hub"
+
 # Build the application
 all: build test
 
@@ -13,23 +31,6 @@ run:
 	@go run cmd/main.go server &
 	@npm install --prefer-offline --no-fund --prefix ./frontend
 	@npm run dev --prefix ./frontend
-# Create DB container
-docker-run:
-	@if docker compose up --build 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose up --build; \
-	fi
-
-# Shutdown DB container
-docker-down:
-	@if docker compose down 2>/dev/null; then \
-		: ; \
-	else \
-		echo "Falling back to Docker Compose V1"; \
-		docker-compose down; \
-	fi
 
 # Test the application
 test:
@@ -62,4 +63,4 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch docker-run docker-down itest
+.PHONY: all build run test clean watch itest docker-build docker-push docker-deploy

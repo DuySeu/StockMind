@@ -37,7 +37,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Route("/v1", func(r chi.Router) {
 
 		// Websocket
-		r.Get("/ws", s.websocketHandler)
+		// r.Get("/ws", s.websocketHandler)
 		r.Post("/chat", s.chatHandler)
 
 		// Users
@@ -152,18 +152,22 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nLoop := 0
+	fmt.Println("Starting agent execution loop")
 	for !session.IsHumanTurn() {
+		fmt.Printf("Loop iteration %d: continuing turn...\n", nLoop+1)
 		err = session.ContinueTurn()
 		if err != nil {
-			fmt.Println("Failed to continue turn", "error", err)
+			fmt.Printf("Failed to continue turn (iteration: %d, error: %v)\n", nLoop+1, err)
 			return
 		}
+		fmt.Printf("Loop iteration %d: completed successfully\n", nLoop+1)
 		nLoop++
 		if nLoop > 10 {
-			fmt.Println("Too many loops, something is wrong")
+			fmt.Println("Too many loops (max: 10), something is wrong")
 			return
 		}
 	}
+	fmt.Printf("Agent execution loop completed after %d iterations\n", nLoop)
 }
 
 func writeSSE(w http.ResponseWriter, v any) {

@@ -100,14 +100,21 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 
 	defer stream.Close()
 
-	contentItem := openai.ChatCompletionMessage{}
+	contentItem := openai.ChatCompletionMessage{
+		Role: openai.ChatMessageRoleAssistant,
+	}
 
 	// Handle the stream
 	for {
 		response, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
-			fmt.Println("\nStream finished")
-			return result, stopReason, err
+			// fmt.Println("\nStream finished")
+			// Call callback to signal end of block
+			if callback != nil {
+				callback("", false, true)
+			}
+			result.OfOpenAI = &contentItem
+			return result, stopReason, nil
 		}
 
 		if err != nil {
@@ -118,16 +125,59 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 		for _, chunk := range response.Choices {
 			// Handle the chunk
 			delta := chunk.Delta
+			if chunk.FinishReason != "" {
+				stopReason = openaiToDbStopReason(chunk.FinishReason)
+			}
 			switch {
 			case delta.Content != "":
-				contentItem.MultiContent = append(contentItem.MultiContent, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: delta.Content})
+				if len(contentItem.MultiContent) > 0 && contentItem.MultiContent[len(contentItem.MultiContent)-1].Type == openai.ChatMessagePartTypeText {
+					contentItem.MultiContent[len(contentItem.MultiContent)-1].Text += delta.Content
+				} else {
+					contentItem.MultiContent = append(contentItem.MultiContent, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: delta.Content})
+				}
+				if callback != nil {
+					callback(delta.Content, false, false)
+				}
 			case len(delta.ToolCalls) > 0:
-				contentItem.ToolCalls = delta.ToolCalls
+				// Append tool calls
+				// Note: OpenAI stream returns partial tool calls, we need to accumulate them
+				// But for now, let's assume we just collect them
+				// Complex tool call accumulation logic might be needed if using official go-openai stream support for tools
+				// For simplicity, we might need to rely on the final accumulated result if the library handles it,
+				// but standard stream handling requires manual accumulation.
+				// Let's implement basic accumulation if needed, or just rely on what we have.
+				// Actually, go-openai's Delta.ToolCalls usually comes with Index.
+				// We need to accumulate them properly.
+
+				for _, tc := range delta.ToolCalls {
+					if tc.Index != nil {
+						index := *tc.Index
+						if index >= len(contentItem.ToolCalls) {
+							// Expand slice
+							for i := len(contentItem.ToolCalls); i <= index; i++ {
+								contentItem.ToolCalls = append(contentItem.ToolCalls, openai.ToolCall{})
+							}
+						}
+						if tc.ID != "" {
+							contentItem.ToolCalls[index].ID = tc.ID
+							contentItem.ToolCalls[index].Type = tc.Type
+						}
+						if tc.Function.Name != "" {
+							if contentItem.ToolCalls[index].Function.Name == "" {
+								contentItem.ToolCalls[index].Function.Name = tc.Function.Name
+							} else {
+								contentItem.ToolCalls[index].Function.Name += tc.Function.Name
+							}
+						}
+						if tc.Function.Arguments != "" {
+							contentItem.ToolCalls[index].Function.Arguments += tc.Function.Arguments
+						}
+					}
+				}
 			default:
 				continue
 			}
 		}
-		return result, stopReason, nil
 	}
 }
 
@@ -135,14 +185,12 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 	lastMessage := message.OfOpenAI
 	result := database.MessageUnion{}
 	if lastMessage == nil {
-		return result, fmt.Errorf("last message is not an Anthropic message")
+		return result, fmt.Errorf("last message is not an OpenAI message")
 	}
-	// Find the tool use block
-	toolUseBlocks := []openai.ToolCall{}
+	fmt.Printf("toolUseOpenAI: processing tool calls (count: %d)\n", len(lastMessage.ToolCalls))
 
-	for _, block := range lastMessage.ToolCalls {
-		toolUseBlocks = append(toolUseBlocks, block)
-	}
+	// Find the tool use block
+	toolUseBlocks := lastMessage.ToolCalls
 	if len(toolUseBlocks) == 0 {
 		fmt.Println("No tool use blocks found in chat history", "sessionId", a.session.ID, "agentName", a.name)
 		return result, fmt.Errorf("no tool use blocks found in chat history")
@@ -151,8 +199,10 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 		Role:         openai.ChatMessageRoleUser,
 		MultiContent: []openai.ChatMessagePart{},
 	}
-	for _, toolUse := range toolUseBlocks {
-		fmt.Println("Invoking tool", "name", toolUse.Function.Name, "input", toolUse.Function.Arguments)
+	for i, toolUse := range toolUseBlocks {
+		fmt.Printf("toolUseOpenAI: invoking tool %d/%d (name: %s, id: %s)\n",
+			i+1, len(toolUseBlocks), toolUse.Function.Name, toolUse.ID)
+
 		// Normally toolUse.Name will have format <mcp>/<tool_name>
 		parts := strings.SplitN(toolUse.Function.Name, "--", 2)
 		if len(parts) != 2 {
@@ -184,7 +234,8 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 			// },
 		})
 		if err != nil {
-			fmt.Println("Failed to call tool", "sessionId", a.session.ID, "agentName", a.name, "toolName", toolUse.Function.Name, "error", err)
+			fmt.Printf("toolUseOpenAI: tool invocation failed (tool: %s, error: %v)\n",
+				toolUse.Function.Name, err)
 			return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
 		}
 
@@ -208,5 +259,6 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 		toolUseMessage.MultiContent = append(toolUseMessage.MultiContent, toolResult.MultiContent...)
 	}
 	result.OfOpenAI = &toolUseMessage
+	fmt.Printf("toolUseOpenAI: all tools executed successfully (count: %d)\n", len(toolUseBlocks))
 	return result, nil
 }
