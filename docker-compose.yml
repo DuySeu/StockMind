@@ -1,25 +1,27 @@
 services:
-  # app:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #     target: prod
-  #   restart: unless-stopped
-  #   ports:
-  #     - ${PORT}:${PORT}
-  #   environment:
-  #     APP_ENV: ${APP_ENV}
-  #     PORT: ${PORT}
-  #     DB_DEV_HOST: ${DB_DEV_HOST}
-  #     DB_PORT: ${DB_PORT}
-  #     DB_DATABASE: ${DB_DATABASE}
-  #     DB_USERNAME: ${DB_USERNAME}
-  #     DB_PASSWORD: ${DB_PASSWORD}
-  #   depends_on:
-  #     stockmind_db:
-  #       condition: service_healthy
-  #   networks:
-  #     - stockmind
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    command: ["/usr/local/bin/stockmind", "server", "--port", "${PORT}", "--mcp-protocol", "http"]
+    ports:
+      - ${PORT}:${PORT}
+    environment:
+      APP_ENV: ${APP_ENV}
+      PORT: ${PORT}
+      DB_HOST: ${DB_DEV_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+    depends_on:
+      stockmind_db:
+        condition: service_healthy
+    networks:
+      - stockmind
 
   stockmind_db:
     image: postgres:17-alpine

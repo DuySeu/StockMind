@@ -30,7 +30,12 @@ RUN npm ci && \
 # =============================================================================
 # Runtime Stage
 # =============================================================================
-FROM alpine:latest
+FROM alpine:latest AS prod
+
+LABEL "Author"="DuySeu"
+LABEL "Project"="StockMind"
+LABEL "Version"="1.0.0"
+LABEL "Source"="https://github.com/duyseu/stockmind"
 
 # Cài curl để healthcheck
 RUN apk add --no-cache curl ca-certificates

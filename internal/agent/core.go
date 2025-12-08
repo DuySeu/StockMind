@@ -28,17 +28,6 @@ func init() {
 	_ = godotenv.Load()
 }
 
-// type Agent struct {
-// 	SystemPrompt string
-// 	Description  string
-// 	Provider     ModelProvider
-// 	ModelId      string
-// 	MaxTokens    int
-// 	Temperature  float32
-// 	Tools        []ToolWrapper
-// 	Stream       bool
-// }
-
 type Agent struct {
 	name       string
 	session    database.Session
@@ -54,7 +43,7 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 		session:    session,
 		config:     config,
 		provider:   provider,
-		tools:      []mcp.Tool{},
+		tools:      config.Tools,
 		mcpClients: make(map[string]*mcp_client.Client),
 	}
 

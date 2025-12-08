@@ -79,9 +79,8 @@ INSERT INTO agent_flows (id, name, config) VALUES
             "mcpServers": [
                 {
                     "name": "stocks-mcp",
-                    "protocol": "stdio",
-                    "command": "go",
-                    "args": ["run", "cmd/main.go", "mcp"]
+                    "protocol": "streamablehttp",
+                    "url": "http://localhost:8081/mcp"
                 }
             ]
         }

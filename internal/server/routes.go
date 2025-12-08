@@ -35,6 +35,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 	r.Handle("/*", spaHandler())
 
 	r.Route("/v1", func(r chi.Router) {
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		})
 
 		// Websocket
 		// r.Get("/ws", s.websocketHandler)
@@ -49,14 +53,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Delete("/{id}", s.DeleteUserHandler)
 		})
 
-		// Threads
-		// r.Route("/threads", func(r chi.Router) {
-		// 	r.Post("/", s.CreateThreadHandler)
-		// 	r.Get("/", s.GetThreadsHandler)
-		// 	r.Get("/{id}", s.GetThreadByIDHandler)
-		// 	r.Put("/{id}", s.UpdateThreadHandler)
-		// 	r.Delete("/{id}", s.DeleteThreadHandler)
-		// })
+		// Sessions
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", s.GetSessionsHandler)
+			// r.Get("/{id}", s.GetSessionByIDHandler)
+			// r.Post("/", s.CreateSessionHandler)
+			// r.Put("/{id}", s.UpdateSessionHandler)
+			// r.Delete("/{id}", s.DeleteSessionHandler)
+		})
 
 		// Messages
 		// r.Route("/messages", func(r chi.Router) {

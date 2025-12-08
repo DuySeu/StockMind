@@ -1,57 +1,38 @@
-import SideBar from "@/components/containers/SideBar";
 import { chatWithLLM } from "@/api/chat";
-import { Button } from "@/components/ui/button";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Input } from "@/components/ui/input";
-import { useForm, type FieldValues } from "react-hook-form";
-import { Form, FormControl, FormDescription, FormField, FormItem } from "@/components/ui/form";
-import { Calendar, Home, Inbox, Search, Send, Settings, Sun } from "lucide-react";
+import { getSession } from "@/api/sessions";
 import MessageList from "@/components/containers/MessageList";
-import { useState } from "react";
+import SideBar from "@/components/containers/SideBar";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormDescription, FormField, FormItem } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Send, Sun } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useForm, type FieldValues } from "react-hook-form";
 
 type Message = {
   role: "user" | "assistant";
   content: Record<string, unknown>[];
 };
 
-const sidebarItems = [
-  {
-    title: "Home",
-    url: "#",
-    icon: Home,
-  },
-  {
-    title: "Inbox",
-    url: "#",
-    icon: Inbox,
-  },
-  {
-    title: "Calendar",
-    url: "#",
-    icon: Calendar,
-  },
-  {
-    title: "Search",
-    url: "#",
-    icon: Search,
-  },
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
-  },
-];
-
 const HomePage = () => {
   const [conversationId] = useState<string | null>(null);
   const [isFirstMessage, setIsFirstMessage] = useState<boolean>(true);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
 
   const form = useForm({
     defaultValues: {
       input: "",
     },
   });
+
+  useEffect(() => {
+    getSession().then((data) => {
+      setSessions(data);
+      console.log(data);
+    });
+  }, []);
 
   const onSubmit = async (data: FieldValues) => {
     console.log(data);
@@ -77,7 +58,7 @@ const HomePage = () => {
               const updated = [...prev];
               const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
               const newContent = [...(currentMessage.content || [])];
-              
+
               let idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx === -1) {
                 newContent.push({
@@ -118,16 +99,16 @@ const HomePage = () => {
             // if (data.data) {
             //   setConversationId(data.data);
             // }
-             setMessages((prev) => {
+            setMessages((prev) => {
               const updated = [...prev];
               const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
               const newContent = [...(currentMessage.content || [])];
 
               let idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx !== -1) {
-                 const block = newContent[idx];
-                 newContent[idx] = { ...block, is_open: false };
-                 updated[assistantIndex] = { ...currentMessage, content: newContent };
+                const block = newContent[idx];
+                newContent[idx] = { ...block, is_open: false };
+                updated[assistantIndex] = { ...currentMessage, content: newContent };
               }
               return updated;
             });
@@ -138,24 +119,24 @@ const HomePage = () => {
       (error) => {
         console.error("Error sending message:", error);
         setMessages((prev) => {
-            const updated = [...prev];
-            updated[assistantIndex] = {
-                role: "assistant",
-                content: [{ type: "text", text: "Error sending message" }],
-            };
-            return updated;
+          const updated = [...prev];
+          updated[assistantIndex] = {
+            role: "assistant",
+            content: [{ type: "text", text: "Error sending message" }],
+          };
+          return updated;
         });
       }
     );
-    
+
     if (isFirstMessage) {
-        setIsFirstMessage(false);
+      setIsFirstMessage(false);
     }
   };
 
   return (
     <SidebarProvider>
-      <SideBar items={sidebarItems} />
+      <SideBar items={sessions} />
       <main className="w-full flex flex-col">
         <header className="flex justify-between items-center bg-secondary p-2">
           <SidebarTrigger />

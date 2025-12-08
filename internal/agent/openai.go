@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -42,7 +43,7 @@ func (a *Agent) newOpenAIMessage() openai.ChatCompletionRequest {
 	}
 
 	var tools []openai.Tool
-	for _, tool := range a.config.Tools {
+	for _, tool := range a.tools {
 		openAITool := openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
@@ -195,70 +196,79 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 		fmt.Println("No tool use blocks found in chat history", "sessionId", a.session.ID, "agentName", a.name)
 		return result, fmt.Errorf("no tool use blocks found in chat history")
 	}
-	toolUseMessage := openai.ChatCompletionMessage{
-		Role:         openai.ChatMessageRoleUser,
-		MultiContent: []openai.ChatMessagePart{},
-	}
-	for i, toolUse := range toolUseBlocks {
-		fmt.Printf("toolUseOpenAI: invoking tool %d/%d (name: %s, id: %s)\n",
-			i+1, len(toolUseBlocks), toolUse.Function.Name, toolUse.ID)
 
-		// Normally toolUse.Name will have format <mcp>/<tool_name>
-		parts := strings.SplitN(toolUse.Function.Name, "--", 2)
-		if len(parts) != 2 {
-			fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Function.Name)
-			return result, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
+	// For now, we only support one tool call per turn because MessageUnion only supports one message
+	// TODO: Support multiple tool calls by updating MessageUnion to support list of messages
+	if len(toolUseBlocks) > 1 {
+		fmt.Println("Warning: Multiple tool calls detected, but only the first one will be processed correctly due to current limitation")
+	}
+
+	// We will process the first tool call and return it as the result
+	toolUse := toolUseBlocks[0]
+	fmt.Printf("toolUseOpenAI: invoking tool (name: %s, id: %s)\n", toolUse.Function.Name, toolUse.ID)
+
+	// Normally toolUse.Name will have format <mcp>/<tool_name>
+	parts := strings.SplitN(toolUse.Function.Name, "--", 2)
+	if len(parts) != 2 {
+		fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Function.Name)
+		return result, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
+	}
+	mcpName := parts[0]
+	toolName := parts[1]
+	mcpClient, ok := a.mcpClients[mcpName]
+	if !ok {
+		fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
+		return result, fmt.Errorf("MCP client not found: %s", mcpName)
+	}
+
+	// Parse arguments
+	var arguments map[string]interface{}
+	if toolUse.Function.Arguments != "" {
+		if err := json.Unmarshal([]byte(toolUse.Function.Arguments), &arguments); err != nil {
+			return result, fmt.Errorf("failed to unmarshal tool arguments: %w", err)
 		}
-		mcpName := parts[0]
-		toolName := parts[1]
-		mcpClient, ok := a.mcpClients[mcpName]
-		if !ok {
-			fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
-			return result, fmt.Errorf("MCP client not found: %s", mcpName)
-		}
-		// Serialize the input JSON into map[string] any
-		toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
-			Params: mcp.CallToolParams{
-				Name:      toolName,
-				Arguments: toolUse.Function.Arguments,
-				Meta: &mcp.Meta{
-					AdditionalFields: map[string]any{
-						"user_id":    a.session.CreatedBy,
-						"session_id": a.session.ID,
-					},
+	} else {
+		arguments = make(map[string]interface{})
+	}
+
+	// Serialize the input JSON into map[string] any
+	toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      toolName,
+			Arguments: arguments,
+			Meta: &mcp.Meta{
+				AdditionalFields: map[string]any{
+					"user_id":    a.session.CreatedBy,
+					"session_id": a.session.ID,
 				},
 			},
-			// Header: http.Header{
-			// 	"X-Session-ID": []string{a.session.ID.String()},
-			// 	"X-User-ID":    []string{a.session.UserID.String()},
-			// },
-		})
-		if err != nil {
-			fmt.Printf("toolUseOpenAI: tool invocation failed (tool: %s, error: %v)\n",
-				toolUse.Function.Name, err)
-			return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
-		}
-
-		toolResult := openai.ChatCompletionMessage{
-			Role:         openai.ChatMessageRoleTool,
-			ToolCallID:   toolUse.ID,
-			MultiContent: []openai.ChatMessagePart{},
-			Name:         toolUse.Function.Name,
-		}
-		// Convert the tool response content to anthropic format
-		for _, content := range toolResponse.Content {
-			switch content := content.(type) {
-			case mcp.TextContent:
-				toolResult.MultiContent = append(
-					toolResult.MultiContent,
-					openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: content.Text},
-				)
-				fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
-			}
-		}
-		toolUseMessage.MultiContent = append(toolUseMessage.MultiContent, toolResult.MultiContent...)
+		},
+	})
+	if err != nil {
+		fmt.Printf("toolUseOpenAI: tool invocation failed (tool: %s, error: %v)\n",
+			toolUse.Function.Name, err)
+		return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
 	}
-	result.OfOpenAI = &toolUseMessage
-	fmt.Printf("toolUseOpenAI: all tools executed successfully (count: %d)\n", len(toolUseBlocks))
+
+	toolResult := openai.ChatCompletionMessage{
+		Role:       openai.ChatMessageRoleTool,
+		ToolCallID: toolUse.ID,
+		Content:    "",
+		Name:       toolUse.Function.Name,
+	}
+
+	// Convert the tool response content to string
+	var contentBuilder strings.Builder
+	for _, content := range toolResponse.Content {
+		switch content := content.(type) {
+		case mcp.TextContent:
+			contentBuilder.WriteString(content.Text)
+			fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
+		}
+	}
+	toolResult.Content = contentBuilder.String()
+
+	result.OfOpenAI = &toolResult
+	fmt.Printf("toolUseOpenAI: tool executed successfully\n")
 	return result, nil
 }

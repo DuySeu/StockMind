@@ -68,7 +68,7 @@ func main() {
 			},
 			{
 				Name:  "mcp",
-				Usage: "Run the MCP server",
+				Usage: "Run the MCP example",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "protocol",
@@ -84,7 +84,8 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					protocol := cmd.String("protocol")
-					return runMCP(ctx, protocol)
+					err := runMCP(ctx, protocol)
+					return err
 				},
 			},
 		},
@@ -96,7 +97,8 @@ func main() {
 
 func runMCP(ctx context.Context, protocol string) error {
 	log.Printf("Running MCP server with protocol: %s", protocol)
-	return mcp.Start(ctx, protocol)
+	_, err := mcp.Start(ctx, protocol)
+	return err
 }
 
 func runServer(ctx context.Context, port string, mcpProtocol string) (context.Context, func(), error) {
@@ -106,7 +108,7 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 	if mcpProtocol == "http" {
 		// Create MCP service and HTTP server
 		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
-		err := mcp.Start(ctx, mcpProtocol)
+		_, err := mcp.Start(ctx, mcpProtocol)
 		if err != nil {
 			log.Printf("Failed to start MCP: %v", err)
 			return nil, nil, err

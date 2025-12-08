@@ -8,42 +8,15 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func Start(ctx context.Context, protocol string) error {
-	fmt.Println("Starting MCP service...")
+func Start(ctx context.Context, protocol string) (func(), error) {
+	// Create MCP server
 	s := server.NewMCPServer(
-		"StockMind MCP Server 🚀",
+		"StockMind 🚀",
 		"1.0.0",
 		server.WithToolCapabilities(false),
 	)
 
-	// Add hello_world tool
-	s.AddTool(
-		mcp.NewTool("hello_world",
-			mcp.WithDescription("Say hello to someone"),
-			mcp.WithString("name",
-				mcp.Required(),
-				mcp.Description("Name of the person to greet"),
-			),
-		),
-		helloHandler,
-	)
-
-	// Add add_numbers tool
-	s.AddTool(
-		mcp.NewTool("add_numbers",
-			mcp.WithDescription("Add two numbers"),
-			mcp.WithNumber("a",
-				mcp.Required(),
-				mcp.Description("First number"),
-			),
-			mcp.WithNumber("b",
-				mcp.Required(),
-				mcp.Description("Second number"),
-			),
-		),
-		addNumbers,
-	)
-
+	// Register tools
 	s.AddTool(
 		mcp.NewTool("get_stock_price",
 			mcp.WithDescription("Get latest stock price from VCI with symbol, time frame and look back period"),
@@ -61,38 +34,23 @@ func Start(ctx context.Context, protocol string) error {
 		getStockPrice,
 	)
 
-	// Start the server
+	// Start server based on protocol
 	switch protocol {
 	case "stdio":
-		fmt.Println("Starting MCP server with stdio protocol")
-		return server.ServeStdio(s)
-	case "http":
-		fmt.Println("Starting MCP server with HTTP protocol on 0.0.0.0:8090")
+		return func() {}, server.ServeStdio(s)
+	case "http", "streamablehttp":
+		// Handle both http and streamablehttp as HTTP server
 		h := server.NewStreamableHTTPServer(s)
-		return h.Start("0.0.0.0:8090")
+		go func() {
+			if err := h.Start("0.0.0.0:8081"); err != nil {
+				fmt.Printf("MCP HTTP server error: %v\n", err)
+			}
+		}()
+		return func() {
+			// server.NewStreamableHTTPServer doesn't expose a Shutdown method easily accessible here without more context,
+			// but for this implementation it runs until process termination.
+		}, nil
 	default:
-		return fmt.Errorf("unsupported protocol: %s", protocol)
+		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
 	}
-}
-
-func helloHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	name, err := request.RequireString("name")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", name)), nil
-}
-
-func addNumbers(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	a, err := request.RequireFloat("a")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	b, err := request.RequireFloat("b")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	result := a + b
-	return mcp.NewToolResultStructuredOnly(map[string]float64{"result": result}), nil
 }

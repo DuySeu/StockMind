@@ -19,15 +19,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CreditCard, EllipsisVertical, LogOut, UserCircle, type LucideProps } from "lucide-react";
+import { CreditCard, EllipsisVertical, LogOut, SquarePen, Trash2, UserCircle } from "lucide-react";
 
-interface Item {
-  title: string;
-  url: string;
-  icon: React.ForwardRefExoticComponent<Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>>;
-}
-
-const SideBar = ({ items }: { items: Item[] }) => {
+const SideBar = ({ items }: { items: any[] }) => {
   return (
     <Sidebar>
       <SidebarHeader>StockMind</SidebarHeader>
@@ -36,16 +30,50 @@ const SideBar = ({ items }: { items: Item[] }) => {
           <SidebarGroupLabel>Session History</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
+              {items.length > 0 ? (
+                items.map((item: any) => (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton asChild className="flex items-center">
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
+                          <span className="truncate">{item.title}</span>
+                          <span className="text-xs text-muted-foreground flex-shrink-0 group-hover/menu-item:hidden">
+                            {new Date(item.updated_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="hidden group-hover/menu-item:flex items-center gap-1 px-2 flex-shrink-0">
+                          <button
+                            className="text-blue-500 cursor-pointer hover:text-blue-600 p-1"
+                            // onclick={() => startEditingTitle(thread.id, thread.name)}
+                            aria-label="Edit"
+                            title="Edit"
+                          >
+                            <SquarePen className="w-4 h-4" />
+                          </button>
+                          <button
+                            className="text-destructive cursor-pointer hover:text-destructive/80 p-1"
+                            // onclick={() => handleDeleteSession(thread.id)}
+                            aria-label="Delete"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))
+              ) : (
+                <SidebarMenuItem>
                   <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </a>
+                    <div className="flex w-full items-center justify-between">
+                      <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
+                        <span className="truncate">No sessions</span>
+                      </div>
+                    </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              ))}
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
