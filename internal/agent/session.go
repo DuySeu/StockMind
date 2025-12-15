@@ -50,6 +50,7 @@ func (sm *SessionManager) Initialize() error {
 		if err != nil {
 			return fmt.Errorf("failed to initialize agent %s: %w", name, err)
 		}
+		fmt.Println("Agent initialized", "name", name, "model_provider", agentCfg.Provider, "tools_count", len(agent.tools))
 		sm.agents[name] = agent
 	}
 	return nil

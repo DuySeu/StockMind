@@ -72,7 +72,7 @@ type StockPrice struct {
 	Prices []StockPriceItem `json:"prices"`
 }
 
-func getStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	symbol, err := request.RequireString("symbol")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

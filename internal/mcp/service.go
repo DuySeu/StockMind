@@ -31,7 +31,18 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 				mcp.Description("Number of data points to look back. Default is 10"),
 			),
 		),
-		getStockPrice,
+		GetStockPrice,
+	)
+
+	s.AddTool(
+		mcp.NewTool("piotroski_evaluation",
+			mcp.WithDescription("Get Piotroski evaluation for a stock"),
+			mcp.WithString("symbol",
+				mcp.Required(),
+				mcp.Description("Stock symbol, e.g., HPG"),
+			),
+		),
+		GetPiotroskiEvaluation,
 	)
 
 	// Start server based on protocol

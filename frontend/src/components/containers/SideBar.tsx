@@ -19,15 +19,81 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CreditCard, EllipsisVertical, LogOut, SquarePen, Trash2, UserCircle } from "lucide-react";
+import {
+  Bolt,
+  CreditCard,
+  EllipsisVertical,
+  Folder,
+  LayoutGrid,
+  LogOut,
+  Plus,
+  Compass,
+  SquarePen,
+  Trash2,
+  UserCircle,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+// Menu items.
+const menuItems = [
+  {
+    title: "Explore",
+    url: "/explore",
+    icon: Compass,
+  },
+  {
+    title: "Categories",
+    url: "/categories",
+    icon: LayoutGrid,
+  },
+  {
+    title: "Library",
+    url: "/library",
+    icon: Folder,
+  },
+  {
+    title: "Settings",
+    url: "/setting",
+    icon: Bolt,
+  },
+];
 
 const SideBar = ({ items }: { items: any[] }) => {
+  const navigate = useNavigate();
+  const handleCreateSession = () => {
+    console.log("Create session");
+    navigate("/");
+  };
   return (
-    <Sidebar>
-      <SidebarHeader>StockMind</SidebarHeader>
+    <Sidebar className="border-none p-1" collapsible="icon">
+      <SidebarHeader className="p-2">
+        <span>StockMind</span>
+        <button
+          className="bg-accent text-accent-foreground flex items-center justify-center gap-2 p-3 rounded-xl mx-2"
+          onClick={handleCreateSession}
+        >
+          <Plus className="h-6 w-6 rounded-full bg-background text-accent p-1" /> New Chat
+        </button>
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Session History</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {menuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton asChild>
+                    <a href={item.url}>
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </a>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>Chats</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.length > 0 ? (
@@ -65,13 +131,11 @@ const SideBar = ({ items }: { items: any[] }) => {
                 ))
               ) : (
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <div className="flex w-full items-center justify-between">
-                      <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                        <span className="truncate">No sessions</span>
-                      </div>
+                  <div className="flex w-full items-center justify-between">
+                    <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
+                      <span className="truncate">No sessions</span>
                     </div>
-                  </SidebarMenuButton>
+                  </div>
                 </SidebarMenuItem>
               )}
             </SidebarMenu>
@@ -99,7 +163,7 @@ const SideBar = ({ items }: { items: any[] }) => {
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
+                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg border border-border"
                 side={"right"}
                 align="end"
                 sideOffset={4}

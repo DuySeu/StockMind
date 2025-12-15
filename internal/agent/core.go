@@ -76,7 +76,6 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 		}
 		a.tools = append(a.tools, tools...)
 	}
-	fmt.Println("MCP tools initialized", "count", len(a.tools))
 	return a, nil
 }
 

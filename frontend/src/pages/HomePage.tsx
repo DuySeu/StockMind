@@ -1,13 +1,11 @@
 import { chatWithLLM } from "@/api/chat";
-import { getSession } from "@/api/sessions";
 import MessageList from "@/components/containers/MessageList";
-import SideBar from "@/components/containers/SideBar";
 import { Button } from "@/components/ui/button";
-import { Form, FormControl, FormDescription, FormField, FormItem } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { Send, Sun } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Bot, Moon, Send, Sun } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 
 type Message = {
@@ -19,7 +17,8 @@ const HomePage = () => {
   const [conversationId] = useState<string | null>(null);
   const [isFirstMessage, setIsFirstMessage] = useState<boolean>(true);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [sessions, setSessions] = useState<any[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
 
   const form = useForm({
     defaultValues: {
@@ -28,21 +27,41 @@ const HomePage = () => {
   });
 
   useEffect(() => {
-    getSession().then((data) => {
-      setSessions(data);
-      console.log(data);
-    });
+    // Check system theme preference
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    }
   }, []);
 
+  const toggleTheme = () => {
+    if (theme === "light") {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    } else {
+      setTheme("light");
+      document.documentElement.classList.remove("dark");
+    }
+  };
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      const scrollElement = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
+      if (scrollElement) {
+        scrollElement.scrollTop = scrollElement.scrollHeight;
+      }
+    }
+  }, [messages]);
+
   const onSubmit = async (data: FieldValues) => {
-    console.log(data);
     form.reset();
 
     if (!conversationId) {
       setIsFirstMessage(true);
     }
 
-    setMessages([...messages, { role: "user", content: [{ type: "text", text: data.input.trim() }] }]);
+    setMessages((prev) => [...prev, { role: "user", content: [{ type: "text", text: data.input.trim() }] }]);
 
     const assistantIndex = messages.length + 1;
     setMessages((prev) => [...prev, { role: "assistant", content: [] }]);
@@ -53,12 +72,12 @@ const HomePage = () => {
       (data) => {
         switch (data.type) {
           case "thinking_delta": {
-            const delta = data.data?.thinking ?? "";
             setMessages((prev) => {
               const updated = [...prev];
               const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
               const newContent = [...(currentMessage.content || [])];
 
+              const delta = data.data?.thinking ?? "";
               let idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx === -1) {
                 newContent.push({
@@ -77,12 +96,12 @@ const HomePage = () => {
             break;
           }
           case "text_delta": {
-            const delta = data.data?.text ?? "";
             setMessages((prev) => {
               const updated = [...prev];
               const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
               const newContent = [...(currentMessage.content || [])];
 
+              const delta = data.data?.text ?? "";
               let idx = newContent.findIndex((c) => c.type === "text");
               if (idx === -1) {
                 newContent.push({ type: "text", text: "" });
@@ -96,15 +115,12 @@ const HomePage = () => {
             break;
           }
           case "complete": {
-            // if (data.data) {
-            //   setConversationId(data.data);
-            // }
             setMessages((prev) => {
               const updated = [...prev];
               const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
               const newContent = [...(currentMessage.content || [])];
 
-              let idx = newContent.findIndex((c) => c.type === "thinking");
+              const idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx !== -1) {
                 const block = newContent[idx];
                 newContent[idx] = { ...block, is_open: false };
@@ -134,40 +150,101 @@ const HomePage = () => {
     }
   };
 
+  const onHandleSuggestion = (suggestion: string) => {
+    form.setValue("input", suggestion);
+    onSubmit(form.getValues());
+  };
+
   return (
-    <SidebarProvider>
-      <SideBar items={sessions} />
-      <main className="w-full flex flex-col">
-        <header className="flex justify-between items-center bg-secondary p-2">
-          <SidebarTrigger />
-          <Button variant="outline" size="icon" aria-label="Theme">
-            <Sun />
-          </Button>
-        </header>
-        <div className="flex flex-col flex-1 p-2">
-          <MessageList messages={messages} />
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2 py-2">
-              <FormField
-                control={form.control}
-                name="input"
-                render={({ field }) => (
-                  <FormItem className="flex-1">
-                    <FormControl>
-                      <Input placeholder="Send your message" {...field} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
-              <Button variant="outline" size="icon" aria-label="Submit" disabled={form.watch("input") === ""}>
-                <Send />
-              </Button>
-            </form>
-            <FormDescription className="text-center">StockMind AI Assistant Powered by DuySeu</FormDescription>
-          </Form>
+    <>
+      <header className="flex justify-between items-center py-3 px-4">
+        <div className="flex items-center gap-2">
+          {/* <SidebarTrigger className="text-primary" /> */}
+          <span className="font-semibold text-lg text-primary hidden md:block">StockMind AI</span>
         </div>
-      </main>
-    </SidebarProvider>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          className="rounded-full hover:bg-muted text-primary"
+          aria-label="Toggle Theme"
+        >
+          {theme === "light" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
+      </header>
+      <div className="flex-1 overflow-hidden flex flex-col relative w-full max-w-4xl mx-auto">
+        <ScrollArea ref={scrollRef} className="flex-1 p-4 md:p-6 w-full">
+          <div className="pb-24 max-w-3xl mx-auto">
+            <div className="flex-1 flex flex-col gap-6">
+              {messages.length > 0 ? (
+                <MessageList messages={messages} />
+              ) : (
+                <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+                  <div className="bg-primary/5 rounded-full p-6 ring-1 ring-primary/10">
+                    <Bot className="h-12 w-12 text-primary" />
+                  </div>
+                  <div className="space-y-2 max-w-md">
+                    <h2 className="text-2xl font-bold tracking-tight text-primary">Welcome to StockMind</h2>
+                    <p className="text-muted-foreground">
+                      Your AI-powered assistant for market analysis and stock insights. Ask me anything about the stock
+                      market!
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg mt-4">
+                    {["Analyze market trends", "Should I buy AAPL?", "Explain P/E ratio", "Latest tech news"].map(
+                      (suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => onHandleSuggestion(suggestion)}
+                          className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                        >
+                          {suggestion}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </ScrollArea>
+
+        <div className="absolute bottom-6 left-0 right-0 px-4 w-full flex justify-center z-20 pointer-events-none">
+          <div className="w-full max-w-3xl pointer-events-auto shadow-2xl rounded-2xl bg-background/80 backdrop-blur-md border border-border/50">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="flex items-center gap-2 p-2 relative">
+                <FormField
+                  control={form.control}
+                  name="input"
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
+                        <Input
+                          className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent py-6 pl-4 text-base text-primary shadow-none resize-none"
+                          placeholder="Ask StockMind about market trends..."
+                          autoComplete="off"
+                          {...field}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="h-10 w-10 shrink-0 rounded-xl bg-primary hover:bg-primary/90 transition-all shadow-sm mr-1"
+                  disabled={!form.watch("input")?.trim()}
+                >
+                  <Send className="h-5 w-5" />
+                  <span className="sr-only">Send</span>
+                </Button>
+              </form>
+            </Form>
+          </div>
+        </div>
+      </div>
+    </>
   );
 };
 
