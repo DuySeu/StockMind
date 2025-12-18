@@ -56,20 +56,20 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Sessions
 		r.Route("/sessions", func(r chi.Router) {
 			r.Get("/", s.GetSessionsHandler)
-			// r.Get("/{id}", s.GetSessionByIDHandler)
+			r.Get("/{id}", s.GetMessagesBySessionIdHandler)
 			// r.Post("/", s.CreateSessionHandler)
 			// r.Put("/{id}", s.UpdateSessionHandler)
-			// r.Delete("/{id}", s.DeleteSessionHandler)
+			r.Delete("/{id}", s.DeleteSessionHandler)
 		})
 
 		// Messages
-		// r.Route("/messages", func(r chi.Router) {
-		// 	r.Post("/", s.CreateMessageHandler)
-		// 	r.Get("/", s.GetMessagesHandler)
-		// 	r.Get("/{id}", s.GetMessageByIDHandler)
-		// 	r.Put("/{id}", s.UpdateMessageHandler)
-		// 	r.Delete("/{id}", s.DeleteMessageHandler)
-		// })
+		r.Route("/messages", func(r chi.Router) {
+			// r.Post("/", s.CreateMessageHandler)
+			// r.Get("/", s.GetMessagesHandler)
+			// r.Get("/{id}", s.GetMessageByIDHandler)
+			// r.Put("/{id}", s.UpdateMessageHandler)
+			// r.Delete("/{id}", s.DeleteMessageHandler)
+		})
 	})
 
 	return r
@@ -121,7 +121,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// sessionId := uuid.Must(uuid.Parse("01994b58-6631-7c98-bcc0-c1e02e436a89"))
 	// session, err := lm.GetOrCreateSession(&userID, &agentID, &sessionId, nil)
-	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionId, nil)
+	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionId, &body.Content)
 	if err != nil {
 		fmt.Println("Failed to get or create session", "error", err)
 		return
@@ -146,7 +146,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 			writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": content}})
 		}
 		if endBlock {
-			writeSSE(w, map[string]any{"type": "complete"})
+			writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": session.SessionID().String()}})
 		}
 		return nil
 	})

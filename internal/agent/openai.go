@@ -251,10 +251,10 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 	}
 
 	toolResult := openai.ChatCompletionMessage{
-		Role:       openai.ChatMessageRoleTool,
-		ToolCallID: toolUse.ID,
-		Content:    "",
-		Name:       toolUse.Function.Name,
+		Role:         openai.ChatMessageRoleTool,
+		ToolCallID:   toolUse.ID,
+		MultiContent: []openai.ChatMessagePart{},
+		Name:         toolUse.Function.Name,
 	}
 
 	// Convert the tool response content to string
@@ -266,7 +266,9 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 			fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
 		}
 	}
-	toolResult.Content = contentBuilder.String()
+	toolResult.MultiContent = []openai.ChatMessagePart{
+		{Type: openai.ChatMessagePartTypeText, Text: contentBuilder.String()},
+	}
 
 	result.OfOpenAI = &toolResult
 	fmt.Printf("toolUseOpenAI: tool executed successfully\n")

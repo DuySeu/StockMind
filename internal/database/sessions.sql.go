@@ -104,7 +104,7 @@ func (q *Queries) GetSessionHistoryBySessionID(ctx context.Context, sessionID uu
 }
 
 const getSessionsByUserID = `-- name: GetSessionsByUserID :many
-SELECT id, title, description, turn_count, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE created_by = $1 ORDER BY created_at ASC
+SELECT id, title, description, turn_count, agent_flow_id, created_by, created_at, updated_at FROM sessions WHERE created_by = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) GetSessionsByUserID(ctx context.Context, createdBy uuid.UUID) ([]Session, error) {

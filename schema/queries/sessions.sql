@@ -14,7 +14,7 @@ INSERT INTO session_history (id, session_id, content, stop_reason, node) VALUES 
 SELECT * FROM session_history WHERE session_id = $1 ORDER BY created_at ASC;
 
 -- name: GetSessionsByUserID :many
-SELECT * FROM sessions WHERE created_by = $1 ORDER BY created_at ASC;
+SELECT * FROM sessions WHERE created_by = $1 ORDER BY created_at DESC;
 
 -- name: UpdateSessionName :exec
 UPDATE sessions SET title = $2 WHERE id = $1;

@@ -18,7 +18,7 @@
   --destructive: #e7000b;
   --destructive-foreground: #ffffff;
   --border: #e5e5e5;
-  --input: #e5e5e5;
+  --input: #ffffff;
   --ring: #a1a1a1;
   --chart-1: #91c5ff;
   --chart-2: #3a81f6;
@@ -73,7 +73,7 @@
   --destructive: #ff6467;
   --destructive-foreground: #ffffff;
   --border: #282828;
-  --input: #343434;
+  --input: #060606;
   --ring: #737373;
   --chart-1: #91c5ff;
   --chart-2: #3a81f6;
@@ -159,4 +159,20 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+}
+
+@keyframes fadeRight {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0;
+  }
+
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+.animate-fade-right {
+  animation: fadeRight 1.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
 }

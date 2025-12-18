@@ -4,9 +4,9 @@ import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
 import SettingPage from "@/pages/SettingPage";
 import ErrorPage from "@/pages/ErrorPage";
-import ExplorePage from "./pages/Explore";
-import CategoriesPage from "./pages/Categories";
-import LibraryPage from "./pages/Library";
+import ExplorePage from "@/pages/Explore";
+import CategoriesPage from "@/pages/Categories";
+import LibraryPage from "@/pages/Library";
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +16,10 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
+        element: <HomePage />,
+      },
+      {
+        path: "c/:id",
         element: <HomePage />,
       },
       {

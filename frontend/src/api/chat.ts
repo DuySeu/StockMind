@@ -10,6 +10,7 @@ export interface ChatResponse {
   data?: {
     thinking?: string;
     text?: string;
+    session_id?: string;
   };
 }
 
@@ -52,11 +53,11 @@ export const chatWithLLM = async (
         if (line.startsWith("data: ")) {
           const data = line.slice(6);
           try {
-             // Handle potential multiple JSON objects in one line if backend flushes weirdly, 
-             // though \n\n split should handle standard SSE.
-             // The backend sends: fmt.Fprintf(w, "data: %s\n\n", data)
-             const parsed = JSON.parse(data) as ChatResponse;
-             onMessage(parsed);
+            // Handle potential multiple JSON objects in one line if backend flushes weirdly,
+            // though \n\n split should handle standard SSE.
+            // The backend sends: fmt.Fprintf(w, "data: %s\n\n", data)
+            const parsed = JSON.parse(data) as ChatResponse;
+            onMessage(parsed);
           } catch (e) {
             console.error("Error parsing SSE data:", e);
           }
@@ -66,4 +67,9 @@ export const chatWithLLM = async (
   } catch (error) {
     onError(error);
   }
+};
+
+export const getMessages = async (sessionId: string): Promise<any[]> => {
+  const response = await api.get(`/sessions/${sessionId}`);
+  return response.data;
 };

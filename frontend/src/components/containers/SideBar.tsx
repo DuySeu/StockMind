@@ -1,3 +1,4 @@
+import { deleteSession, getSessions } from "@/api/sessions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,6 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sidebar,
   SidebarContent,
@@ -19,22 +21,40 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { useChatContext } from "@/hooks/context";
 import {
   Bolt,
+  Compass,
   CreditCard,
   EllipsisVertical,
   Folder,
   LayoutGrid,
   LogOut,
+  Moon,
   Plus,
-  Compass,
   SquarePen,
+  Sun,
   Trash2,
-  UserCircle,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "../ui/context-menu";
 
-// Menu items.
+type Session = {
+  id: string;
+  title: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+
+// Menu items
 const menuItems = [
   {
     title: "Explore",
@@ -58,24 +78,87 @@ const menuItems = [
   },
 ];
 
-const SideBar = ({ items }: { items: any[] }) => {
+const SideBar = () => {
   const navigate = useNavigate();
+  const { id } = useParams();
+  const { title, setTitle } = useChatContext();
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [sessions, setSessions] = useState<Session[]>([]);
+
+  const fetchSession = async () => {
+    try {
+      const response = await getSessions();
+      setSessions(response as Session[]);
+    } catch (error) {
+      console.log(error);
+    }
+  };
+  useEffect(() => {
+    fetchSession();
+  }, [title]);
+
+  useEffect(() => {
+    // Check system theme preference
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (id && sessions.length > 0) {
+      const activeItem = sessions.find((item) => item.id === id);
+      if (activeItem) {
+        setTitle(activeItem.title);
+      }
+    } else {
+      setTitle("StockMind");
+    }
+  }, [id, sessions, setTitle]);
+
+  const toggleTheme = () => {
+    if (theme === "light") {
+      setTheme("dark");
+      document.documentElement.classList.add("dark");
+    } else {
+      setTheme("light");
+      document.documentElement.classList.remove("dark");
+    }
+  };
+
   const handleCreateSession = () => {
     console.log("Create session");
     navigate("/");
   };
+
+  const handleLoadSession = (id: string) => {
+    navigate("/c/" + id);
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await deleteSession(sessionId);
+      await fetchSession();
+      if (id && id === sessionId) {
+        navigate("/");
+      }
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
   return (
-    <Sidebar className="border-none p-1" collapsible="icon">
-      <SidebarHeader className="p-2">
+    <Sidebar className="border-none" collapsible="icon">
+      <SidebarHeader className="p-3">
         <span>StockMind</span>
         <button
-          className="bg-accent text-accent-foreground flex items-center justify-center gap-2 p-3 rounded-xl mx-2"
+          className="bg-accent text-accent-foreground flex items-center justify-center gap-2 p-3 rounded-xl mx-2 cursor-pointer"
           onClick={handleCreateSession}
         >
           <Plus className="h-6 w-6 rounded-full bg-background text-accent p-1" /> New Chat
         </button>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="overflow-hidden">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -92,54 +175,52 @@ const SideBar = ({ items }: { items: any[] }) => {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
+        <SidebarGroup className="flex-1 min-h-0 p-0">
           <SidebarGroupLabel>Chats</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {items.length > 0 ? (
-                items.map((item: any) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton asChild className="flex items-center">
-                      <div className="flex w-full items-center justify-between">
-                        <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                          <span className="truncate">{item.title}</span>
-                          <span className="text-xs text-muted-foreground flex-shrink-0 group-hover/menu-item:hidden">
-                            {new Date(item.updated_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="hidden group-hover/menu-item:flex items-center gap-1 px-2 flex-shrink-0">
-                          <button
-                            className="text-blue-500 cursor-pointer hover:text-blue-600 p-1"
-                            // onclick={() => startEditingTitle(thread.id, thread.name)}
-                            aria-label="Edit"
-                            title="Edit"
+          <ScrollArea className="h-full overflow-y-auto">
+            <SidebarGroupContent className="flex-1 min-h-0 flex flex-col px-2">
+              <SidebarMenu className="flex-1 min-h-0 flex flex-col">
+                {sessions.length > 0 ? (
+                  sessions.map((item: any) => (
+                    <SidebarMenuItem key={item.id}>
+                      <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                          <SidebarMenuButton
+                            className={`${id === item.id && "border-l-3 border-accent"}`}
+                            onClick={() => handleLoadSession(item.id)}
                           >
-                            <SquarePen className="w-4 h-4" />
-                          </button>
-                          <button
-                            className="text-destructive cursor-pointer hover:text-destructive/80 p-1"
-                            // onclick={() => handleDeleteSession(thread.id)}
-                            aria-label="Delete"
-                            title="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                            <span className="truncate">{item.title}</span>
+                          </SidebarMenuButton>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent className="w-56 border border-border">
+                          <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+                            Created at {new Date(item.updated_at).toLocaleDateString()}
+                          </ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem>
+                            <SquarePen className="h-4 w-4" />
+                            Rename
+                          </ContextMenuItem>
+                          <ContextMenuItem variant="destructive" onClick={() => handleDeleteSession(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    </SidebarMenuItem>
+                  ))
+                ) : (
+                  <SidebarMenuItem>
+                    <div className="flex w-full items-center justify-between">
+                      <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
+                        <span className="truncate">No sessions</span>
                       </div>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))
-              ) : (
-                <SidebarMenuItem>
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                      <span className="truncate">No sessions</span>
                     </div>
-                  </div>
-                </SidebarMenuItem>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
+                  </SidebarMenuItem>
+                )}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </ScrollArea>
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
@@ -182,9 +263,9 @@ const SideBar = ({ items }: { items: any[] }) => {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                  <DropdownMenuItem>
-                    <UserCircle />
-                    Account
+                  <DropdownMenuItem onClick={toggleTheme}>
+                    {theme === "light" ? <Sun /> : <Moon />}
+                    Theme
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <CreditCard />

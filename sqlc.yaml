@@ -16,12 +16,12 @@ sql:
             go_type:
               import: "github.com/google/uuid"
               type: "UUID"
-          - column: "session_history.data"
-            go_type:
-              type: "MessageUnion"
           - column: "agent_flows.config"
             go_type:
               type: "AgentFlowConfig"
           - column: "session_history.stop_reason"
             go_type:
               type: "StopReason"
+          - column: "session_history.content"
+            go_type:
+              type: "MessageUnion"

@@ -24,6 +24,10 @@ type SessionManager struct {
 	chatCallback ChatCallBack
 }
 
+func (sm *SessionManager) SessionID() uuid.UUID {
+	return sm.session.ID
+}
+
 func (sm *SessionManager) Initialize() error {
 	// Fetch existing messages from DB
 	if len(sm.history) == 0 {
@@ -217,8 +221,10 @@ func newHumanMessage(message string, provider database.ModelProvider) (database.
 	case database.ModelProviderOpenAI:
 		return database.MessageUnion{
 			OfOpenAI: &openai.ChatCompletionMessage{
-				Role:    openai.ChatMessageRoleUser,
-				Content: message,
+				Role: openai.ChatMessageRoleUser,
+				MultiContent: []openai.ChatMessagePart{
+					{Type: openai.ChatMessagePartTypeText, Text: message},
+				},
 			},
 		}, nil
 	// case database.ModelProviderAnthropic:
