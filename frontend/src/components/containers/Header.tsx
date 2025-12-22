@@ -1,23 +1,18 @@
 import { Check, Ellipsis, PenLine, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { useChatContext } from "@/hooks/context";
 
 interface HeaderProps {
-  name: string;
   icon?: React.ReactNode;
   editable?: boolean;
   shouldAnimate?: boolean;
 }
 
-const Header = ({ name, icon, editable, shouldAnimate }: HeaderProps) => {
+const Header = ({ icon, editable, shouldAnimate }: HeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const { title, setTitle } = useChatContext();
-
-  useEffect(() => {
-    setTitle(name);
-  }, [name]);
 
   const handleEdit = () => {
     setIsEditing(true);

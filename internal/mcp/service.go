@@ -45,6 +45,17 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 		GetPiotroskiEvaluation,
 	)
 
+	s.AddTool(
+		mcp.NewTool("altman_z_score",
+			mcp.WithDescription("Get Altman Z-Score for a stock"),
+			mcp.WithString("symbol",
+				mcp.Required(),
+				mcp.Description("Stock symbol, e.g., HPG"),
+			),
+		),
+		GetAltmanZScore,
+	)
+
 	// Start server based on protocol
 	switch protocol {
 	case "stdio":

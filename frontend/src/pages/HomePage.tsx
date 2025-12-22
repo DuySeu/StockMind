@@ -7,10 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowUp, Bot, MessageSquareText, Paperclip } from "lucide-react";
+import { ArrowUp, MessageSquareText, Paperclip } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 import type { Message } from "@/types/message";
+import stockmindLogo from "@/assets/stockmind.png";
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -43,11 +44,16 @@ const HomePage = () => {
         setMessages(messages);
       } else {
         setMessages([]);
-        setTitle("StockMind");
       }
     };
 
     fetchMessages();
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) {
+      setTitle("StockMind");
+    }
   }, [id]);
 
   const onSubmit = async (data: FieldValues) => {
@@ -152,45 +158,40 @@ const HomePage = () => {
   return (
     <>
       <Header
-        name={title}
         icon={<MessageSquareText className="text-primary w-6 h-6" />}
-        editable={title === "StockMind" ? false : true}
+        editable={title !== "StockMind"}
         shouldAnimate={!!id}
       />
       <div ref={scrollRef} className="flex-1 overflow-hidden flex flex-col w-full min-h-0">
-        <ScrollArea className="flex-1 w-full min-h-0">
-          <div className="flex-1 flex flex-col gap-6 p-6">
-            {messages.length > 0 ? (
-              <MessageList messages={messages} />
-            ) : (
-              <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
-                <div className="bg-primary/5 rounded-full p-6 ring-1 ring-primary/10">
-                  <Bot className="h-12 w-12 text-primary" />
-                </div>
-                <div className="space-y-2 max-w-md">
-                  <h2 className="text-2xl font-bold tracking-tight text-primary">Welcome to StockMind</h2>
-                  <p className="text-muted-foreground">
-                    Your AI-powered assistant for market analysis and stock insights. Ask me anything about the stock
-                    market!
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg mt-4">
-                  {["What is FPT stock price?", "Should I buy VNM?", "Explain P/E ratio", "Latest tech news"].map(
-                    (suggestion) => (
-                      <button
-                        key={suggestion}
-                        onClick={() => onHandleSuggestion(suggestion)}
-                        className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                      >
-                        {suggestion}
-                      </button>
-                    )
-                  )}
-                </div>
+        <ScrollArea className="flex-1 w-full min-h-0 px-6">
+          {messages.length > 0 ? (
+            <MessageList messages={messages} />
+          ) : (
+            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
+              <img src={stockmindLogo} alt="StockMind" className="h-48 w-48" />
+              <div className="space-y-2 max-w-md">
+                <h2 className="text-2xl font-bold tracking-tight text-primary">Welcome to StockMind</h2>
+                <p className="text-muted-foreground">
+                  Your AI-powered assistant for market analysis and stock insights. Ask me anything about the stock
+                  market!
+                </p>
               </div>
-            )}
-          </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg mt-4">
+                {["What is FPT stock price?", "Should I buy VNM?", "Explain P/E ratio", "Latest tech news"].map(
+                  (suggestion, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onHandleSuggestion(suggestion)}
+                      className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                    >
+                      {suggestion}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
         </ScrollArea>
 
         <div className="my-2 w-full flex justify-center pointer-events-none shrink-0">

@@ -70,6 +70,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 			// r.Put("/{id}", s.UpdateMessageHandler)
 			// r.Delete("/{id}", s.DeleteMessageHandler)
 		})
+
+		// Agent Flows
+		r.Route("/agent_flows", func(r chi.Router) {
+			r.Get("/", s.ListAgentFlowsHandler)
+			// r.Get("/{id}", s.GetAgentFlowByIDHandler)
+			r.Post("/", s.CreateAgentFlowHandler)
+			// r.Put("/{id}", s.UpdateAgentFlowHandler)
+			// r.Delete("/{id}", s.DeleteAgentFlowHandler)
+		})
 	})
 
 	return r

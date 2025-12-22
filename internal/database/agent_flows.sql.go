@@ -61,16 +61,11 @@ func (q *Queries) GetAgentFlowById(ctx context.Context, id uuid.UUID) (AgentFlow
 }
 
 const listAgentFlows = `-- name: ListAgentFlows :many
-SELECT id, name, config, created_at, updated_at FROM agent_flows ORDER BY created_at DESC LIMIT $1 OFFSET $2
+SELECT id, name, config, created_at, updated_at FROM agent_flows ORDER BY created_at DESC
 `
 
-type ListAgentFlowsParams struct {
-	Limit  int32 `db:"limit" json:"limit"`
-	Offset int32 `db:"offset" json:"offset"`
-}
-
-func (q *Queries) ListAgentFlows(ctx context.Context, arg ListAgentFlowsParams) ([]AgentFlow, error) {
-	rows, err := q.db.Query(ctx, listAgentFlows, arg.Limit, arg.Offset)
+func (q *Queries) ListAgentFlows(ctx context.Context) ([]AgentFlow, error) {
+	rows, err := q.db.Query(ctx, listAgentFlows)
 	if err != nil {
 		return nil, err
 	}

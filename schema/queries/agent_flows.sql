@@ -7,4 +7,4 @@ UPDATE agent_flows SET name = $2, config = $3 where id = $1 RETURNING *;
 -- name: DeleteAgentFlow :exec
 DELETE FROM agent_flows WHERE id = $1;
 -- name: ListAgentFlows :many
-SELECT * FROM agent_flows ORDER BY created_at DESC LIMIT $1 OFFSET $2;
+SELECT * FROM agent_flows ORDER BY created_at DESC;

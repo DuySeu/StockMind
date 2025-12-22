@@ -45,7 +45,7 @@ import {
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "../ui/context-menu";
+} from "@/components/ui/context-menu";
 
 type Session = {
   id: string;
@@ -106,15 +106,13 @@ const SideBar = () => {
   }, []);
 
   useEffect(() => {
-    if (id && sessions.length > 0) {
+    if (id) {
       const activeItem = sessions.find((item) => item.id === id);
       if (activeItem) {
         setTitle(activeItem.title);
       }
-    } else {
-      setTitle("StockMind");
     }
-  }, [id, sessions, setTitle]);
+  }, [id, sessions]);
 
   const toggleTheme = () => {
     if (theme === "light") {
