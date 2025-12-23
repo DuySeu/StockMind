@@ -1,17 +1,25 @@
 import { chatWithLLM, getMessages } from "@/api/chat";
-import { useParams, useNavigate } from "react-router-dom";
-import { useChatContext } from "@/hooks/context";
+import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowUp, MessageSquareText, Paperclip } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useChatContext } from "@/hooks/context";
+import type { Message } from "@/types/message";
+import { ArrowUp, AudioLines, FileText, Image, MessageSquareText, Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
-import type { Message } from "@/types/message";
-import stockmindLogo from "@/assets/stockmind.png";
+import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 
 const HomePage = () => {
   const navigate = useNavigate();
@@ -19,6 +27,8 @@ const HomePage = () => {
   const { title, setTitle } = useChatContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
 
   const form = useForm({
     defaultValues: {
@@ -56,11 +66,51 @@ const HomePage = () => {
     }
   }, [id]);
 
+  const handleFileClick = (accept: string) => {
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = accept;
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // 10MB limit
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error("File is too large. Max size is 10MB.");
+      } else {
+        setAttachment(file);
+      }
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const onSubmit = async (data: FieldValues) => {
+    const fileToSend = attachment; // Capture attachment before clearing
     form.reset();
+    setAttachment(null);
     let sessionId: string | undefined = undefined;
 
-    setMessages((prev) => [...prev, { role: "user", content: [{ type: "text", text: data.input.trim() }] }]);
+    const content: any[] = [{ type: "text", text: data.input.trim() }];
+    if (fileToSend) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: URL.createObjectURL(fileToSend),
+        },
+      });
+    }
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: content,
+      },
+    ]);
 
     const assistantIndex = messages.length + 1;
     setMessages((prev) => [...prev, { role: "assistant", content: [] }]);
@@ -77,18 +127,19 @@ const HomePage = () => {
               const newContent = [...(currentMessage.content || [])];
 
               const delta = data.data?.thinking ?? "";
-              let idx = newContent.findIndex((c) => (c.type as string) === "thinking");
+              let idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx === -1) {
                 newContent.push({
                   type: "thinking",
                   thinking: "",
-                  signature: "",
                   is_open: true,
                 });
                 idx = newContent.length - 1;
               }
               const block = newContent[idx];
-              newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
+              if (block.type === "thinking") {
+                newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
+              }
               updated[assistantIndex] = { ...currentMessage, content: newContent };
               return updated;
             });
@@ -107,7 +158,9 @@ const HomePage = () => {
                 idx = newContent.length - 1;
               }
               const block = newContent[idx];
-              newContent[idx] = { ...block, text: (block.text ?? "") + delta };
+              if (block.type === "text") {
+                newContent[idx] = { ...block, text: (block.text ?? "") + delta };
+              }
               updated[assistantIndex] = { ...currentMessage, content: newContent };
               return updated;
             });
@@ -123,9 +176,11 @@ const HomePage = () => {
               const idx = newContent.findIndex((c) => c.type === "thinking");
               if (idx !== -1) {
                 const block = newContent[idx];
-                newContent[idx] = { ...block, is_open: false };
-                updated[assistantIndex] = { ...currentMessage, content: newContent };
+                if (block.type === "thinking") {
+                  newContent[idx] = { ...block, is_open: false };
+                }
               }
+              updated[assistantIndex] = { ...currentMessage, content: newContent };
               return updated;
             });
             break;
@@ -142,7 +197,8 @@ const HomePage = () => {
           };
           return updated;
         });
-      }
+      },
+      fileToSend
     );
     if (!id && sessionId) {
       setTitle(data.input.trim());
@@ -198,6 +254,27 @@ const HomePage = () => {
           <div className="w-full max-w-3xl pointer-events-auto shadow-2xl rounded-2xl bg-background/80 backdrop-blur-md border border-border/50">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="p-2">
+                {attachment && (
+                  <div className="relative flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md border border-border/50 w-fit mb-2 ml-2 mt-2">
+                    <div className="flex items-center gap-2 text-sm text-foreground/80">
+                      {attachment.type.startsWith("image/") ? (
+                        <Image className="h-4 w-4" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                      <span className="max-w-[150px] truncate">{attachment.name}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="h-5 w-5 rounded-full hover:bg-background/80"
+                      onClick={() => setAttachment(null)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
                 <FormField
                   control={form.control}
                   name="input"
@@ -215,21 +292,59 @@ const HomePage = () => {
                   )}
                 />
                 <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <Button type="button" variant="secondary" size="icon-sm" className="bg-background/80">
-                      <Paperclip />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon-sm"
+                        className="bg-background/80 data-[state=open]:bg-secondary data-[state=open]:text-secondary-foreground"
+                      >
+                        <Paperclip />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      className="w-(--radix-dropdown-menu-trigger-width) min-w-40 rounded-lg border border-border"
+                      align="start"
+                    >
+                      <DropdownMenuItem onClick={() => handleFileClick("*/*")}>
+                        <FileText className="h-4 w-4" />
+                        Upload file
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleFileClick("image/*")}>
+                        <Image className="h-4 w-4" />
+                        Upload photo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <div className="flex items-center gap-2">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="icon-sm"
+                          className="bg-background/80 rounded-full"
+                        >
+                          <AudioLines className="h-5 w-5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Dictate</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Button
+                      type="submit"
+                      size="icon-sm"
+                      className="bg-primary hover:bg-primary/90 transition-all shadow-sm mr-1"
+                      disabled={!form.watch("input")?.trim()}
+                    >
+                      <ArrowUp className="h-5 w-5" />
+                      <span className="sr-only">Send</span>
                     </Button>
                   </div>
-                  <Button
-                    type="submit"
-                    size="icon-sm"
-                    className="bg-primary hover:bg-primary/90 transition-all shadow-sm mr-1"
-                    disabled={!form.watch("input")?.trim()}
-                  >
-                    <ArrowUp className="h-5 w-5" />
-                    <span className="sr-only">Send</span>
-                  </Button>
                 </div>
+                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
               </form>
             </Form>
           </div>

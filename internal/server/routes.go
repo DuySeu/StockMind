@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -12,6 +13,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
+
+	"stockmind/internal/agent"
 )
 
 type Message struct {
@@ -112,25 +115,72 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// Parse body
-	var body Message
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		fmt.Println("invalid body: %w", err)
+	var content string
+	var sessionID uuid.UUID
+	var attachments []agent.Attachment
+
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		// Parse multipart form
+		if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
+			fmt.Println("invalid multipart form:", err)
+			return
+		}
+		content = r.FormValue("content")
+		sessionIDStr := r.FormValue("session_id")
+		if sessionIDStr != "" {
+			if id, err := uuid.Parse(sessionIDStr); err == nil {
+				sessionID = id
+			}
+		}
+
+		// Handle files
+		if r.MultipartForm != nil && r.MultipartForm.File != nil {
+			for _, fileHeaders := range r.MultipartForm.File {
+				for _, fileHeader := range fileHeaders {
+					f, err := fileHeader.Open()
+					if err != nil {
+						fmt.Println("failed to open file:", err)
+						continue
+					}
+					data, err := io.ReadAll(f)
+					f.Close()
+					if err != nil {
+						fmt.Println("failed to read file:", err)
+						continue
+					}
+					attachments = append(attachments, agent.Attachment{
+						Name:      fileHeader.Filename,
+						MediaType: fileHeader.Header.Get("Content-Type"),
+						Data:      data,
+					})
+				}
+			}
+		}
+	} else {
+		// Parse JSON body
+		var body Message
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			fmt.Println("invalid body:", err)
+			return
+		}
+		content = body.Content
+		sessionID = body.SessionId
+	}
+
+	if content == "" && len(attachments) == 0 {
+		fmt.Println("content or attachment is required")
 		return
 	}
-	if body.Content == "" {
-		fmt.Println("content is required")
-		return
-	}
+
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
 	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
-	var sessionId *uuid.UUID
-	if body.SessionId != uuid.Nil {
-		sessionId = &body.SessionId
+	var sessionIdPtr *uuid.UUID
+	if sessionID != uuid.Nil {
+		sessionIdPtr = &sessionID
 	}
-	// sessionId := uuid.Must(uuid.Parse("01994b58-6631-7c98-bcc0-c1e02e436a89"))
-	// session, err := lm.GetOrCreateSession(&userID, &agentID, &sessionId, nil)
-	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionId, &body.Content)
+
+	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionIdPtr, &content)
 	if err != nil {
 		fmt.Println("Failed to get or create session", "error", err)
 		return
@@ -159,7 +209,8 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
-	err = session.HumanInput(body.Content)
+
+	err = session.HumanInput(content, attachments)
 	if err != nil {
 		fmt.Println("Failed to send human input", "error", err)
 		return

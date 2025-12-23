@@ -60,7 +60,6 @@ func (a *Agent) newOpenAIMessage() openai.ChatCompletionRequest {
 	}
 	return request
 }
-
 func openaiToDbStopReason(reason openai.FinishReason) database.StopReason {
 	switch reason {
 	case openai.FinishReasonLength: // Max tokens

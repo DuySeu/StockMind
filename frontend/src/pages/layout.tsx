@@ -2,6 +2,7 @@ import SideBar from "@/components/containers/SideBar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ChatProvider } from "@/hooks/context";
 import { Outlet } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
 
 const Layout = () => {
   return (
@@ -12,6 +13,7 @@ const Layout = () => {
           <Outlet />
         </main>
       </SidebarProvider>
+      <Toaster position="top-right" />
     </ChatProvider>
   );
 };

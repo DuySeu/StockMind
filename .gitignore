@@ -35,3 +35,5 @@ main
 # Tools server
 tools_server/venv
 tools_server/*/__pycache__/
+
+# .agent

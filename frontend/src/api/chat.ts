@@ -18,15 +18,29 @@ export const chatWithLLM = async (
   content: string,
   sessionId: string | undefined,
   onMessage: (data: ChatResponse) => void,
-  onError: (error: any) => void
+  onError: (error: any) => void,
+  file?: File | null
 ) => {
   try {
+    let body;
+    const headers: Record<string, string> = {};
+
+    if (file) {
+      const formData = new FormData();
+      formData.append("content", content);
+      if (sessionId) formData.append("session_id", sessionId);
+      formData.append("file", file);
+      body = formData;
+      // Do NOT set Content-Type header for FormData, browser does it with boundary
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify({ content, session_id: sessionId });
+    }
+
     const response = await fetch(`${api.defaults.baseURL}/chat`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ content, session_id: sessionId }),
+      headers,
+      body,
     });
 
     if (!response.ok) {
@@ -69,7 +83,42 @@ export const chatWithLLM = async (
   }
 };
 
-export const getMessages = async (sessionId: string): Promise<any[]> => {
+import type { Message } from "@/types/message";
+
+export const getMessages = async (sessionId: string): Promise<Message[]> => {
   const response = await api.get(`/sessions/${sessionId}`);
-  return response.data;
+  return response.data.map((msg: any) => {
+    let content: any[] = [];
+
+    // Check if content is already an array (from database)
+    if (Array.isArray(msg.content)) {
+      content = msg.content.map((part: any) => {
+        if (part.type === "text") {
+          return { type: "text", text: part.text || "" };
+        } else if (part.type === "image_url" && part.image_url) {
+          return { type: "image_url", image_url: { url: part.image_url.url } };
+        }
+        return part;
+      });
+    } else if (msg.MultiContent && msg.MultiContent.length > 0) {
+      // Fallback for MultiContent (Go struct field)
+      content = msg.MultiContent.map((part: any) => {
+        if (part.type === "text") {
+          return { type: "text", text: part.text || "" };
+        } else if (part.type === "image_url" && part.image_url) {
+          return { type: "image_url", image_url: { url: part.image_url.url } };
+        }
+        return part;
+      });
+    } else if (msg.content && typeof msg.content === "string") {
+      // Simple string content
+      content = [{ type: "text", text: msg.content }];
+    }
+
+    return {
+      role: msg.role,
+      content: content,
+      tool_calls: msg.tool_calls,
+    };
+  });
 };

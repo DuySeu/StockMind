@@ -187,10 +187,10 @@ const SideBar = () => {
                             className={`${id === item.id && "border-l-3 border-accent"}`}
                             onClick={() => handleLoadSession(item.id)}
                           >
-                            <span className="truncate">{item.title}</span>
+                            <span className="truncate max-w-56">{item.title}</span>
                           </SidebarMenuButton>
                         </ContextMenuTrigger>
-                        <ContextMenuContent className="w-56 border border-border">
+                        <ContextMenuContent className="w-40 border border-border">
                           <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
                             Created at {new Date(item.updated_at).toLocaleDateString()}
                           </ContextMenuLabel>

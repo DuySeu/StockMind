@@ -6,9 +6,18 @@ import (
 
 	"stockmind/internal/database"
 
+	"encoding/base64"
+	"strings"
+
 	"github.com/google/uuid"
 	openai "github.com/sashabaranov/go-openai"
 )
+
+type Attachment struct {
+	Name      string
+	MediaType string
+	Data      []byte
+}
 
 type ChatCallBack func(textContent string, thinking bool, endBlock bool) error
 
@@ -100,7 +109,7 @@ func (sm *SessionManager) IsHumanTurn() bool {
 	return startOfFlow
 }
 
-func (sm *SessionManager) HumanInput(message string) error {
+func (sm *SessionManager) HumanInput(message string, attachments []Attachment) error {
 	// Check if we are correctly at the start of the flows (start node)
 	// Either history is empty, or last node of the conversation is an end node
 	startOfFlow := len(sm.history) == 0
@@ -137,7 +146,7 @@ func (sm *SessionManager) HumanInput(message string) error {
 		return fmt.Errorf("next node %s not found in agent flow config", nextNodeID)
 	}
 	provider := sm.agentFlowCfg.Agents[*nextNode.AgentName].Provider
-	humanMsg, err := newHumanMessage(message, provider)
+	humanMsg, err := newHumanMessage(message, attachments, provider)
 	if err != nil {
 		return err
 	}
@@ -216,15 +225,36 @@ func (sm *SessionManager) ContinueTurn() error {
 	return nil
 }
 
-func newHumanMessage(message string, provider database.ModelProvider) (database.MessageUnion, error) {
+func newHumanMessage(message string, attachments []Attachment, provider database.ModelProvider) (database.MessageUnion, error) {
 	switch provider {
 	case database.ModelProviderOpenAI:
+		parts := []openai.ChatMessagePart{}
+		if message != "" {
+			parts = append(parts, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: message})
+		}
+		for _, att := range attachments {
+			if strings.HasPrefix(att.MediaType, "image/") {
+				b64 := base64.StdEncoding.EncodeToString(att.Data)
+				url := fmt.Sprintf("data:%s;base64,%s", att.MediaType, b64)
+				parts = append(parts, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeImageURL,
+					ImageURL: &openai.ChatMessageImageURL{
+						URL: url,
+					},
+				})
+			} else {
+				// Treat as text
+				parts = append(parts, openai.ChatMessagePart{
+					Type: openai.ChatMessagePartTypeText,
+					Text: fmt.Sprintf("\n[Attachment: %s]\n%s", att.Name, string(att.Data)),
+				})
+			}
+		}
+
 		return database.MessageUnion{
 			OfOpenAI: &openai.ChatCompletionMessage{
-				Role: openai.ChatMessageRoleUser,
-				MultiContent: []openai.ChatMessagePart{
-					{Type: openai.ChatMessagePartTypeText, Text: message},
-				},
+				Role:         openai.ChatMessageRoleUser,
+				MultiContent: parts,
 			},
 		}, nil
 	// case database.ModelProviderAnthropic:
