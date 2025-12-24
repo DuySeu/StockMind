@@ -149,13 +149,16 @@ const HomePage = () => {
           case "tool_use": {
             const tool_calls = data.data?.tool_calls;
             if (tool_calls) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  role: "assistant",
-                  tool_calls: [tool_calls],
-                },
-              ]);
+              setMessages((prev) => {
+                const updated = [...prev];
+                const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
+                const existingToolCalls = currentMessage.tool_calls || [];
+                updated[assistantIndex] = {
+                  ...currentMessage,
+                  tool_calls: [...existingToolCalls, tool_calls],
+                };
+                return updated;
+              });
             }
             break;
           }
