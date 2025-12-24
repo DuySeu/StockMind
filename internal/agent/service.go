@@ -6,13 +6,15 @@ import (
 	"log"
 	"stockmind/internal/database"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	openai "github.com/sashabaranov/go-openai"
 )
 
 type LLMClientWrapper struct {
-	OfOpenAI *openai.Client
+	OfOpenAI    *openai.Client
+	OfAnthropic *anthropic.Client
 }
 
 type AgentService struct {
@@ -48,7 +50,10 @@ func (s *AgentService) getClientByProvider(provider database.ModelProvider) (*LL
 			return nil, fmt.Errorf("failed to create OpenRouter client: %v", err)
 		}
 	case database.ModelProviderAnthropic:
-		return nil, fmt.Errorf("unsupported model provider: %s", string(provider))
+		client, err = createAnthropicClient(s.ctx, s.config.Anthropic)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create Anthropic client: %v", err)
+		}
 	default:
 		log.Printf("Unsupported model provider: %s", string(provider))
 		return nil, fmt.Errorf("unsupported model provider: %s", string(provider))

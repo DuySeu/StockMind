@@ -129,8 +129,8 @@ func (a *Agent) Completion(ctx context.Context, messages []*database.MessageUnio
 	switch a.config.Provider {
 	case database.ModelProviderOpenAI:
 		return a.completionOpenAI(ctx, messages, callback)
-	// case database.ModelProviderAnthropic:
-	// 	return a.completionAnthropic(ctx, messages, callback)
+	case database.ModelProviderAnthropic:
+		return a.completionAnthropic(ctx, messages, callback)
 	default:
 		return database.MessageUnion{}, database.StopReasonUnknown, fmt.Errorf("unsupported model provider: %s", a.config.Provider)
 	}
@@ -140,8 +140,8 @@ func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion, cal
 	switch a.config.Provider {
 	case database.ModelProviderOpenAI:
 		return a.toolUseOpenAI(ctx, message, callback)
-	// case database.ModelProviderAnthropic:
-	// 	return a.toolUseAnthropic(ctx, message)
+	case database.ModelProviderAnthropic:
+		return a.toolUseAnthropic(ctx, message, callback)
 	default:
 		return database.MessageUnion{}, fmt.Errorf("unsupported model provider: %s", a.config.Provider)
 	}

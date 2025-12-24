@@ -1,6 +1,7 @@
 package database
 
 import (
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mark3labs/mcp-go/mcp"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -77,6 +78,6 @@ type AgentFlowConfig struct {
 }
 
 type MessageUnion struct {
-	OfOpenAI *openai.ChatCompletionMessage `json:"of_openai,omitempty"`
-	// OfAnthropic *anthropic.MessageParam `json:"of_anthropic,omitempty"`
+	OfOpenAI    *openai.ChatCompletionMessage `json:"of_openai,omitempty"`
+	OfAnthropic *anthropic.MessageParam       `json:"of_anthropic,omitempty"`
 }

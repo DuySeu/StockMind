@@ -18,8 +18,8 @@ type Database struct {
 }
 
 type LLMProviderConfig struct {
-	OpenAI    OpenAIConfig    `json:"openai" yaml:"openai"`
-	Anthropic AnthropicConfig `json:"anthropic" yaml:"anthropic"`
+	OpenAI    OpenAIConfig    `json:"openai" yaml:"openai,omitempty"`
+	Anthropic AnthropicConfig `json:"anthropic" yaml:"anthropic,omitempty"`
 }
 
 type OpenAIConfig struct {

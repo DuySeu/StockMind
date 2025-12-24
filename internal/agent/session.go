@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"strings"
 
+	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -27,11 +28,21 @@ const (
 	EventTypeToolResult EventType = "tool_result"
 )
 
+type ToolCallWrapper struct {
+	OpenAI    openai.ToolCall
+	Anthropic anthropic.MessageParam
+}
+
+type ToolResultWrapper struct {
+	OpenAI    openai.ChatCompletionMessage
+	Anthropic anthropic.ContentBlockParamUnion
+}
+
 type ChatEvent struct {
 	Type       EventType
 	Content    string // Text or Thinking content
-	ToolUse    openai.ToolCall
-	ToolResult openai.ChatCompletionMessage
+	ToolUse    ToolCallWrapper
+	ToolResult ToolResultWrapper
 	IsEnd      bool // Signal end of block
 }
 
