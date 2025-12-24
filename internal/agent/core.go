@@ -136,10 +136,10 @@ func (a *Agent) Completion(ctx context.Context, messages []*database.MessageUnio
 	}
 }
 
-func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion) (database.MessageUnion, error) {
+func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
 	switch a.config.Provider {
 	case database.ModelProviderOpenAI:
-		return a.toolUseOpenAI(ctx, message)
+		return a.toolUseOpenAI(ctx, message, callback)
 	// case database.ModelProviderAnthropic:
 	// 	return a.toolUseAnthropic(ctx, message)
 	default:

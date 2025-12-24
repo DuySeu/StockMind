@@ -192,19 +192,24 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	inThinkingBlock := false
-	session.AddChatCallback(func(content string, thinking bool, endBlock bool) error {
-		if thinking {
-			if !inThinkingBlock {
-				inThinkingBlock = true
-			}
-			writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": content}})
-		} else {
+	session.AddChatCallback(func(event agent.ChatEvent) error {
+		switch event.Type {
+		case agent.EventTypeText:
 			if inThinkingBlock {
 				inThinkingBlock = false
 			}
-			writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": content}})
+			writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": event.Content}})
+		case agent.EventTypeThinking:
+			if !inThinkingBlock {
+				inThinkingBlock = true
+			}
+			writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": event.Content}})
+		case agent.EventTypeToolUse:
+			writeSSE(w, map[string]any{"type": "tool_use", "data": map[string]any{"tool_calls": event.ToolUse}})
+		case agent.EventTypeToolResult:
+			writeSSE(w, map[string]any{"type": "tool_result", "data": map[string]any{"result": event.ToolResult}})
 		}
-		if endBlock {
+		if event.IsEnd {
 			writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": session.SessionID().String()}})
 		}
 		return nil

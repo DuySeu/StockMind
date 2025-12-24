@@ -20,6 +20,6 @@ export type ContentPart = TextContent | ImageContent | ThinkingContent;
 
 export type Message = {
   role: "user" | "assistant" | "tool";
-  content: ContentPart[];
+  content?: ContentPart[];
   tool_calls?: Record<string, unknown>[];
 };

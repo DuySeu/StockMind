@@ -6,11 +6,13 @@ export interface ChatMessage {
 }
 
 export interface ChatResponse {
-  type: "thinking_delta" | "text_delta" | "complete";
+  type: "thinking_delta" | "text_delta" | "tool_use" | "tool_result" | "complete";
   data?: {
     thinking?: string;
     text?: string;
     session_id?: string;
+    tool_calls?: Record<string, any>;
+    result?: Record<string, any>;
   };
 }
 
@@ -87,38 +89,5 @@ import type { Message } from "@/types/message";
 
 export const getMessages = async (sessionId: string): Promise<Message[]> => {
   const response = await api.get(`/sessions/${sessionId}`);
-  return response.data.map((msg: any) => {
-    let content: any[] = [];
-
-    // Check if content is already an array (from database)
-    if (Array.isArray(msg.content)) {
-      content = msg.content.map((part: any) => {
-        if (part.type === "text") {
-          return { type: "text", text: part.text || "" };
-        } else if (part.type === "image_url" && part.image_url) {
-          return { type: "image_url", image_url: { url: part.image_url.url } };
-        }
-        return part;
-      });
-    } else if (msg.MultiContent && msg.MultiContent.length > 0) {
-      // Fallback for MultiContent (Go struct field)
-      content = msg.MultiContent.map((part: any) => {
-        if (part.type === "text") {
-          return { type: "text", text: part.text || "" };
-        } else if (part.type === "image_url" && part.image_url) {
-          return { type: "image_url", image_url: { url: part.image_url.url } };
-        }
-        return part;
-      });
-    } else if (msg.content && typeof msg.content === "string") {
-      // Simple string content
-      content = [{ type: "text", text: msg.content }];
-    }
-
-    return {
-      role: msg.role,
-      content: content,
-      tool_calls: msg.tool_calls,
-    };
-  });
+  return response.data;
 };

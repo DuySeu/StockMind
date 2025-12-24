@@ -73,6 +73,84 @@ func openaiToDbStopReason(reason openai.FinishReason) database.StopReason {
 	}
 }
 
+// processThinkingContent processes streaming content to detect and separate
+// thinking blocks (wrapped in <think>...</think> tags) from regular content.
+// It handles partial tags across stream chunks using a buffer.
+// Returns the content to emit and whether it's thinking content.
+func processThinkingContent(chunk string, buffer *strings.Builder, inThinking *bool) (string, bool) {
+	// Add chunk to buffer for processing
+	buffer.WriteString(chunk)
+	content := buffer.String()
+
+	var result strings.Builder
+	isThinking := *inThinking
+
+	for len(content) > 0 {
+		if *inThinking {
+			// Look for end of thinking block
+			endIdx := strings.Index(content, "</think>")
+			if endIdx != -1 {
+				// Found end tag - emit thinking content up to it
+				result.WriteString(content[:endIdx])
+				content = content[endIdx+8:] // Skip </think>
+				*inThinking = false
+				isThinking = true // This chunk contained thinking content
+			} else {
+				// Check if we might have a partial end tag at the end
+				if len(content) < 8 && strings.HasPrefix("</think>", content) {
+					// Keep in buffer for next chunk
+					buffer.Reset()
+					buffer.WriteString(content)
+					break
+				}
+				// No end tag found, emit all as thinking content
+				result.WriteString(content)
+				buffer.Reset()
+				return result.String(), true
+			}
+		} else {
+			// Look for start of thinking block
+			startIdx := strings.Index(content, "<think>")
+			if startIdx != -1 {
+				// Found start tag - emit regular content up to it
+				if startIdx > 0 {
+					result.WriteString(content[:startIdx])
+					content = content[startIdx:]
+					buffer.Reset()
+					buffer.WriteString(content)
+					if result.Len() > 0 {
+						return result.String(), false
+					}
+				}
+				content = content[7:] // Skip <think>
+				*inThinking = true
+			} else {
+				// Check if we might have a partial start tag at the end
+				for i := 1; i < 7 && i < len(content); i++ {
+					suffix := content[len(content)-i:]
+					if strings.HasPrefix("<think>", suffix) {
+						// Keep partial tag in buffer for next chunk
+						result.WriteString(content[:len(content)-i])
+						buffer.Reset()
+						buffer.WriteString(suffix)
+						if result.Len() > 0 {
+							return result.String(), false
+						}
+						return "", false
+					}
+				}
+				// No start tag found, emit all as regular content
+				result.WriteString(content)
+				buffer.Reset()
+				return result.String(), false
+			}
+		}
+	}
+
+	buffer.Reset()
+	return result.String(), isThinking
+}
+
 func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
 	// Prepare messages for OpenAI
 	body := a.newOpenAIMessage()
@@ -104,6 +182,11 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 		Role: openai.ChatMessageRoleAssistant,
 	}
 
+	// Thinking state tracker for models that use <think>...</think> tags
+	// (e.g., DeepSeek R1, Qwen3 with thinking mode)
+	inThinkingBlock := false
+	var contentBuffer strings.Builder
+
 	// Handle the stream
 	for {
 		response, err := stream.Recv()
@@ -111,7 +194,7 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 			// fmt.Println("\nStream finished")
 			// Call callback to signal end of block
 			if callback != nil {
-				callback("", false, true)
+				callback(ChatEvent{IsEnd: true})
 			}
 			result.OfOpenAI = &contentItem
 			return result, stopReason, nil
@@ -130,13 +213,26 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 			}
 			switch {
 			case delta.Content != "":
+				// Process content for thinking tags
+				processedContent, isThinking := processThinkingContent(delta.Content, &contentBuffer, &inThinkingBlock)
+
+				// Accumulate content in the message
 				if len(contentItem.MultiContent) > 0 && contentItem.MultiContent[len(contentItem.MultiContent)-1].Type == openai.ChatMessagePartTypeText {
 					contentItem.MultiContent[len(contentItem.MultiContent)-1].Text += delta.Content
 				} else {
 					contentItem.MultiContent = append(contentItem.MultiContent, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: delta.Content})
 				}
-				if callback != nil {
-					callback(delta.Content, false, false)
+
+				// Send to callback with thinking flag
+				if callback != nil && processedContent != "" {
+					eventType := EventTypeText
+					if isThinking {
+						eventType = EventTypeThinking
+					}
+					callback(ChatEvent{
+						Type:    eventType,
+						Content: processedContent,
+					})
 				}
 			case len(delta.ToolCalls) > 0:
 				// Append tool calls
@@ -181,7 +277,7 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 	}
 }
 
-func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnion) (database.MessageUnion, error) {
+func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
 	lastMessage := message.OfOpenAI
 	result := database.MessageUnion{}
 	if lastMessage == nil {
@@ -205,6 +301,14 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 	// We will process the first tool call and return it as the result
 	toolUse := toolUseBlocks[0]
 	fmt.Printf("toolUseOpenAI: invoking tool (name: %s, id: %s)\n", toolUse.Function.Name, toolUse.ID)
+
+	// Callback: Start tool execution
+	if callback != nil {
+		callback(ChatEvent{
+			Type:    EventTypeToolUse,
+			ToolUse: toolUse,
+		})
+	}
 
 	// Normally toolUse.Name will have format <mcp>/<tool_name>
 	parts := strings.SplitN(toolUse.Function.Name, "--", 2)
@@ -267,6 +371,15 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 	}
 	toolResult.MultiContent = []openai.ChatMessagePart{
 		{Type: openai.ChatMessagePartTypeText, Text: contentBuilder.String()},
+	}
+
+	// Callback: End tool execution
+	if callback != nil {
+		callback(ChatEvent{
+			Type:       EventTypeToolResult,
+			ToolUse:    toolUse,
+			ToolResult: toolResult,
+		})
 	}
 
 	result.OfOpenAI = &toolResult

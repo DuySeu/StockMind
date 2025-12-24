@@ -94,7 +94,7 @@ const HomePage = () => {
     setAttachment(null);
     let sessionId: string | undefined = undefined;
 
-    const content: any[] = [{ type: "text", text: data.input.trim() }];
+    const content: any[] = [];
     if (fileToSend) {
       content.push({
         type: "image_url",
@@ -103,6 +103,7 @@ const HomePage = () => {
         },
       });
     }
+    content.push({ type: "text", text: data.input.trim() });
 
     setMessages((prev) => [
       ...prev,
@@ -143,6 +144,23 @@ const HomePage = () => {
               updated[assistantIndex] = { ...currentMessage, content: newContent };
               return updated;
             });
+            break;
+          }
+          case "tool_use": {
+            const tool_calls = data.data?.tool_calls;
+            if (tool_calls) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  tool_calls: [tool_calls],
+                },
+              ]);
+            }
+            break;
+          }
+          case "tool_result": {
+            setMessages((prev) => [...prev, data.data?.result as Message]);
             break;
           }
           case "text_delta": {

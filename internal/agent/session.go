@@ -18,8 +18,24 @@ type Attachment struct {
 	MediaType string
 	Data      []byte
 }
+type EventType string
 
-type ChatCallBack func(textContent string, thinking bool, endBlock bool) error
+const (
+	EventTypeText       EventType = "text"
+	EventTypeThinking   EventType = "thinking"
+	EventTypeToolUse    EventType = "tool_use"
+	EventTypeToolResult EventType = "tool_result"
+)
+
+type ChatEvent struct {
+	Type       EventType
+	Content    string // Text or Thinking content
+	ToolUse    openai.ToolCall
+	ToolResult openai.ChatCompletionMessage
+	IsEnd      bool // Signal end of block
+}
+
+type ChatCallBack func(event ChatEvent) error
 
 type SessionManager struct {
 	ctx          context.Context
@@ -329,11 +345,12 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	if agent == nil {
 		return fmt.Errorf("agent %s not found in session manager", *lastNode.AgentName)
 	}
-	message, err := agent.ToolUse(sm.ctx, &lastHistory.Content)
+	message, err := agent.ToolUse(sm.ctx, &lastHistory.Content, sm.chatCallback)
 	if err != nil {
 		fmt.Printf("continueTurnToolCall: tool execution failed: %v\n", err)
 		return fmt.Errorf("failed to call tool use on agent %s: %w", *lastNode.AgentName, err)
 	}
+
 	fmt.Printf("continueTurnToolCall: tools executed successfully, storing results\n")
 
 	// Store the result to history
