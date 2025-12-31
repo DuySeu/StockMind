@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,21 +12,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 )
-
-const (
-	BASE_URL = "https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart"
-)
-
-var VCI_HEADERS = map[string]string{
-	"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-	"Referer":         "https://trading.vietcap.com.vn/",
-	"Origin":          "https://trading.vietcap.com.vn/",
-	"Accept":          "*/*",
-	"Connection":      "keep-alive",
-	"Cache-Control":   "no-cache",
-	"Accept-Encoding": "gzip, deflate",
-	"Content-Type":    "application/json",
-}
 
 type VCITimeFrame string
 
@@ -94,7 +78,7 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	http_req, err := http.NewRequestWithContext(ctx, "POST", BASE_URL, bytes.NewBuffer(body))
+	http_req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", TRADING_URL, CHART_URL), bytes.NewBuffer(body))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -109,22 +93,17 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 	defer resp.Body.Close()
 	var resp_bytes []byte
+
 	// Decompress if needed
-	if resp.Uncompressed {
-		resp_bytes, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return mcp.NewToolResultError("failed to read body: " + err.Error()), nil
-		}
-	} else {
-		gz, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return mcp.NewToolResultError("failed to create gzip reader: " + err.Error()), nil
-		}
-		defer gz.Close()
-		resp_bytes, err = io.ReadAll(gz)
-		if err != nil {
-			return mcp.NewToolResultError("failed to read gzipped response body: " + err.Error()), nil
-		}
+	reader, err := GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
+	if err != nil {
+		return mcp.NewToolResultError("failed to create reader: " + err.Error()), nil
+	}
+	defer reader.Close()
+
+	resp_bytes, err = io.ReadAll(reader)
+	if err != nil {
+		return mcp.NewToolResultError("failed to read response body: " + err.Error()), nil
 	}
 	var priceData []vciPriceDataResponse
 	if err := json.Unmarshal(resp_bytes, &priceData); err != nil {
