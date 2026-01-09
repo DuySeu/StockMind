@@ -49,8 +49,14 @@ var OpenAIProvider = OpenAIConfig{
 }
 
 var AnthropicProvider = AnthropicConfig{
-	AuthType: "api_key",
-	APIKey:   os.Getenv("ANTHROPIC_API_KEY"),
+	AuthType: "aws",
+	AWS: AWSCredentialConfig{
+		Type:            "assume_role",
+		Region:          "ap-southeast-1",
+		RoleARN:         "arn:aws:iam::130506138320:role/bedrock-cross-account-role",
+		Duration:        3600,
+		RoleSessionName: "llm-test-session",
+	},
 }
 
 // func LoadConfig(filePath string) (*Config, error) {

@@ -255,17 +255,20 @@ const HomePage = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg mt-4">
-                {["What is FPT stock price?", "Should I buy VNM?", "Explain P/E ratio", "Latest tech news"].map(
-                  (suggestion, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => onHandleSuggestion(suggestion)}
-                      className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                    >
-                      {suggestion}
-                    </button>
-                  )
-                )}
+                {[
+                  "What is FPT stock price?",
+                  "Should I buy VNM?",
+                  "Explain P/E ratio",
+                  "get FPT stock price and report",
+                ].map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onHandleSuggestion(suggestion)}
+                    className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
               </div>
             </div>
           )}

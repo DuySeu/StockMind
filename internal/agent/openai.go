@@ -200,6 +200,7 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 	// TODO: Support multiple tool calls by updating MessageUnion to support list of messages
 	if len(toolUseBlocks) > 1 {
 		fmt.Println("Warning: Multiple tool calls detected, but only the first one will be processed correctly due to current limitation")
+		fmt.Println("toolUseOpenAI: tool calls:", toolUseBlocks)
 	}
 
 	// We will process the first tool call and return it as the result
@@ -257,13 +258,6 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 		return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
 	}
 
-	toolResult := openai.ChatCompletionMessage{
-		Role:         openai.ChatMessageRoleTool,
-		ToolCallID:   toolUse.ID,
-		MultiContent: []openai.ChatMessagePart{},
-		Name:         toolUse.Function.Name,
-	}
-
 	// Convert the tool response content to string
 	var contentBuilder strings.Builder
 	for _, content := range toolResponse.Content {
@@ -273,8 +267,13 @@ func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnio
 			fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
 		}
 	}
-	toolResult.MultiContent = []openai.ChatMessagePart{
-		{Type: openai.ChatMessagePartTypeText, Text: contentBuilder.String()},
+
+	// OpenAI tool messages require Content as a plain string, not MultiContent
+	toolResult := openai.ChatCompletionMessage{
+		Role:       openai.ChatMessageRoleTool,
+		ToolCallID: toolUse.ID,
+		Content:    contentBuilder.String(),
+		Name:       toolUse.Function.Name,
 	}
 
 	// Callback: End tool execution

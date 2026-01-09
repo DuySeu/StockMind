@@ -66,9 +66,9 @@ INSERT INTO agent_flows (id, name, config) VALUES
 '{
     "agents": {
         "NormalChat": {
-            "provider": "openai",
+            "provider": "anthropic",
             "description": "Handles general chat interactions.",
-            "modelId": "nvidia/nemotron-nano-12b-v2-vl:free",
+            "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
             "systemPrompt": "You are a helpful assistant.",
             "maxTokens": 8192,
             "thinkingToken": 1024,
@@ -95,6 +95,78 @@ INSERT INTO agent_flows (id, name, config) VALUES
             "id": "NormalChat",
             "type": "agent",
             "agentName": "NormalChat",
+            "next": "end",
+            "output": {
+                "type": "text",
+                "contentFormat": "{{.message}}",
+                "contentRole": "assistant"
+            }
+        }
+    ]
+}'),
+('01993ca8-a62e-79e3-995c-a46e25a4a2a3', 'Multiple Agents Flow',
+'{
+    "agents": {
+        "StockPrice": {
+            "provider": "openai",
+            "description": "Handles general chat interactions.",
+            "modelId": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "systemPrompt": "You are a helpful assistant. Your task is to get the stock price based on the given stock symbol.",
+            "maxTokens": 8192,
+            "thinkingToken": 1024,
+            "temperature": 0.7,
+            "topP": 0.9,
+            "topK": 40,
+            "tools": [],
+            "mcpServers": [
+                {
+                    "name": "stocks-mcp",
+                    "protocol": "streamablehttp",
+                    "url": "http://localhost:8081/mcp"
+                }
+            ]
+        },
+        "StockReport": {
+            "provider": "openai",
+            "description": "Handles general chat interactions.",
+            "modelId": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "systemPrompt": "You are a helpful assistant. Your task is to generate a stock report based on the given stock price.",
+            "maxTokens": 8192,
+            "thinkingToken": 1024,
+            "temperature": 0.7,
+            "topP": 0.9,
+            "topK": 40,
+            "tools": [],
+            "mcpServers": [
+                {
+                    "name": "stocks-mcp",
+                    "protocol": "streamablehttp",
+                    "url": "http://localhost:8081/mcp"
+                }
+            ]
+        }
+    },
+    "nodes": [
+        {
+            "id": "start",
+            "type": "start",
+            "next": "StockPrice"
+        },
+        {
+            "id": "StockPrice",
+            "type": "agent",
+            "agentName": "StockPrice",
+            "next": "StockReport",
+            "output": {
+                "type": "text",
+                "contentFormat": "{{.message}}",
+                "contentRole": "assistant"
+            }
+        },
+        {
+            "id": "StockReport",
+            "type": "agent",
+            "agentName": "StockReport",
             "next": "end",
             "output": {
                 "type": "text",

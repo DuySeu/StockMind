@@ -126,6 +126,14 @@ func (sm *SessionManager) IsHumanTurn() bool {
 		// Not tool call, so it must be start of flow
 		// If last node is agent, and stop reason is not tool_call, then we are at start of flow
 		if lastNode.Type == database.NodeTypeAgent && lastHistory.StopReason != database.StopReasonToolCall && lastHistory.StopReason != database.StopReasonToolResult {
+			// Check if there's a next agent node - if so, we should continue (not human turn yet)
+			if lastHistory.StopReason == database.StopReasonAgentDone && lastNode.Next != nil {
+				nextNode, exists := sm.nodes[*lastNode.Next]
+				if exists && nextNode.Type == database.NodeTypeAgent {
+					// There's a next agent, so it's NOT human's turn yet
+					return false
+				}
+			}
 			startOfFlow = true
 		}
 		// If last node is start, we should not be here
@@ -230,9 +238,7 @@ func (sm *SessionManager) ContinueTurn() error {
 			return fmt.Errorf("next node %s is not an agent node, cannot continue turn", nextNode.ID)
 		}
 		// Continue with next agent node
-		// Processing message for next agent here
-		// Push to next agent node
-		// TODO: Implement next agent for multi agents here
+		err = sm.continueTurnHumanInput()
 	default:
 		return fmt.Errorf("cannot continue turn, last history stop reason is %s", lastHistory.StopReason)
 	}
@@ -284,15 +290,15 @@ func newHumanMessage(message string, attachments []Attachment, provider database
 				MultiContent: parts,
 			},
 		}, nil
-	// case database.ModelProviderAnthropic:
-	// 	return database.MessageUnion{
-	// 		OfAnthropic: &anthropic.MessageParam{
-	// 			Role: anthropic.MessageParamRoleUser,
-	// 			Content: []anthropic.ContentBlockParamUnion{
-	// 				{OfText: &anthropic.TextBlockParam{Text: message}},
-	// 			},
-	// 		},
-	// 	}, nil
+	case database.ModelProviderAnthropic:
+		return database.MessageUnion{
+			OfAnthropic: &anthropic.MessageParam{
+				Role: anthropic.MessageParamRoleUser,
+				Content: []anthropic.ContentBlockParamUnion{
+					{OfText: &anthropic.TextBlockParam{Text: message}},
+				},
+			},
+		}, nil
 	default:
 		return database.MessageUnion{}, fmt.Errorf("unsupported model provider: %s", provider)
 	}
@@ -416,5 +422,16 @@ func (sm *SessionManager) continueTurnToolResult() error {
 		return fmt.Errorf("failed to add chat history: %w", err)
 	}
 	sm.history = append(sm.history, history)
+	return nil
+}
+
+func (sm *SessionManager) continueTurnAgentInput() error {
+	lastNode, _, err := sm.lastHistoryInfo()
+	if err != nil {
+		return err
+	}
+	if lastNode.Type != database.NodeTypeAgent {
+		return fmt.Errorf("last node %s is not an agent node, cannot continue turn", lastNode.ID)
+	}
 	return nil
 }
