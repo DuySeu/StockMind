@@ -19,13 +19,15 @@ import (
 
 func createAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*LLMClientWrapper, error) {
 	var ac anthropic.Client
+	if cfg.AuthType == "" {
+		return nil, fmt.Errorf("AuthType is required: must be 'api_key' or 'aws'")
+	}
 	if cfg.AuthType == "api_key" {
 		if cfg.APIKey == "" {
 			return nil, fmt.Errorf("API key is required for api_key auth type")
 		}
 		ac = anthropic.NewClient(option.WithAPIKey(cfg.APIKey))
-	}
-	if cfg.AuthType == "aws" {
+	} else if cfg.AuthType == "aws" {
 		if cfg.AWS.Type == "" {
 			return nil, fmt.Errorf("AWS credential type is required for aws auth type")
 		}
@@ -58,6 +60,8 @@ func createAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*LLMClient
 			}
 		}
 		ac = anthropic.NewClient(bedrock.WithConfig(awsCfg))
+	} else {
+		return nil, fmt.Errorf("unsupported AuthType: %s (must be 'api_key' or 'aws')", cfg.AuthType)
 	}
 	return &LLMClientWrapper{OfAnthropic: &ac}, nil
 }

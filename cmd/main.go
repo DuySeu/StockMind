@@ -145,7 +145,7 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 	log.Println("Database connection established")
 
 	// Create an agent service
-	agent, err := agent.NewService(ctx, dbPool, database.ModelProviderOpenAI)
+	agent, err := agent.NewService(ctx, dbPool)
 	if err != nil {
 		log.Println("Failed to create agent service", "error", err)
 		return nil, nil, err
