@@ -1,8 +1,8 @@
 package server
 
 import (
-	"encoding/json"
 	"net/http"
+	"stockmind/internal/common"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -14,37 +14,28 @@ func (s *Server) GetSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get users from database
 	sessions, err := s.db.GetSessionsByUserID(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "Failed to get sessions: "+err.Error(), http.StatusInternalServerError)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get sessions: "+err.Error())
 		return
 	}
-
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
 
 	// Return sessions list
-	if err := json.NewEncoder(w).Encode(sessions); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	common.WriteJSON(w, http.StatusOK, sessions)
 }
 
 func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from URL parameter
 	sessionID := chi.URLParam(r, "id")
 	if sessionID == "" {
-		http.Error(w, "Session ID is required", http.StatusBadRequest)
+		common.WriteJSONError(w, http.StatusBadRequest, "Session ID is required")
 		return
 	}
 
 	// Get messages from database
 	messages, err := s.db.GetSessionHistoryBySessionID(r.Context(), uuid.Must(uuid.Parse(sessionID)))
 	if err != nil {
-		http.Error(w, "Failed to get messages: "+err.Error(), http.StatusInternalServerError)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get messages: "+err.Error())
 		return
 	}
-
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
 
 	msgs := make([]openai.ChatCompletionMessage, 0, len(messages))
 	for _, msg := range messages {
@@ -54,32 +45,23 @@ func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// Return messages list
-	if err := json.NewEncoder(w).Encode(msgs); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	common.WriteJSON(w, http.StatusOK, msgs)
 }
 
 func (s *Server) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	// Get session ID from URL parameter
 	sessionID := chi.URLParam(r, "id")
 	if sessionID == "" {
-		http.Error(w, "Session ID is required", http.StatusBadRequest)
+		common.WriteJSONError(w, http.StatusBadRequest, "Session ID is required")
 		return
 	}
 
 	// Delete session from database
 	if err := s.db.DeleteSessionByID(r.Context(), uuid.Must(uuid.Parse(sessionID))); err != nil {
-		http.Error(w, "Failed to delete session: "+err.Error(), http.StatusInternalServerError)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to delete session: "+err.Error())
 		return
 	}
-
-	// Set response headers
-	w.Header().Set("Content-Type", "application/json")
 
 	// Return success response
-	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Session deleted successfully"}); err != nil {
-		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		return
-	}
+	common.WriteJSON(w, http.StatusOK, map[string]string{"message": "Session deleted successfully"})
 }

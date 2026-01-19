@@ -5,7 +5,7 @@ import LoginPage from "@/pages/LoginPage";
 import SettingPage from "@/pages/SettingPage";
 import ErrorPage from "@/pages/ErrorPage";
 import ExplorePage from "@/pages/Explore";
-import CategoriesPage from "@/pages/Categories";
+import WatchListPage from "@/pages/WatchList";
 import LibraryPage from "@/pages/Library";
 
 export const router = createBrowserRouter([
@@ -31,8 +31,8 @@ export const router = createBrowserRouter([
         element: <ExplorePage />,
       },
       {
-        path: "categories",
-        element: <CategoriesPage />,
+        path: "watchlist",
+        element: <WatchListPage />,
       },
       {
         path: "library",

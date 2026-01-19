@@ -27,8 +27,8 @@ func NewService(ctx context.Context, dbPool *pgxpool.Pool) (*AgentService, error
 	log.Println("Initializing LLM service...")
 	// Initialize all provider configs - agents may use different providers than the default
 	config := LLMProviderConfig{
-		OpenAI:    OpenAIProvider,
-		Anthropic: AnthropicProvider,
+		OpenAI:    DefaultOpenAIConfig,
+		Anthropic: DefaultAnthropicConfig,
 	}
 
 	return &AgentService{
@@ -38,6 +38,16 @@ func NewService(ctx context.Context, dbPool *pgxpool.Pool) (*AgentService, error
 	}, nil
 }
 
+// getImplByProvider returns an initialized struct that implements LLMProvider interface
+// The returned struct must NOT have the 'agent' field set yet, as the agent is not created.
+// This requires a slight adjustment: implementing structs (OpenAIProvider/AnthropicProvider)
+// should allow setting the agent later or the interface needs to account for this.
+// Given the existing design where Agent accesses Config/Tools, passing Agent to the Provider is correct.
+// But we can't create Provider with Agent because Agent needs Provider. Circular dependency.
+// Solution:
+// 1. Create LLMClientWrapper (RAW client) first.
+// 2. Create Agent with RAW client or placeholder.
+// 3. Construct concrete Provider (wrapping RAW client + Agent) and assign to Agent.
 func (s *AgentService) getClientByProvider(provider database.ModelProvider) (*LLMClientWrapper, error) {
 	var client *LLMClientWrapper
 	var err error

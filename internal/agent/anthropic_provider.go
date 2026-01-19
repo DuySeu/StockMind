@@ -6,67 +6,25 @@ import (
 	"fmt"
 	"stockmind/internal/database"
 	"strings"
-	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/bedrock"
-	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func createAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*LLMClientWrapper, error) {
-	var ac anthropic.Client
-	if cfg.AuthType == "" {
-		return nil, fmt.Errorf("AuthType is required: must be 'api_key' or 'aws'")
-	}
-	if cfg.AuthType == "api_key" {
-		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("API key is required for api_key auth type")
-		}
-		ac = anthropic.NewClient(option.WithAPIKey(cfg.APIKey))
-	} else if cfg.AuthType == "aws" {
-		if cfg.AWS.Type == "" {
-			return nil, fmt.Errorf("AWS credential type is required for aws auth type")
-		}
-		defaultAWSCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWS.Region))
-		if err != nil {
-			return nil, fmt.Errorf("Failed to load AWS config")
-		}
-		awsCfg := defaultAWSCfg
-		if cfg.AWS.Type == "assume_role" {
-			if cfg.AWS.RoleARN == "" {
-				return nil, fmt.Errorf("Role ARN is required for assume_role type")
-			}
-			awsCfg, err = config.LoadDefaultConfig(ctx,
-				config.WithRegion(cfg.AWS.Region),
-				config.WithCredentialsProvider(stscreds.NewAssumeRoleProvider(
-					sts.NewFromConfig(defaultAWSCfg),
-					cfg.AWS.RoleARN,
-					func(o *stscreds.AssumeRoleOptions) {
-						if cfg.AWS.Duration != 0 {
-							o.Duration = time.Second * time.Duration(cfg.AWS.Duration)
-						}
-						if cfg.AWS.RoleSessionName != "" {
-							o.RoleSessionName = cfg.AWS.RoleSessionName
-						}
-					},
-				)),
-			)
-			if err != nil {
-				return nil, fmt.Errorf("Failed to assume AWS role")
-			}
-		}
-		ac = anthropic.NewClient(bedrock.WithConfig(awsCfg))
-	} else {
-		return nil, fmt.Errorf("unsupported AuthType: %s (must be 'api_key' or 'aws')", cfg.AuthType)
-	}
-	return &LLMClientWrapper{OfAnthropic: &ac}, nil
+type AnthropicProvider struct {
+	client *anthropic.Client
+	agent  *Agent
 }
 
-func (a *Agent) newAnthropicMessage() anthropic.MessageNewParams {
+func NewAnthropicProvider(client *anthropic.Client, agent *Agent) *AnthropicProvider {
+	return &AnthropicProvider{
+		client: client,
+		agent:  agent,
+	}
+}
+
+func (p *AnthropicProvider) newAnthropicMessage() anthropic.MessageNewParams {
+	a := p.agent
 	var msgParams anthropic.MessageNewParams
 	if a.config.ThinkingToken == 0 {
 		disabledThinking := anthropic.NewThinkingConfigDisabledParam()
@@ -124,9 +82,10 @@ func anthropicToDbStopReason(reason anthropic.StopReason) database.StopReason {
 
 // Assume Streaming by Default
 // Complete the turn with streaming
-func (a *Agent) completionAnthropic(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
+func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
+	a := p.agent
 	// Prepare messages for Anthropics
-	body := a.newAnthropicMessage()
+	body := p.newAnthropicMessage()
 	for _, m := range messages {
 		if am := m.OfAnthropic; am != nil {
 			body.Messages = append(body.Messages, *am)
@@ -140,10 +99,10 @@ func (a *Agent) completionAnthropic(ctx context.Context, messages []*database.Me
 	}
 	var stopReason database.StopReason
 	// Call Anthropics API
-	if a.provider == nil || a.provider.OfAnthropic == nil {
+	if p.client == nil {
 		return result, stopReason, fmt.Errorf("Anthropic client is not initialized")
 	}
-	stream := a.provider.OfAnthropic.Messages.NewStreaming(ctx, body)
+	stream := p.client.Messages.NewStreaming(ctx, body)
 	if err := stream.Err(); err != nil {
 		return result, stopReason, err
 	}
@@ -273,7 +232,8 @@ func (a *Agent) completionAnthropic(ctx context.Context, messages []*database.Me
 	return result, stopReason, nil
 }
 
-func (a *Agent) toolUseAnthropic(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+	a := p.agent
 	lastMessage := message.OfAnthropic
 	result := database.MessageUnion{}
 	if lastMessage == nil {

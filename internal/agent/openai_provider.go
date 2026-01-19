@@ -14,27 +14,20 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-func createOpenAIClient(config OpenAIConfig) (*LLMClientWrapper, error) {
-	var openaiClient *openai.Client
-
-	if config.AuthType == "openai" {
-		openaiClient = openai.NewClient(config.APIKey)
-	}
-	if config.AuthType == "open_router" {
-		var defaultConfig openai.ClientConfig
-		key := config.APIKey
-		if key == "" {
-			return nil, fmt.Errorf("OPENAI_API_KEY is not found")
-		}
-		defaultConfig = openai.DefaultConfig(key)
-		defaultConfig.BaseURL = config.BaseURL
-
-		openaiClient = openai.NewClientWithConfig(defaultConfig)
-	}
-	return &LLMClientWrapper{OfOpenAI: openaiClient}, nil
+type OpenAIProvider struct {
+	client *openai.Client
+	agent  *Agent // Back-reference to access config and tools
 }
 
-func (a *Agent) newOpenAIMessage() openai.ChatCompletionRequest {
+func NewOpenAIProvider(client *openai.Client, agent *Agent) *OpenAIProvider {
+	return &OpenAIProvider{
+		client: client,
+		agent:  agent,
+	}
+}
+
+func (p *OpenAIProvider) newOpenAIMessage() openai.ChatCompletionRequest {
+	a := p.agent
 	request := openai.ChatCompletionRequest{
 		Model:       a.config.ModelID,
 		MaxTokens:   int(a.config.MaxTokens),
@@ -60,6 +53,7 @@ func (a *Agent) newOpenAIMessage() openai.ChatCompletionRequest {
 	}
 	return request
 }
+
 func openaiToDbStopReason(reason openai.FinishReason) database.StopReason {
 	switch reason {
 	case openai.FinishReasonLength: // Max tokens
@@ -73,9 +67,9 @@ func openaiToDbStopReason(reason openai.FinishReason) database.StopReason {
 	}
 }
 
-func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
+func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
 	// Prepare messages for OpenAI
-	body := a.newOpenAIMessage()
+	body := p.newOpenAIMessage()
 	for _, m := range messages {
 		if am := m.OfOpenAI; am != nil {
 			body.Messages = append(body.Messages, *am)
@@ -90,10 +84,10 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 	}
 	var stopReason database.StopReason
 	// Call OpenAI API
-	if a.provider == nil || a.provider.OfOpenAI == nil {
+	if p.client == nil {
 		return result, stopReason, fmt.Errorf("openAI client is not initialized")
 	}
-	stream, err := a.provider.OfOpenAI.CreateChatCompletionStream(ctx, body)
+	stream, err := p.client.CreateChatCompletionStream(ctx, body)
 	if err != nil {
 		return result, stopReason, err
 	}
@@ -139,16 +133,6 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 					callback(ChatEvent{Type: EventTypeText, Content: delta.Content, IsEnd: false})
 				}
 			case len(delta.ToolCalls) > 0:
-				// Append tool calls
-				// Note: OpenAI stream returns partial tool calls, we need to accumulate them
-				// But for now, let's assume we just collect them
-				// Complex tool call accumulation logic might be needed if using official go-openai stream support for tools
-				// For simplicity, we might need to rely on the final accumulated result if the library handles it,
-				// but standard stream handling requires manual accumulation.
-				// Let's implement basic accumulation if needed, or just rely on what we have.
-				// Actually, go-openai's Delta.ToolCalls usually comes with Index.
-				// We need to accumulate them properly.
-
 				for _, tc := range delta.ToolCalls {
 					if tc.Index != nil {
 						index := *tc.Index
@@ -181,7 +165,8 @@ func (a *Agent) completionOpenAI(ctx context.Context, messages []*database.Messa
 	}
 }
 
-func (a *Agent) toolUseOpenAI(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+func (p *OpenAIProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+	a := p.agent
 	lastMessage := message.OfOpenAI
 	result := database.MessageUnion{}
 	if lastMessage == nil {

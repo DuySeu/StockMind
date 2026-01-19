@@ -1,10 +1,11 @@
-package mcp
+package common
 
 const (
-	TRADING_URL  = "https://trading.vietcap.com.vn/api/"
-	CHART_URL    = "chart/OHLCChart/gap-chart"
-	INTRADAY_URL = "market-watch"
-	GRAPHQL_URL  = "https://trading.vietcap.com.vn/data-mt/graphql"
+	TRADING_URL     = "https://trading.vietcap.com.vn/api/"
+	PRICE_BOARD_URL = "price/symbols/getList"
+	CHART_URL       = "chart/OHLCChart/gap-chart"
+	INTRADAY_URL    = "market-watch"
+	GRAPHQL_URL     = "https://trading.vietcap.com.vn/data-mt/graphql"
 )
 
 var VCI_HEADERS = map[string]string{

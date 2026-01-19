@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"stockmind/internal/common"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -54,13 +55,13 @@ func GetPiotroskiEvaluation(ctx context.Context, request mcp.CallToolRequest) (*
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	http_req, err := http.NewRequestWithContext(ctx, "POST", GRAPHQL_URL, bytes.NewBuffer(payloadJSON))
+	http_req, err := http.NewRequestWithContext(ctx, "POST", common.GRAPHQL_URL, bytes.NewBuffer(payloadJSON))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Write headers from VCI_HEADERS
-	for k, v := range VCI_HEADERS {
+	for k, v := range common.VCI_HEADERS {
 		http_req.Header.Set(k, v)
 	}
 
@@ -75,7 +76,7 @@ func GetPiotroskiEvaluation(ctx context.Context, request mcp.CallToolRequest) (*
 	defer resp.Body.Close()
 
 	// Check for GZIP compression
-	reader, err := GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
+	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

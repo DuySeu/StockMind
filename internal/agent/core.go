@@ -32,20 +32,27 @@ type Agent struct {
 	name       string
 	session    database.Session
 	config     database.AgentConfig
-	provider   *LLMClientWrapper
+	provider   LLMProvider
 	tools      []mcp.Tool
 	mcpClients map[string]*mcp_client.Client // Cache of MCP clients by mcp config
 }
 
-func NewAgent(ctx context.Context, session database.Session, name string, config database.AgentConfig, provider *LLMClientWrapper) (*Agent, error) {
+func NewAgent(ctx context.Context, session database.Session, name string, config database.AgentConfig, provider LLMProvider) (*Agent, error) {
 	a := &Agent{
 		name:       name,
 		session:    session,
 		config:     config,
-		provider:   provider,
+		provider:   provider, // provider is already set up when passed in, but we might need to set the agent reference if circular dependency is needed
 		tools:      config.Tools,
 		mcpClients: make(map[string]*mcp_client.Client),
 	}
+
+	// Double linking if providers need access to agent config/tools
+	// Since we construct provider BEFORE agent in current flow, we might need a Setter or redesign construction.
+	// But let's check: provider needs 'agent' because it reads config and tools.
+	// So actually we should construct Agent FIRST, then Provider, then set Provider to Agent.
+	// We will handle this in service.go or here.
+	// For now, let's keep it simple: we assume the caller handles the setup.
 
 	// Initialize all MCP and put them to mcpClient map
 	a.mcpClients = make(map[string]*mcp_client.Client, len(config.McpServers))
@@ -126,23 +133,9 @@ func createMCPClient(ctx context.Context, cfg database.MCPConfig) (*mcp_client.C
 
 func (a *Agent) Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
 	fmt.Println("Agent Completion called", "sessionId", a.session.ID, "agent_name", a.name, "model_provider", a.config.Provider)
-	switch a.config.Provider {
-	case database.ModelProviderOpenAI:
-		return a.completionOpenAI(ctx, messages, callback)
-	case database.ModelProviderAnthropic:
-		return a.completionAnthropic(ctx, messages, callback)
-	default:
-		return database.MessageUnion{}, database.StopReasonUnknown, fmt.Errorf("unsupported model provider: %s", a.config.Provider)
-	}
+	return a.provider.Completion(ctx, messages, callback)
 }
 
 func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
-	switch a.config.Provider {
-	case database.ModelProviderOpenAI:
-		return a.toolUseOpenAI(ctx, message, callback)
-	case database.ModelProviderAnthropic:
-		return a.toolUseAnthropic(ctx, message, callback)
-	default:
-		return database.MessageUnion{}, fmt.Errorf("unsupported model provider: %s", a.config.Provider)
-	}
+	return a.provider.ToolUse(ctx, message, callback)
 }

@@ -81,15 +81,51 @@ func (sm *SessionManager) Initialize() error {
 	// Initialize all agents
 	sm.agents = make(map[string]*Agent, len(sm.agentFlowCfg.Agents))
 	for name, agentCfg := range sm.agentFlowCfg.Agents {
-		// Get providers
-		provider, err := sm.llm.getClientByProvider(agentCfg.Provider)
+		// Get RAW providers first
+		rawClient, err := sm.llm.getClientByProvider(agentCfg.Provider)
 		if err != nil {
 			return fmt.Errorf("failed to get LLM client for provider %s: %w", agentCfg.Provider, err)
 		}
-		agent, err := NewAgent(sm.ctx, sm.session, name, agentCfg, provider)
+
+		// Initialize Agent WITHOUT Provider first (pass nil)
+		// We modify NewAgent to accept nil, OR we pass a dummy logic.
+		// Better approach: NewAgent logic for setting up Tools/MCP does NOT depend on Provider.
+		// So we create Agent, THEN we set the Provider implementation.
+		// However, NewAgent signature requires LLMProvider now.
+		// We can create a temporary placeholder or refactor NewAgent.
+		// Let's modify usage: We will construct the specific Provider Adapter here.
+
+		// 1. Create Agent with nil provider first (hacky but works if we set it immediately)
+		// Or pass a no-op implementation.
+		// Let's rely on standard Go:
+		// agent := &Agent{...} -> NewAgent does complex setup (MCP).
+
+		// Let's create the Agent first with a nil provider, then attach.
+		agent, err := NewAgent(sm.ctx, sm.session, name, agentCfg, nil)
 		if err != nil {
 			return fmt.Errorf("failed to initialize agent %s: %w", name, err)
 		}
+
+		// 2. Select and Create the concrete Provider specific to the Agent
+		var provider LLMProvider
+		switch agentCfg.Provider {
+		case database.ModelProviderOpenAI:
+			if rawClient.OfOpenAI == nil {
+				return fmt.Errorf("OpenAI client is nil for agent %s", name)
+			}
+			provider = NewOpenAIProvider(rawClient.OfOpenAI, agent)
+		case database.ModelProviderAnthropic:
+			if rawClient.OfAnthropic == nil {
+				return fmt.Errorf("Anthropic client is nil for agent %s", name)
+			}
+			provider = NewAnthropicProvider(rawClient.OfAnthropic, agent)
+		default:
+			return fmt.Errorf("unsupported provider %s for agent %s", agentCfg.Provider, name)
+		}
+
+		// 3. Set the provider to the agent
+		agent.provider = provider
+
 		fmt.Println("Agent initialized", "name", name, "model_provider", agentCfg.Provider, "tools_count", len(agent.tools))
 		sm.agents[name] = agent
 	}

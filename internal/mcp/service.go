@@ -1,27 +1,12 @@
 package mcp
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
-
-func GZIPCompression(body io.ReadCloser, header string) (io.ReadCloser, error) {
-	switch header {
-	case "gzip":
-		gz, err := gzip.NewReader(body)
-		if err != nil {
-			return nil, err
-		}
-		return gz, nil
-	default:
-		return body, nil
-	}
-}
 
 func Start(ctx context.Context, protocol string) (func(), error) {
 	// Create MCP server

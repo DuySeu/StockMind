@@ -24,11 +24,11 @@ import {
 import { useChatContext } from "@/hooks/context";
 import {
   Bolt,
+  ChartNoAxesCombined,
   Compass,
   CreditCard,
   EllipsisVertical,
   Folder,
-  LayoutGrid,
   LogOut,
   Moon,
   Plus,
@@ -62,9 +62,9 @@ const menuItems = [
     icon: Compass,
   },
   {
-    title: "Categories",
-    url: "/categories",
-    icon: LayoutGrid,
+    title: "Watchlist",
+    url: "/watchlist",
+    icon: ChartNoAxesCombined,
   },
   {
     title: "Library",

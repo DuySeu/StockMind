@@ -82,6 +82,11 @@ func (s *Server) RegisterRoutes() http.Handler {
 			// r.Put("/{id}", s.UpdateAgentFlowHandler)
 			// r.Delete("/{id}", s.DeleteAgentFlowHandler)
 		})
+
+		// Stock
+		r.Route("/stock", func(r chi.Router) {
+			r.Post("/price-board", s.GetPriceBoardHandler)
+		})
 	})
 
 	return r

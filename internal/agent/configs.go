@@ -42,13 +42,13 @@ type AWSCredentialConfig struct {
 	RoleSessionName string `json:"roleSessionName,omitempty" yaml:"roleSessionName,omitempty"` // optional
 }
 
-var OpenAIProvider = OpenAIConfig{
+var DefaultOpenAIConfig = OpenAIConfig{
 	AuthType: "open_router",
 	APIKey:   os.Getenv("OPENROUTER_API_KEY"),
 	BaseURL:  "https://openrouter.ai/api/v1",
 }
 
-var AnthropicProvider = AnthropicConfig{
+var DefaultAnthropicConfig = AnthropicConfig{
 	AuthType: "aws",
 	AWS: AWSCredentialConfig{
 		Type:            "assume_role",

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"stockmind/internal/common"
 	"strconv"
 	"time"
 
@@ -78,12 +79,12 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	http_req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", TRADING_URL, CHART_URL), bytes.NewBuffer(body))
+	http_req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", common.TRADING_URL, common.CHART_URL), bytes.NewBuffer(body))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	// Write headers from VCI_HEADERS
-	for k, v := range VCI_HEADERS {
+	for k, v := range common.VCI_HEADERS {
 		http_req.Header.Set(k, v)
 	}
 	// Fetch stock price from VCI
@@ -95,7 +96,7 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	var resp_bytes []byte
 
 	// Decompress if needed
-	reader, err := GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
+	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
 	if err != nil {
 		return mcp.NewToolResultError("failed to create reader: " + err.Error()), nil
 	}
