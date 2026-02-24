@@ -22,7 +22,7 @@ const (
 	ONE_HOUR   VCITimeFrame = "ONE_HOUR"
 )
 
-type vciStockRequest struct {
+type VCIStockRequest struct {
 	TimeFrame VCITimeFrame `json:"timeFrame"`
 	Symbols   []string     `json:"symbols"`
 	To        int64        `json:"to"`
@@ -66,7 +66,7 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	timeFrame := VCITimeFrame(timeFrameStr)
 	countBack := request.GetInt("count_back", 10)
 
-	stockRequest := vciStockRequest{
+	stockRequest := VCIStockRequest{
 		TimeFrame: timeFrame,
 		Symbols:   []string{symbol},
 		To:        time.Now().Unix(),

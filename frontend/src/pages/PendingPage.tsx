@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Construction } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const LibraryPage = () => {
+const PendingPage = () => {
   return (
     <div className="flex h-full min-h-[60vh] flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in duration-500">
       <div className="rounded-full bg-muted p-6 mb-6">
@@ -25,4 +25,4 @@ const LibraryPage = () => {
   );
 };
 
-export default LibraryPage;
+export default PendingPage;

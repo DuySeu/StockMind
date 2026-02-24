@@ -137,13 +137,7 @@ INSERT INTO agent_flows (id, name, config) VALUES
             "topP": 0.9,
             "topK": 40,
             "tools": [],
-            "mcpServers": [
-                {
-                    "name": "stocks-mcp",
-                    "protocol": "streamablehttp",
-                    "url": "http://localhost:8081/mcp"
-                }
-            ]
+            "mcpServers": []
         }
     },
     "nodes": [

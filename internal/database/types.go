@@ -39,7 +39,9 @@ const (
 	NodeContentRoleUser      NodeContentRole = "user"
 	NodeContentRoleSystem    NodeContentRole = "system"
 	ModelProviderAnthropic   ModelProvider   = "anthropic"
+	ModelProviderAWS         ModelProvider   = "aws"
 	ModelProviderOpenAI      ModelProvider   = "openai"
+	ModelProviderOpenRouter  ModelProvider   = "openrouter"
 )
 
 type NodeOutput struct {

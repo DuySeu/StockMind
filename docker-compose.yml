@@ -17,6 +17,7 @@ services:
       DB_USERNAME: ${DB_USERNAME}
       DB_PASSWORD: ${DB_PASSWORD}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
     depends_on:
       stockmind_db:
         condition: service_healthy

@@ -4,9 +4,10 @@ import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
 import SettingPage from "@/pages/SettingPage";
 import ErrorPage from "@/pages/ErrorPage";
-import ExplorePage from "@/pages/Explore";
 import WatchListPage from "@/pages/WatchList";
-import LibraryPage from "@/pages/Library";
+import PendingPage from "./pages/PendingPage";
+import MarketResearcherPage from "./pages/MarketResearcherPage";
+import ResearchResultPage from "./pages/ResearchResultPage";
 
 export const router = createBrowserRouter([
   {
@@ -28,7 +29,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "explore",
-        element: <ExplorePage />,
+        element: <PendingPage />,
       },
       {
         path: "watchlist",
@@ -36,7 +37,15 @@ export const router = createBrowserRouter([
       },
       {
         path: "library",
-        element: <LibraryPage />,
+        element: <PendingPage />,
+      },
+      {
+        path: "research",
+        element: <MarketResearcherPage />,
+      },
+      {
+        path: "research/:id",
+        element: <ResearchResultPage />,
       },
     ],
   },

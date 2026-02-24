@@ -1,10 +1,7 @@
 import axios from "axios";
 
 // Create axios instance
-const api = axios.create({
-  baseURL: "http://localhost:8080/v1",
-  timeout: 10000,
-});
+const api = axios.create({ baseURL: "http://localhost:8080/v1" });
 
 // Request interceptor
 api.interceptors.request.use(
@@ -13,7 +10,7 @@ api.interceptors.request.use(
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // Response interceptor - Handle error 401/403
@@ -32,7 +29,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export default api;

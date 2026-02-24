@@ -58,7 +58,7 @@ type Session = {
 const menuItems = [
   {
     title: "Explore",
-    url: "/explore",
+    url: "/research",
     icon: Compass,
   },
   {

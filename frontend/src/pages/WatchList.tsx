@@ -4,7 +4,7 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PriceBoard } from "@/types/stock";
-import { Plus } from "lucide-react";
+import { Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -61,6 +61,10 @@ const WatchListPage = () => {
     form.reset();
   };
 
+  const handleRefresh = () => {
+    getPriceBoard(watchList).then((res) => setPriceBoard(res));
+  };
+
   return (
     <div className="p-3">
       <Form {...form}>
@@ -85,6 +89,9 @@ const WatchListPage = () => {
           </Button>
         </form>
       </Form>
+      <Button type="button" size="icon" onClick={handleRefresh}>
+        <RotateCw />
+      </Button>
       <div className="rounded-lg border overflow-hidden">
         <Table>
           <TableHeader>

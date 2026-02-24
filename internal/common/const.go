@@ -6,6 +6,8 @@ const (
 	CHART_URL       = "chart/OHLCChart/gap-chart"
 	INTRADAY_URL    = "market-watch"
 	GRAPHQL_URL     = "https://trading.vietcap.com.vn/data-mt/graphql"
+
+	TAVILY_URL = "https://api.tavily.com"
 )
 
 var VCI_HEADERS = map[string]string{

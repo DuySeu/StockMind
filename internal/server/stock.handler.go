@@ -33,7 +33,6 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Create new request
-	// FIX: Use PRICE_BOARD_URL instead of CHART_URL
 	http_req, err := http.NewRequestWithContext(r.Context(), "POST", fmt.Sprintf("%s%s", common.TRADING_URL, common.PRICE_BOARD_URL), bytes.NewBuffer(body))
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to create request")

@@ -86,6 +86,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Stock
 		r.Route("/stock", func(r chi.Router) {
 			r.Post("/price-board", s.GetPriceBoardHandler)
+			r.Post("/research", s.MarketResearchHandler)
 		})
 	})
 

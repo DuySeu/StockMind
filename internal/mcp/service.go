@@ -70,6 +70,17 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 		GetReport,
 	)
 
+	s.AddTool(
+		mcp.NewTool("web_search",
+			mcp.WithDescription("Get web search result for a query related to stock news"),
+			mcp.WithString("query",
+				mcp.Required(),
+				mcp.Description("Search query"),
+			),
+		),
+		WebSearchResult,
+	)
+
 	// Start server based on protocol
 	switch protocol {
 	case "stdio":
