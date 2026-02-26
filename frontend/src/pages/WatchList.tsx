@@ -1,4 +1,4 @@
-import { getPriceBoard } from "@/api/stock";
+import { addSymbolInPriceBoard, getPriceBoard } from "@/api/stock";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -42,7 +42,6 @@ const getPriceColorClass = (price: number, ceiling: number, floor: number, refer
 
 const WatchListPage = () => {
   const [priceBoard, setPriceBoard] = useState<PriceBoard[]>([]);
-  const [watchList, setWatchList] = useState<string[]>(["FPT", "HPG", "VCB", "VPB", "TCB", "VNM"]);
   const form = useForm({
     defaultValues: {
       symbols: "",
@@ -50,36 +49,40 @@ const WatchListPage = () => {
   });
 
   useEffect(() => {
-    getPriceBoard(watchList).then((res) => {
-      console.log(res);
+    getPriceBoard().then((res) => {
       setPriceBoard(res);
     });
-  }, [watchList]);
+  }, []);
 
-  const onSubmit = (data: any) => {
-    setWatchList((prev) => [...prev, data.symbols.toUpperCase()]);
-    form.reset();
+  const onSubmit = async (data: any) => {
+    try {
+      await addSymbolInPriceBoard(data.symbols.toUpperCase());
+    } catch (error) {
+      console.log(error);
+    } finally {
+      const res = await getPriceBoard();
+      setPriceBoard(res);
+      form.reset();
+    }
   };
 
-  const handleRefresh = () => {
-    getPriceBoard(watchList).then((res) => setPriceBoard(res));
+  const handleRefresh = async () => {
+    const res = await getPriceBoard();
+    setPriceBoard(res);
   };
 
   return (
-    <div className="p-3">
+    <div className="p-3 space-y-4">
+      <h1 className="text-2xl font-bold text-primary">Watchlist</h1>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2">
           <FormField
             control={form.control}
             name="symbols"
             render={({ field }) => (
-              <FormItem>
+              <FormItem className="flex-1">
                 <FormControl>
-                  <Input
-                    {...field}
-                    className="w-[220px] text-secondary-foreground"
-                    placeholder="Enter symbols to watch..."
-                  />
+                  <Input {...field} className="text-secondary-foreground" placeholder="Enter symbols to watch..." />
                 </FormControl>
               </FormItem>
             )}
@@ -87,11 +90,11 @@ const WatchListPage = () => {
           <Button type="submit" size="icon">
             <Plus />
           </Button>
+          <Button type="button" size="icon" onClick={handleRefresh}>
+            <RotateCw />
+          </Button>
         </form>
       </Form>
-      <Button type="button" size="icon" onClick={handleRefresh}>
-        <RotateCw />
-      </Button>
       <div className="rounded-lg border overflow-hidden">
         <Table>
           <TableHeader>

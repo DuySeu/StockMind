@@ -25,3 +25,6 @@ sql:
           - column: "session_history.content"
             go_type:
               type: "MessageUnion"
+          - column: "research.report"
+            go_type:
+              type: "ResearchReport"

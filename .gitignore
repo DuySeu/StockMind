@@ -37,4 +37,6 @@ main
 tools_server/venv
 tools_server/*/__pycache__/
 
-# .agent
+# Dev environment
+docker-compose.dev.yml
+Dockerfile.dev

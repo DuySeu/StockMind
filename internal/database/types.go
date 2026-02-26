@@ -83,3 +83,30 @@ type MessageUnion struct {
 	OfOpenAI    *openai.ChatCompletionMessage `json:"of_openai,omitempty"`
 	OfAnthropic *anthropic.MessageParam       `json:"of_anthropic,omitempty"`
 }
+
+// ResearchReport is the outbound payload for the research endpoint.
+type ResearchReport struct {
+	Reports     map[string]StockReport `json:"reports"`
+	GeneratedAt string                 `json:"generated_at"`
+}
+
+// StockReport holds the analysis returned for a single ticker.
+type StockReport struct {
+	Ticker             string   `json:"ticker"`
+	CompanyName        string   `json:"company_name"`
+	Summary            string   `json:"summary"`
+	CurrentPerformance string   `json:"current_performance"`
+	KeyInsights        []string `json:"key_insights"`
+	Recommendation     string   `json:"recommendation"` // Buy/hold/sell with reasoning
+	RiskAssessment     string   `json:"risk_assessment"`
+	PriceOutlook       string   `json:"price_outlook"`
+	MarketCap          string   `json:"market_cap"`
+	PERatio            string   `json:"pe_ratio"`
+	Sources            []Source `json:"sources"`
+}
+
+// Source is a reference URL used in the research.
+type Source struct {
+	URL   string `json:"url"`
+	Title string `json:"title"`
+}

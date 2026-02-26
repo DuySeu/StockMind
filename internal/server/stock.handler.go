@@ -5,31 +5,39 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"stockmind/internal/common"
 	"time"
 )
 
-type StockPrice struct {
+type AddSymbolInPriceBoardRequest struct {
 	Symbol string `json:"symbol"`
-	Prices string `json:"prices"`
 }
 
 func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Symbols []string `json:"symbols"`
+	// Get symbols from watchlist in database
+	watchlist, err := s.db.GetWatchlist(r.Context())
+	if err != nil {
+		log.Printf("[PriceBoard] Failed to get watchlist: %v", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get watchlist")
+		return
 	}
+
+	symbols := make([]string, 0, len(watchlist))
+	for _, item := range watchlist {
+		symbols = append(symbols, item.Ticker)
+	}
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
-	// Parse JSON request body
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-	body, err := json.Marshal(req)
+
+	body, err := json.Marshal(struct {
+		Symbols []string `json:"symbols"`
+	}{Symbols: symbols})
 	if err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to marshal symbols")
 		return
 	}
 	// Create new request
@@ -75,4 +83,34 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Write response
 	common.WriteJSON(w, http.StatusOK, priceBoard)
+}
+
+func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddSymbolInPriceBoardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		common.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Add symbol to watchlist
+	_, err := s.db.CreateWatchlistData(r.Context(), req.Symbol)
+	if err != nil {
+		log.Printf("[PriceBoard] Failed to add symbol to watchlist: %v", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to add symbol to watchlist")
+		return
+	}
+
+	// Write response
+	common.WriteJSON(w, http.StatusCreated, "Symbol added to watchlist successfully")
+}
+
+func (s *Server) GetWatchlistHandler(w http.ResponseWriter, r *http.Request) {
+	watchlist, err := s.db.GetWatchlist(r.Context())
+	if err != nil {
+		log.Printf("[PriceBoard] Failed to get watchlist: %v", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get watchlist")
+		return
+	}
+
+	common.WriteJSON(w, http.StatusOK, watchlist)
 }

@@ -17,6 +17,15 @@ type AgentFlow struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type Research struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	Ticker         string             `db:"ticker" json:"ticker"`
+	Recommendation string             `db:"recommendation" json:"recommendation"`
+	Price          string             `db:"price" json:"price"`
+	Report         ResearchReport     `db:"report" json:"report"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Session struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	Title       string             `db:"title" json:"title"`
@@ -44,4 +53,10 @@ type User struct {
 	Provider  string             `db:"provider" json:"provider"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type Watchlist struct {
+	ID        uuid.UUID          `db:"id" json:"id"`
+	Ticker    string             `db:"ticker" json:"ticker"`
+	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }

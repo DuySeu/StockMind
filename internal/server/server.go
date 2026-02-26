@@ -48,7 +48,7 @@ func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, port string) *ht
 		Handler:      NewServer.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: 5 * time.Minute, // increased for SSE streaming (research can take 2+ min)
 	}
 
 	return server

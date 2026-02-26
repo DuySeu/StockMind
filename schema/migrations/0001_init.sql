@@ -60,6 +60,25 @@ CREATE TABLE IF NOT EXISTS session_history (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Research table
+CREATE TABLE IF NOT EXISTS research (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker VARCHAR(255) NOT NULL,
+    recommendation VARCHAR(255) NOT NULL,
+    price VARCHAR(255) NOT NULL,
+    report JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Watchlist table
+CREATE TABLE IF NOT EXISTS watchlist (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    ticker VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+INSERT INTO watchlist (ticker) VALUES ('FPT'), ('BIG'), ('VRE'), ('VCG'), ('VPB');
+
 -- Default Agent Flow
 INSERT INTO agent_flows (id, name, config) VALUES
 ('01993ca8-a62e-79e3-995c-a46e25a4a2a2', 'Default Flow', 

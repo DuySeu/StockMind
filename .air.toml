@@ -3,9 +3,8 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = []
-  bin = "./main"
-  cmd = "make build"
+  args_bin = ["server", "--port", "8080", "--mcp-protocol", "http"]
+  cmd = "go build -o ./tmp/main cmd/main.go"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "node_modules"]
   exclude_file = []
@@ -14,7 +13,7 @@ tmp_dir = "tmp"
   follow_symlink = false
   full_bin = ""
   include_dir = []
-  include_ext = ["go", "tpl", "tmpl", "html"]
+  include_ext = ["go", "tpl", "tmpl", "html", "sql"]
   include_file = []
   kill_delay = "0s"
   log = "build-errors.log"
