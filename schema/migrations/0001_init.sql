@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS research (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     ticker VARCHAR(255) NOT NULL,
     recommendation VARCHAR(255) NOT NULL,
-    price VARCHAR(255) NOT NULL,
+    reference_price VARCHAR(255) NOT NULL,
     report JSONB NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

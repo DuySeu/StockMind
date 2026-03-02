@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,6 +208,19 @@ type progressEvent struct {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// firstWord returns the first whitespace-delimited word from s.
+// If s is empty or blank, it returns "Unknown".
+func firstWord(s string) string {
+	if words := strings.Fields(s); len(words) > 0 {
+		return words[0]
+	}
+	return "Unknown"
+}
+
+// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
@@ -218,6 +233,23 @@ func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := stockDigestAgent(r.Context(), req, nil)
+	go func() {
+		for _, ticker := range response.Reports {
+			price, err := GetLatestMatchPrice(context.Background(), ticker.Ticker)
+			if err != nil {
+				slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
+			}
+			_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
+				Ticker:         ticker.Ticker,
+				Recommendation: firstWord(ticker.Recommendation),
+				ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
+				Report:         ticker,
+			})
+			if err != nil {
+				slog.Error("Failed to create research report", "error", err)
+			}
+		}
+	}()
 	common.WriteJSON(w, http.StatusOK, response)
 }
 
@@ -250,7 +282,28 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// All progress drained, send the final result
-	writeSSE(w, map[string]any{"type": "result", "data": <-doneCh})
+	response := <-doneCh
+	writeSSE(w, map[string]any{"type": "result", "data": response})
+
+	// Persist research reports in the background
+	go func() {
+		for _, ticker := range response.Reports {
+			price, err := GetLatestMatchPrice(context.Background(), ticker.Ticker)
+			if err != nil {
+				slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
+			}
+			slog.Info("Stock price", "ticker", ticker.Ticker, "price", price)
+			_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
+				Ticker:         ticker.Ticker,
+				Recommendation: firstWord(ticker.Recommendation),
+				ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
+				Report:         ticker,
+			})
+			if err != nil {
+				slog.Error("Failed to create research report", "ticker", ticker.Ticker, "error", err)
+			}
+		}
+	}()
 }
 
 // ---------------------------------------------------------------------------
@@ -476,11 +529,28 @@ func parseResearchResult(ticker string, resp *tavilyPollResponse) (database.Stoc
 	return report, nil
 }
 
+type ResearchReport struct {
+	database.GetResearchReportsRow
+	Price float64 `json:"price"`
+}
+
 func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Request) {
-	reports, err := s.db.GetResearchReports(r.Context())
+	var reports []ResearchReport
+	reportFromDB, err := s.db.GetResearchReports(r.Context())
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for _, report := range reportFromDB {
+		price, err := GetLatestMatchPrice(context.Background(), report.Ticker)
+		if err != nil {
+			common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		reports = append(reports, ResearchReport{
+			GetResearchReportsRow: report,
+			Price:                 price,
+		})
 	}
 	common.WriteJSON(w, http.StatusOK, reports)
 }

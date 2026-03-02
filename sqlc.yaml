@@ -27,4 +27,4 @@ sql:
               type: "MessageUnion"
           - column: "research.report"
             go_type:
-              type: "ResearchReport"
+              type: "StockReport"

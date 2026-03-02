@@ -21,8 +21,8 @@ type Research struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	Ticker         string             `db:"ticker" json:"ticker"`
 	Recommendation string             `db:"recommendation" json:"recommendation"`
-	Price          string             `db:"price" json:"price"`
-	Report         ResearchReport     `db:"report" json:"report"`
+	ReferencePrice string             `db:"reference_price" json:"reference_price"`
+	Report         StockReport        `db:"report" json:"report"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 

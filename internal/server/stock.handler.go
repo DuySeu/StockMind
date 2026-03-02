@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,12 +12,106 @@ import (
 	"time"
 )
 
+// ---------------------------------------------------------------------------
+// Request / response types
+// ---------------------------------------------------------------------------
+
 type AddSymbolInPriceBoardRequest struct {
 	Symbol string `json:"symbol"`
 }
 
+// ---------------------------------------------------------------------------
+// FetchStockPrice — shared VCI price board fetcher
+// ---------------------------------------------------------------------------
+
+const vciHTTPTimeout = 10 * time.Second
+
+// FetchStockPrice calls the VCI price board API for the given symbols and
+// returns the parsed JSON response. It is the single source of truth for
+// building the request, setting headers, and handling gzip decompression.
+func FetchStockPrice(ctx context.Context, symbols []string) (interface{}, error) {
+	body, err := json.Marshal(struct {
+		Symbols []string `json:"symbols"`
+	}{Symbols: symbols})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal symbols: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		fmt.Sprintf("%s%s", common.TRADING_URL, common.PRICE_BOARD_URL),
+		bytes.NewBuffer(body),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	for k, v := range common.VCI_HEADERS {
+		httpReq.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: vciHTTPTimeout}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch stock prices: %w", err)
+	}
+	defer resp.Body.Close()
+
+	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
+	if err != nil {
+		return nil, fmt.Errorf("decompression failed: %w", err)
+	}
+	defer reader.Close()
+
+	respBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var result interface{}
+	if err := json.Unmarshal(respBytes, &result); err != nil {
+		return nil, fmt.Errorf("invalid JSON from VCI: %w", err)
+	}
+
+	return result, nil
+}
+
+// GetLatestMatchPrice fetches the latest match price for a single ticker.
+// It navigates the VCI response at path: [0].matchPrice.matchPrice
+func GetLatestMatchPrice(ctx context.Context, ticker string) (float64, error) {
+	data, err := FetchStockPrice(ctx, []string{ticker})
+	if err != nil {
+		return 0, fmt.Errorf("fetch price for %s: %w", ticker, err)
+	}
+
+	// Response is an array: [{ matchPrice: { matchPrice: 170000, ... }, ... }]
+	items, ok := data.([]interface{})
+	if !ok || len(items) == 0 {
+		return 0, fmt.Errorf("unexpected response format for %s: not an array or empty", ticker)
+	}
+
+	item, ok := items[0].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("unexpected response format for %s: first element is not an object", ticker)
+	}
+
+	matchPriceObj, ok := item["matchPrice"].(map[string]interface{})
+	if !ok {
+		return 0, fmt.Errorf("missing matchPrice object for %s", ticker)
+	}
+
+	price, ok := matchPriceObj["matchPrice"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("matchPrice is not a number for %s", ticker)
+	}
+
+	return price, nil
+}
+
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
 func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
-	// Get symbols from watchlist in database
 	watchlist, err := s.db.GetWatchlist(r.Context())
 	if err != nil {
 		log.Printf("[PriceBoard] Failed to get watchlist: %v", err)
@@ -29,59 +124,13 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 		symbols = append(symbols, item.Ticker)
 	}
 
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	body, err := json.Marshal(struct {
-		Symbols []string `json:"symbols"`
-	}{Symbols: symbols})
+	priceBoard, err := FetchStockPrice(r.Context(), symbols)
 	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to marshal symbols")
-		return
-	}
-	// Create new request
-	http_req, err := http.NewRequestWithContext(r.Context(), "POST", fmt.Sprintf("%s%s", common.TRADING_URL, common.PRICE_BOARD_URL), bytes.NewBuffer(body))
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to create request")
-		return
-	}
-
-	// Write headers from VCI_HEADERS
-	for k, v := range common.VCI_HEADERS {
-		http_req.Header.Set(k, v)
-	}
-
-	// Fetch stock price from VCI
-	resp, err := client.Do(http_req)
-	if err != nil {
+		log.Printf("[PriceBoard] %v", err)
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to fetch stock prices")
 		return
 	}
-	defer resp.Body.Close()
 
-	// Decompress if needed
-	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Decompression failed")
-		return
-	}
-	defer reader.Close()
-
-	respBytes, err := io.ReadAll(reader)
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to read response")
-		return
-	}
-
-	// Decode into generic interface to see original response structure
-	var priceBoard interface{}
-	if err := json.Unmarshal(respBytes, &priceBoard); err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Invalid JSON response from upstream provider")
-		return
-	}
-
-	// Write response
 	common.WriteJSON(w, http.StatusOK, priceBoard)
 }
 
@@ -92,7 +141,6 @@ func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Add symbol to watchlist
 	_, err := s.db.CreateWatchlistData(r.Context(), req.Symbol)
 	if err != nil {
 		log.Printf("[PriceBoard] Failed to add symbol to watchlist: %v", err)
@@ -100,7 +148,6 @@ func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	// Write response
 	common.WriteJSON(w, http.StatusCreated, "Symbol added to watchlist successfully")
 }
 

@@ -1,9 +1,12 @@
-import { getWatchlist, streamMarketResearch } from "@/api/stock";
+import { getResearchReport, getResearchReportById, getWatchlist, streamMarketResearch } from "@/api/stock";
+import ResearchReport from "@/components/containers/ResearchReport";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Check, Loader2, Plus, X } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Check, FileText, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -24,6 +27,48 @@ const stepLabels: Record<string, string> = {
   failed: "Failed",
 };
 
+const ReportDialog = ({ reportId }: { reportId: string }) => {
+  const [open, setOpen] = useState(false);
+  const [reportData, setReportData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchReport = async () => {
+    setLoading(true);
+    setReportData(null);
+    setOpen(true);
+    try {
+      const data = await getResearchReportById(reportId);
+      setReportData(data);
+    } catch (error) {
+      console.error("Failed to fetch report:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <button className="cursor-pointer hover:text-accent transition-colors" onClick={fetchReport}>
+        <FileText />
+      </button>
+      <DialogContent className="w-full sm:max-w-6xl">
+        <DialogHeader className="text-primary">
+          <DialogTitle>Research Report</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col items-center p-3 gap-4 overflow-y-auto no-scrollbar max-h-[50vh]">
+          {loading ? (
+            <div className="flex items-center justify-center p-10">
+              <Loader2 className="h-8 w-8 animate-spin text-accent" />
+            </div>
+          ) : (
+            <ResearchReport data={reportData} />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const MarketResearcherPage = () => {
   const navigate = useNavigate();
   const [watchList, setWatchList] = useState<any[]>([]);
@@ -31,10 +76,17 @@ const MarketResearcherPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const [researchReport, setResearchReport] = useState<any[]>([]);
 
   useEffect(() => {
     getWatchlist().then((response) => {
       setWatchList(response);
+    });
+  }, []);
+
+  useEffect(() => {
+    getResearchReport().then((response) => {
+      setResearchReport(response);
     });
   }, []);
 
@@ -102,6 +154,24 @@ const MarketResearcherPage = () => {
       {} as Record<string, ProgressStep>,
     ),
   );
+
+  const getPriceColorClass = (price: number, reference: number): string => {
+    if (price > reference) return "text-green-500";
+    if (price < reference) return "text-red-500";
+    return "text-yellow-500";
+  };
+
+  const calculateChangePercent = (
+    currentPrice: number,
+    referencePrice: number,
+  ): { percent: string; isPositive: boolean; isNeutral: boolean } => {
+    const change = ((currentPrice - referencePrice) / referencePrice) * 100;
+    return {
+      percent: change.toFixed(2),
+      isPositive: change > 0,
+      isNeutral: change === 0,
+    };
+  };
 
   return (
     <div className="flex flex-col items-center p-3 gap-4">
@@ -247,6 +317,53 @@ const MarketResearcherPage = () => {
           </div>
         )}
       </div>
+      {researchReport && researchReport.length > 0 && (
+        <div className="w-full max-w-6xl bg-primary rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50">
+                <TableHead className="font-bold">Symbol</TableHead>
+                <TableHead className="font-bold">Reference Price</TableHead>
+                <TableHead className="font-bold">Recommendation</TableHead>
+                <TableHead className="font-bold">Generated at</TableHead>
+                <TableHead className="font-bold">Latest Price</TableHead>
+                <TableHead className="font-bold">% Change</TableHead>
+                <TableHead className="font-bold">Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody className="text-secondary-foreground">
+              {researchReport.map((stock: any) => {
+                const change = calculateChangePercent(stock.price, stock.reference_price);
+                const priceColor = getPriceColorClass(stock.price, stock.reference_price);
+                return (
+                  <TableRow key={stock.id}>
+                    <TableCell className={`font-bold ${priceColor}`}>{stock.ticker}</TableCell>
+                    <TableCell className={`text-sm ${priceColor}`}>{stock.reference_price}</TableCell>
+                    <TableCell className="text-primary-foreground text-sm font-bold">
+                      {stock.recommendation.toUpperCase()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {new Date(stock.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell className={`text-sm ${priceColor}`}>{stock.price}</TableCell>
+                    <TableCell
+                      className={`font-semibold ${
+                        change.isNeutral ? "text-yellow-500" : change.isPositive ? "text-green-500" : "text-red-500"
+                      }`}
+                    >
+                      {change.isPositive ? "+" : ""}
+                      {change.percent}%
+                    </TableCell>
+                    <TableCell className="text-primary-foreground text-sm text-center">
+                      <ReportDialog reportId={stock.id} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </div>
   );
 };

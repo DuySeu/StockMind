@@ -13,21 +13,21 @@ import (
 )
 
 const createResearchReport = `-- name: CreateResearchReport :one
-INSERT INTO research (ticker, recommendation, price, report) VALUES ($1, $2, $3, $4) RETURNING id, ticker, recommendation, price, report, created_at
+INSERT INTO research (ticker, recommendation, reference_price, report) VALUES ($1, $2, $3, $4) RETURNING id, ticker, recommendation, reference_price, report, created_at
 `
 
 type CreateResearchReportParams struct {
-	Ticker         string         `db:"ticker" json:"ticker"`
-	Recommendation string         `db:"recommendation" json:"recommendation"`
-	Price          string         `db:"price" json:"price"`
-	Report         ResearchReport `db:"report" json:"report"`
+	Ticker         string      `db:"ticker" json:"ticker"`
+	Recommendation string      `db:"recommendation" json:"recommendation"`
+	ReferencePrice string      `db:"reference_price" json:"reference_price"`
+	Report         StockReport `db:"report" json:"report"`
 }
 
 func (q *Queries) CreateResearchReport(ctx context.Context, arg CreateResearchReportParams) (Research, error) {
 	row := q.db.QueryRow(ctx, createResearchReport,
 		arg.Ticker,
 		arg.Recommendation,
-		arg.Price,
+		arg.ReferencePrice,
 		arg.Report,
 	)
 	var i Research
@@ -35,7 +35,7 @@ func (q *Queries) CreateResearchReport(ctx context.Context, arg CreateResearchRe
 		&i.ID,
 		&i.Ticker,
 		&i.Recommendation,
-		&i.Price,
+		&i.ReferencePrice,
 		&i.Report,
 		&i.CreatedAt,
 	)
@@ -46,22 +46,22 @@ const getResearchReportById = `-- name: GetResearchReportById :one
 SELECT report FROM research WHERE id = $1
 `
 
-func (q *Queries) GetResearchReportById(ctx context.Context, id uuid.UUID) (ResearchReport, error) {
+func (q *Queries) GetResearchReportById(ctx context.Context, id uuid.UUID) (StockReport, error) {
 	row := q.db.QueryRow(ctx, getResearchReportById, id)
-	var report ResearchReport
+	var report StockReport
 	err := row.Scan(&report)
 	return report, err
 }
 
 const getResearchReports = `-- name: GetResearchReports :many
-SELECT id, ticker, recommendation, price, created_at FROM research ORDER BY created_at DESC
+SELECT id, ticker, recommendation, reference_price, created_at FROM research ORDER BY created_at DESC
 `
 
 type GetResearchReportsRow struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	Ticker         string             `db:"ticker" json:"ticker"`
 	Recommendation string             `db:"recommendation" json:"recommendation"`
-	Price          string             `db:"price" json:"price"`
+	ReferencePrice string             `db:"reference_price" json:"reference_price"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
@@ -78,7 +78,7 @@ func (q *Queries) GetResearchReports(ctx context.Context) ([]GetResearchReportsR
 			&i.ID,
 			&i.Ticker,
 			&i.Recommendation,
-			&i.Price,
+			&i.ReferencePrice,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -92,21 +92,21 @@ func (q *Queries) GetResearchReports(ctx context.Context) ([]GetResearchReportsR
 }
 
 const updateResearchReport = `-- name: UpdateResearchReport :one
-UPDATE research SET recommendation = $2, price = $3, report = $4 WHERE id = $1 RETURNING id, ticker, recommendation, price, report, created_at
+UPDATE research SET recommendation = $2, reference_price = $3, report = $4 WHERE id = $1 RETURNING id, ticker, recommendation, reference_price, report, created_at
 `
 
 type UpdateResearchReportParams struct {
-	ID             uuid.UUID      `db:"id" json:"id"`
-	Recommendation string         `db:"recommendation" json:"recommendation"`
-	Price          string         `db:"price" json:"price"`
-	Report         ResearchReport `db:"report" json:"report"`
+	ID             uuid.UUID   `db:"id" json:"id"`
+	Recommendation string      `db:"recommendation" json:"recommendation"`
+	ReferencePrice string      `db:"reference_price" json:"reference_price"`
+	Report         StockReport `db:"report" json:"report"`
 }
 
 func (q *Queries) UpdateResearchReport(ctx context.Context, arg UpdateResearchReportParams) (Research, error) {
 	row := q.db.QueryRow(ctx, updateResearchReport,
 		arg.ID,
 		arg.Recommendation,
-		arg.Price,
+		arg.ReferencePrice,
 		arg.Report,
 	)
 	var i Research
@@ -114,7 +114,7 @@ func (q *Queries) UpdateResearchReport(ctx context.Context, arg UpdateResearchRe
 		&i.ID,
 		&i.Ticker,
 		&i.Recommendation,
-		&i.Price,
+		&i.ReferencePrice,
 		&i.Report,
 		&i.CreatedAt,
 	)

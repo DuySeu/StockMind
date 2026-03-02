@@ -21,12 +21,12 @@ export const getMarketResearch = async (symbols_list: string[], model: string) =
 };
 
 export const getResearchReport = async () => {
-  const response = await api.get(`/stock/report`);
+  const response = await api.get(`/stock/research-reports`);
   return response.data;
 };
 
 export const getResearchReportById = async (report_id: string) => {
-  const response = await api.get(`/stock/report/${report_id}`);
+  const response = await api.get(`/stock/research-reports/${report_id}`);
   return response.data;
 };
 
