@@ -1,6 +1,8 @@
 package database
 
 import (
+	"encoding/json"
+
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mark3labs/mcp-go/mcp"
 	openai "github.com/sashabaranov/go-openai"
@@ -109,4 +111,24 @@ type StockReport struct {
 type Source struct {
 	URL   string `json:"url"`
 	Title string `json:"title"`
+}
+
+// UnmarshalJSON allows Source to be deserialized from either a plain string
+// (just a URL) or a JSON object with "url" and "title" fields.
+func (s *Source) UnmarshalJSON(data []byte) error {
+	// Try plain string first (e.g. "https://example.com").
+	var url string
+	if err := json.Unmarshal(data, &url); err == nil {
+		s.URL = url
+		return nil
+	}
+
+	// Otherwise, parse as a structured object.
+	type sourceAlias Source // avoid infinite recursion
+	var alias sourceAlias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*s = Source(alias)
+	return nil
 }

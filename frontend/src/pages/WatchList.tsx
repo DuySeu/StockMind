@@ -3,42 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { calculateChangePercent, formatNumber, formatPrice, getPriceColorClass } from "@/lib/stock";
 import type { PriceBoard } from "@/types/stock";
 import { Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-
-// Helper function to format numbers with commas
-const formatNumber = (num: number): string => {
-  return num.toLocaleString("vi-VN");
-};
-
-// Helper function to format price (divide by 1000 for display in thousands)
-const formatPrice = (price: number): string => {
-  return (price / 1000).toFixed(2);
-};
-
-// Helper function to calculate price change percentage
-const calculateChangePercent = (
-  currentPrice: number,
-  referencePrice: number,
-): { percent: string; isPositive: boolean; isNeutral: boolean } => {
-  const change = ((currentPrice - referencePrice) / referencePrice) * 100;
-  return {
-    percent: change.toFixed(2),
-    isPositive: change > 0,
-    isNeutral: change === 0,
-  };
-};
-
-// Helper function to get price color class based on comparison with reference/ceiling/floor
-const getPriceColorClass = (price: number, ceiling: number, floor: number, reference: number): string => {
-  if (price === ceiling) return "text-purple-500";
-  if (price === floor) return "text-cyan-500";
-  if (price > reference) return "text-green-500";
-  if (price < reference) return "text-red-500";
-  return "text-yellow-500";
-};
 
 const WatchListPage = () => {
   const [priceBoard, setPriceBoard] = useState<PriceBoard[]>([]);

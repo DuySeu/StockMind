@@ -1,50 +1,48 @@
 import { createBrowserRouter } from "react-router-dom";
 import Layout from "@/pages/layout";
-import HomePage from "@/pages/HomePage";
 import LoginPage from "@/pages/LoginPage";
-import SettingPage from "@/pages/SettingPage";
 import ErrorPage from "@/pages/ErrorPage";
 import WatchListPage from "@/pages/WatchList";
-import PendingPage from "./pages/PendingPage";
 import MarketResearcherPage from "./pages/MarketResearcherPage";
 import ResearchResultPage from "./pages/ResearchResultPage";
+import ChatbotPage from "./pages/Chatbot";
+import HomePage from "./pages/HomePage";
 
 export const router = createBrowserRouter([
   {
     path: "/",
+    element: <HomePage />,
+    errorElement: <ErrorPage />,
+  },
+  {
+    path: "/chatbot",
     element: <Layout />,
     errorElement: <ErrorPage />,
     children: [
       {
         index: true,
-        element: <HomePage />,
+        element: <ChatbotPage />,
       },
       {
-        path: "c/:id",
-        element: <HomePage />,
+        path: ":id",
+        element: <ChatbotPage />,
       },
+    ],
+  },
+  {
+    path: "/watchlist",
+    errorElement: <ErrorPage />,
+    element: <WatchListPage />,
+  },
+  {
+    path: "/research",
+    children: [
       {
-        path: "setting",
-        element: <SettingPage />,
-      },
-      {
-        path: "explore",
-        element: <PendingPage />,
-      },
-      {
-        path: "watchlist",
-        element: <WatchListPage />,
-      },
-      {
-        path: "library",
-        element: <PendingPage />,
-      },
-      {
-        path: "research",
+        index: true,
         element: <MarketResearcherPage />,
       },
       {
-        path: "research/:id",
+        path: ":id",
         element: <ResearchResultPage />,
       },
     ],

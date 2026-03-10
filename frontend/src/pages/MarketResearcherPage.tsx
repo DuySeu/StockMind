@@ -5,7 +5,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { calculateChangePercent, getPriceColorClass } from "@/lib/stock";
 import { Check, FileText, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -155,24 +156,6 @@ const MarketResearcherPage = () => {
     ),
   );
 
-  const getPriceColorClass = (price: number, reference: number): string => {
-    if (price > reference) return "text-green-500";
-    if (price < reference) return "text-red-500";
-    return "text-yellow-500";
-  };
-
-  const calculateChangePercent = (
-    currentPrice: number,
-    referencePrice: number,
-  ): { percent: string; isPositive: boolean; isNeutral: boolean } => {
-    const change = ((currentPrice - referencePrice) / referencePrice) * 100;
-    return {
-      percent: change.toFixed(2),
-      isPositive: change > 0,
-      isNeutral: change === 0,
-    };
-  };
-
   return (
     <div className="flex flex-col items-center p-3 gap-4">
       <span className="text-sm text-accent mt-4 px-3 py-1 rounded-full bg-accent/10">
@@ -320,6 +303,7 @@ const MarketResearcherPage = () => {
       {researchReport && researchReport.length > 0 && (
         <div className="w-full max-w-6xl bg-primary rounded-lg overflow-hidden">
           <Table>
+            <TableCaption>Table to verify stock that Tavily recommend with real-time price(1-3 months)</TableCaption>
             <TableHeader>
               <TableRow className="bg-muted/50">
                 <TableHead className="font-bold">Symbol</TableHead>

@@ -1,14 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,173 +14,28 @@ import (
 	"stockmind/internal/agent/prompts"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/service/tavily"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
 // ---------------------------------------------------------------------------
-// Configuration constants
+// Domain types (inbound request, shared across handlers)
 // ---------------------------------------------------------------------------
 
-const (
-	tavilyPollInterval = 2 * time.Second
-	tavilyPollTimeout  = 2 * time.Minute
-	tavilyHTTPTimeout  = 30 * time.Second
-)
-
-// ---------------------------------------------------------------------------
-// Domain types
-// ---------------------------------------------------------------------------
-
-// ResearchRequest is the inbound payload for the research endpoint.
-type ResearchRequest struct {
+// ResearchRequestPayload is the inbound payload for the research endpoint.
+type ResearchRequestPayload struct {
 	Tickers       []string `json:"tickers"        validate:"required,min=1,max=5"`
 	ResearchModel string   `json:"research_model" validate:"required,oneof=mini pro"`
-}
-
-// ---------------------------------------------------------------------------
-// Tavily API types (typed structs instead of map[string]interface{})
-// ---------------------------------------------------------------------------
-
-// tavilyResearchRequest is the POST body sent to Tavily /research.
-type tavilyResearchRequest struct {
-	Input        string      `json:"input"`
-	Model        string      `json:"model"`
-	Stream       bool        `json:"stream"`
-	OutputSchema interface{} `json:"output_schema,omitempty"`
-}
-
-// tavilyInitResponse is the initial async response from Tavily.
-type tavilyInitResponse struct {
-	Status    string `json:"status"`
-	RequestID string `json:"request_id"`
-}
-
-// tavilyPollResponse is the polling response. When status == "completed",
-// Content will be populated.
-type tavilyPollResponse struct {
-	Status  string          `json:"status"`
-	Content json.RawMessage `json:"content"`
-	Sources []tavilySource  `json:"sources"`
-}
-
-// tavilySource is a source object in Tavily's top-level response.
-type tavilySource struct {
-	URL   string `json:"url"`
-	Title string `json:"title"`
-}
-
-// ---------------------------------------------------------------------------
-// Tavily client (encapsulates HTTP + auth)
-// ---------------------------------------------------------------------------
-
-type tavilyClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-}
-
-func newTavilyClient() *tavilyClient {
-	return &tavilyClient{
-		httpClient: &http.Client{Timeout: tavilyHTTPTimeout},
-		baseURL:    common.TAVILY_URL,
-		apiKey:     os.Getenv("TAVILY_API_KEY"),
-	}
-}
-
-// submitResearch kicks off an async research job and returns the request ID.
-func (tc *tavilyClient) submitResearch(ctx context.Context, payload tavilyResearchRequest) (string, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("marshal tavily request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tc.baseURL+"/research", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("create tavily request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+tc.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	res, err := tc.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("tavily POST /research: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(res.Body)
-		return "", fmt.Errorf("tavily POST /research returned %d: %s", res.StatusCode, string(respBody))
-	}
-
-	var initResp tavilyInitResponse
-	if err := json.NewDecoder(res.Body).Decode(&initResp); err != nil {
-		return "", fmt.Errorf("decode tavily init response: %w", err)
-	}
-
-	if initResp.RequestID == "" {
-		return "", fmt.Errorf("tavily returned empty request_id (status=%s)", initResp.Status)
-	}
-
-	return initResp.RequestID, nil
-}
-
-// pollResult polls Tavily until the research is "completed", "failed", or the context is cancelled.
-func (tc *tavilyClient) pollResult(ctx context.Context, requestID string) (*tavilyPollResponse, error) {
-	ticker := time.NewTicker(tavilyPollInterval)
-	defer ticker.Stop()
-
-	deadline := time.After(tavilyPollTimeout)
-
-	for attempt := 1; ; attempt++ {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-deadline:
-			return nil, fmt.Errorf("tavily poll timed out after %v", tavilyPollTimeout)
-		case <-ticker.C:
-			// continue polling below
-		}
-
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, tc.baseURL+"/research/"+requestID, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create poll request: %w", err)
-		}
-		req.Header.Set("Authorization", "Bearer "+tc.apiKey)
-
-		res, err := tc.httpClient.Do(req)
-		if err != nil {
-			slog.Warn("tavily poll error, retrying", "attempt", attempt, "error", err)
-			continue
-		}
-
-		var pollResp tavilyPollResponse
-		if decErr := json.NewDecoder(res.Body).Decode(&pollResp); decErr != nil {
-			res.Body.Close()
-			slog.Warn("tavily poll decode error, retrying", "attempt", attempt, "error", decErr)
-			continue
-		}
-		res.Body.Close()
-
-		slog.Info("tavily poll", "attempt", attempt, "status", pollResp.Status, "request_id", requestID)
-
-		switch pollResp.Status {
-		case "completed":
-			return &pollResp, nil
-		case "failed", "error":
-			return nil, fmt.Errorf("tavily research failed (request_id=%s)", requestID)
-		}
-		// status is "pending" / "in_progress" → loop
-	}
 }
 
 // ---------------------------------------------------------------------------
 // Request validation (shared by both handlers)
 // ---------------------------------------------------------------------------
 
-func decodeAndValidateRequest(r *http.Request) (ResearchRequest, error) {
-	var req ResearchRequest
+func decodeAndValidateRequest(r *http.Request) (ResearchRequestPayload, error) {
+	var req ResearchRequestPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return req, fmt.Errorf("Invalid JSON")
 	}
@@ -232,24 +84,8 @@ func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := stockDigestAgent(r.Context(), req, nil)
-	go func() {
-		for _, ticker := range response.Reports {
-			price, err := GetLatestMatchPrice(context.Background(), ticker.Ticker)
-			if err != nil {
-				slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
-			}
-			_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
-				Ticker:         ticker.Ticker,
-				Recommendation: firstWord(ticker.Recommendation),
-				ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
-				Report:         ticker,
-			})
-			if err != nil {
-				slog.Error("Failed to create research report", "error", err)
-			}
-		}
-	}()
+	response := s.stockDigestAgent(r.Context(), req, nil)
+	go s.persistReports(response)
 	common.WriteJSON(w, http.StatusOK, response)
 }
 
@@ -269,7 +105,7 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	doneCh := make(chan database.ResearchReport, 1)
 
 	go func() {
-		doneCh <- stockDigestAgent(r.Context(), req, progressCh)
+		doneCh <- s.stockDigestAgent(r.Context(), req, progressCh)
 	}()
 
 	for evt := range progressCh {
@@ -286,45 +122,48 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	writeSSE(w, map[string]any{"type": "result", "data": response})
 
 	// Persist research reports in the background
-	go func() {
-		for _, ticker := range response.Reports {
-			price, err := GetLatestMatchPrice(context.Background(), ticker.Ticker)
-			if err != nil {
-				slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
-			}
-			slog.Info("Stock price", "ticker", ticker.Ticker, "price", price)
-			_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
-				Ticker:         ticker.Ticker,
-				Recommendation: firstWord(ticker.Recommendation),
-				ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
-				Report:         ticker,
-			})
-			if err != nil {
-				slog.Error("Failed to create research report", "ticker", ticker.Ticker, "error", err)
-			}
+	go s.persistReports(response)
+}
+
+// ---------------------------------------------------------------------------
+// persistReports saves each report to the database in the background.
+// ---------------------------------------------------------------------------
+
+func (s *Server) persistReports(report database.ResearchReport) {
+	for _, ticker := range report.Reports {
+		price, err := GetLatestMatchPrice(context.Background(), ticker.Ticker)
+		if err != nil {
+			slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
 		}
-	}()
+		_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
+			Ticker:         ticker.Ticker,
+			Recommendation: firstWord(ticker.Recommendation),
+			ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
+			Report:         ticker,
+		})
+		if err != nil {
+			slog.Error("Failed to create research report", "ticker", ticker.Ticker, "error", err)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
 // Orchestrator — researches tickers concurrently.
 // ---------------------------------------------------------------------------
 
-func stockDigestAgent(ctx context.Context, request ResearchRequest, progressCh chan<- progressEvent) database.ResearchReport {
+func (s *Server) stockDigestAgent(ctx context.Context, request ResearchRequestPayload, progressCh chan<- progressEvent) database.ResearchReport {
 	var (
 		mu      sync.Mutex
 		wg      sync.WaitGroup
 		reports = make(map[string]database.StockReport, len(request.Tickers))
 	)
 
-	tc := newTavilyClient()
-
 	for _, ticker := range request.Tickers {
 		wg.Add(1)
 		go func(t string) {
 			defer wg.Done()
 
-			report, err := researchTicker(ctx, tc, t, request.ResearchModel, progressCh)
+			report, err := s.researchTicker(ctx, t, request.ResearchModel, progressCh)
 			if err != nil {
 				slog.Error("research failed", "ticker", t, "error", err)
 				return
@@ -351,7 +190,7 @@ func stockDigestAgent(ctx context.Context, request ResearchRequest, progressCh c
 // Single-ticker research with optional progress reporting
 // ---------------------------------------------------------------------------
 
-func researchTicker(ctx context.Context, tc *tavilyClient, ticker, model string, progressCh chan<- progressEvent) (database.StockReport, error) {
+func (s *Server) researchTicker(ctx context.Context, ticker, model string, progressCh chan<- progressEvent) (database.StockReport, error) {
 	emit := func(step, message string, progress int) {
 		if progressCh == nil {
 			return
@@ -378,11 +217,11 @@ func researchTicker(ctx context.Context, tc *tavilyClient, ticker, model string,
 
 	// 2. Submit async research job
 	emit("submitting", "Submitting research request...", 25)
-	requestID, err := tc.submitResearch(ctx, tavilyResearchRequest{
+	requestID, err := s.tavily.SubmitResearch(ctx, tavily.ResearchRequest{
 		Input:        prompt,
 		Model:        model,
 		Stream:       false,
-		OutputSchema: outputSchema(),
+		OutputSchema: tavily.ResearchOutputSchema(),
 	})
 	if err != nil {
 		emit("failed", fmt.Sprintf("Failed to submit: %v", err), 0)
@@ -392,7 +231,7 @@ func researchTicker(ctx context.Context, tc *tavilyClient, ticker, model string,
 
 	// 3. Poll until completed
 	emit("polling", "Gathering and analyzing data...", 40)
-	pollResp, err := tc.pollResult(ctx, requestID)
+	pollResp, err := s.tavily.PollResearch(ctx, requestID)
 	if err != nil {
 		emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
 		return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
@@ -411,123 +250,48 @@ func researchTicker(ctx context.Context, tc *tavilyClient, ticker, model string,
 }
 
 // ---------------------------------------------------------------------------
-// Output schema (defined once, reused for every request)
+// Response parsing — bridges tavily response to domain types
 // ---------------------------------------------------------------------------
 
-func outputSchema() map[string]interface{} {
-	return map[string]interface{}{
-		"properties": map[string]interface{}{
-			"ticker": map[string]interface{}{
-				"type":        "string",
-				"description": "The official stock ticker symbol used on exchanges (e.g., AAPL, GOOGL, MSFT)",
-			},
-			"company_name": map[string]interface{}{
-				"type":        "string",
-				"description": "The full legal or commonly used name of the company",
-			},
-			"summary": map[string]interface{}{
-				"type":        "string",
-				"description": "A comprehensive overview of the stock analysis including recent developments, market position, and overall assessment",
-			},
-			"current_performance": map[string]interface{}{
-				"type":        "string",
-				"description": "Detailed analysis of recent stock performance including price movements, trading patterns, and comparison to market benchmarks",
-			},
-			"key_insights": map[string]interface{}{
-				"type":        "array",
-				"description": "Critical takeaways and notable observations from trusted financial analysts and market experts",
-				"items":       map[string]interface{}{"type": "string"},
-			},
-			"recommendation": map[string]interface{}{
-				"type":        "string",
-				"description": "Investment recommendation such as buy, hold, or sell, along with supporting rationale and target audience considerations",
-			},
-			"risk_assessment": map[string]interface{}{
-				"type":        "string",
-				"description": "Evaluation of potential risks including market volatility, company-specific challenges, regulatory concerns, and macroeconomic factors",
-			},
-			"price_outlook": map[string]interface{}{
-				"type":        "string",
-				"description": "Forward-looking analysis of expected price movements including short-term and long-term projections with supporting factors",
-			},
-			"market_cap": map[string]interface{}{
-				"type":        "string",
-				"description": "Total market capitalization in US dollars, representing the company's total market value of outstanding shares",
-			},
-			"pe_ratio": map[string]interface{}{
-				"type":        "string",
-				"description": "Price-to-earnings ratio indicating how much investors are willing to pay per dollar of earnings",
-			},
-			"sources": map[string]interface{}{
-				"type":        "array",
-				"description": "List of referenced sources including news articles, analyst reports, and financial publications used in the analysis",
-				"items":       map[string]interface{}{"type": "string"},
-			},
-		},
-		"required": []string{"ticker", "company_name", "summary", "current_performance", "key_insights", "recommendation", "risk_assessment", "price_outlook", "sources"},
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Response parsing
-// ---------------------------------------------------------------------------
-
-type tavilyStructuredContent struct {
-	Ticker             string   `json:"ticker"`
-	CompanyName        string   `json:"company_name"`
-	Summary            string   `json:"summary"`
-	CurrentPerformance string   `json:"current_performance"`
-	KeyInsights        []string `json:"key_insights"`
-	Recommendation     string   `json:"recommendation"`
-	RiskAssessment     string   `json:"risk_assessment"`
-	PriceOutlook       string   `json:"price_outlook"`
-	MarketCap          string   `json:"market_cap"`
-	PERatio            string   `json:"pe_ratio"`
-	Sources            []string `json:"sources"`
-}
-
-func parseResearchResult(ticker string, resp *tavilyPollResponse) (database.StockReport, error) {
+func parseResearchResult(ticker string, resp *tavily.ResearchPollResponse) (database.StockReport, error) {
 	report := database.StockReport{Ticker: ticker}
 
-	// Try to unmarshal structured content
-	if len(resp.Content) > 0 {
-		var structured tavilyStructuredContent
-		if err := json.Unmarshal(resp.Content, &structured); err == nil {
-			report.CompanyName = structured.CompanyName
-			report.Summary = structured.Summary
-			report.CurrentPerformance = structured.CurrentPerformance
-			report.KeyInsights = structured.KeyInsights
-			report.Recommendation = structured.Recommendation
-			report.RiskAssessment = structured.RiskAssessment
-			report.PriceOutlook = structured.PriceOutlook
-			report.MarketCap = structured.MarketCap
-			report.PERatio = structured.PERatio
-
-			// Convert string sources into Source objects
-			for _, s := range structured.Sources {
-				report.Sources = append(report.Sources, database.Source{URL: s})
-			}
-		} else {
-			// Fall back: content is a plain string summary.
-			var plainSummary string
-			if json.Unmarshal(resp.Content, &plainSummary) == nil {
-				report.Summary = plainSummary
-			}
-		}
+	if len(resp.Content) == 0 {
+		return report, nil
 	}
 
-	// Merge top-level Tavily sources (these carry titles).
+	// Try structured JSON first — unmarshals directly into StockReport.
+	// Source's custom UnmarshalJSON handles both plain strings and objects.
+	if err := json.Unmarshal(resp.Content, &report); err != nil {
+		// Fallback: content may be a plain string summary.
+		var plainSummary string
+		if err := json.Unmarshal(resp.Content, &plainSummary); err == nil {
+			report.Summary = plainSummary
+			return report, nil
+		}
+		// Neither structured nor string — return what we have.
+		return report, nil
+	}
+
+	// Ensure ticker is set (the AI response may omit it or use a different casing).
+	report.Ticker = ticker
+
+	// Merge top-level Tavily sources (these carry titles) if the AI didn't provide any.
 	if len(resp.Sources) > 0 && len(report.Sources) == 0 {
-		for _, s := range resp.Sources {
+		for _, src := range resp.Sources {
 			report.Sources = append(report.Sources, database.Source{
-				URL:   s.URL,
-				Title: s.Title,
+				URL:   src.URL,
+				Title: src.Title,
 			})
 		}
 	}
 
 	return report, nil
 }
+
+// ---------------------------------------------------------------------------
+// Report retrieval handlers
+// ---------------------------------------------------------------------------
 
 type ResearchReport struct {
 	database.GetResearchReportsRow

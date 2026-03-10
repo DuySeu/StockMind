@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"stockmind/internal/agent"
 	"stockmind/internal/database"
+	"stockmind/internal/service/tavily"
 	"strconv"
 	"time"
 
@@ -18,6 +19,7 @@ type Server struct {
 	db     *database.Queries
 	dbPool *pgxpool.Pool
 	agent  *agent.AgentService
+	tavily *tavily.Client
 }
 
 func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, port string) *http.Server {
@@ -30,6 +32,7 @@ func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, port string) *ht
 		db:     database.New(dbPool),
 		dbPool: dbPool,
 		agent:  agent,
+		tavily: tavily.NewClient(),
 	}
 
 	// Ensure default user exists
