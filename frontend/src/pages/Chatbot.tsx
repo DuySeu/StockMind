@@ -2,6 +2,7 @@ import { chatWithLLM, getMessages } from "@/api/chat";
 import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
+import SideBar from "@/components/containers/SideBar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,10 +13,11 @@ import {
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useChatContext } from "@/hooks/context";
 import type { Message } from "@/types/message";
-import { ArrowUp, AudioLines, FileText, Image, MessageSquareText, Paperclip, X } from "lucide-react";
+import { ArrowUp, AudioLines, FileText, Image, Paperclip, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
@@ -24,7 +26,7 @@ import { toast } from "sonner";
 const ChatbotPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { title, setTitle } = useChatContext();
+  const [title, setTitle] = useState("StockMind");
   const [messages, setMessages] = useState<Message[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,8 +63,8 @@ const ChatbotPage = () => {
   }, [id]);
 
   useEffect(() => {
-    if (!id) {
-      setTitle("StockMind");
+    if (id) {
+      setTitle(id);
     }
   }, [id]);
 
@@ -223,7 +225,7 @@ const ChatbotPage = () => {
     );
     if (!id && sessionId) {
       setTitle(data.input.trim());
-      navigate(`/c/${sessionId}`);
+      navigate(`/${sessionId}`);
     }
   };
 
@@ -234,146 +236,145 @@ const ChatbotPage = () => {
 
   return (
     <>
-      <Header
-        icon={<MessageSquareText className="text-primary w-6 h-6" />}
-        editable={title !== "StockMind"}
-        shouldAnimate={!!id}
-      />
-      <div ref={scrollRef} className="flex-1 overflow-hidden flex flex-col w-full min-h-0">
-        <ScrollArea className="flex-1 w-full min-h-0 px-6">
-          {messages.length > 0 ? (
-            <MessageList messages={messages} />
-          ) : (
-            <div className="flex flex-col items-center justify-center min-h-[50vh] text-center gap-4">
-              <img src={stockmindLogo} alt="StockMind" className="h-48 w-48" />
-              <div className="space-y-2 max-w-md">
-                <h2 className="text-2xl font-bold tracking-tight text-primary">Welcome to StockMind</h2>
-                <p className="text-muted-foreground">
-                  Your AI-powered assistant for market analysis and stock insights. Ask me anything about the stock
-                  market!
+      <SidebarProvider className="h-svh bg-sidebar overflow-hidden">
+        <SideBar title={title} setTitle={setTitle} />
+        <main className="w-full flex flex-col border border-border transition-colors duration-300 rounded-2xl m-3 ml-0 overflow-hidden">
+          <div className="flex-1 flex flex-col bg-background-light dark:bg-background-dark relative h-full overflow-hidden">
+            <Header shouldAnimate={!!id} title={title} setTitle={setTitle} />
+            <div ref={scrollRef} className="flex-1 overflow-hidden flex flex-col relative w-full h-full">
+              <ScrollArea className="flex-1 w-full h-full">
+                <div className="max-w-4xl mx-auto px-4 py-8 space-y-8 w-full min-h-full flex flex-col">
+                  {messages.length > 0 ? (
+                    <MessageList messages={messages} />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 mt-10">
+                      <img src={stockmindLogo} alt="StockMind" className="h-48 w-48 drop-shadow-sm" />
+                      <div className="space-y-2 max-w-md">
+                        <h2 className="text-2xl font-bold tracking-tight text-primary">Welcome to StockMind</h2>
+                        <p className="text-slate-600 dark:text-slate-400">
+                          Your AI-powered assistant for market analysis and stock insights. Ask me anything about the
+                          stock market!
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full max-w-lg mt-6">
+                        {[
+                          "What is FPT stock price?",
+                          "Should I buy VNM?",
+                          "Explain P/E ratio",
+                          "get FPT stock price and report",
+                        ].map((suggestion, idx) => (
+                          <Button key={idx} onClick={() => onHandleSuggestion(suggestion)}>
+                            {suggestion}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            {/* Fixed Chat Input Area */}
+            <div className="absolute bottom-0 left-0 w-full p-4 md:p-6 bg-gradient-to-t from-background dark:from-background-dark via-background/95 dark:via-background-dark/95 to-transparent">
+              <div className="max-w-4xl mx-auto w-full relative">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col p-2 pl-4 rounded-2xl shadow-xl">
+                    {attachment && (
+                      <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-700 w-fit mb-1 mt-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          {attachment?.type.startsWith("image/") ? (
+                            <Image className="h-4 w-4 text-primary" />
+                          ) : (
+                            <FileText className="h-4 w-4 text-primary" />
+                          )}
+                          <span className="max-w-[150px] truncate">{attachment?.name}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full text-slate-500 transition-colors cursor-pointer"
+                          onClick={() => setAttachment(null)}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-end gap-2 md:gap-4 w-full">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="p-2 mb-1 text-slate-400 hover:text-primary transition-colors disabled:opacity-50 cursor-pointer"
+                          >
+                            <Paperclip className="h-5 w-5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-40 rounded-lg border border-primary/20" align="start">
+                          <DropdownMenuItem onClick={() => handleFileClick("*/*")} className="cursor-pointer">
+                            <FileText className="h-4 w-4 mr-2" />
+                            Upload file
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleFileClick("image/*")} className="cursor-pointer">
+                            <Image className="h-4 w-4 mr-2" />
+                            Upload photo
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+
+                      <FormField
+                        control={form.control}
+                        name="input"
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input
+                                className="w-full bg-transparent border-none shadow-none focus-visible:ring-0 placeholder:text-slate-400 py-3 min-h-[44px] text-base resize-none"
+                                placeholder="Ask me anything about Vietnam stocks..."
+                                autoComplete="off"
+                                {...field}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="flex items-center gap-1 mb-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="p-2 text-slate-400 hover:text-primary transition-colors hidden md:block cursor-pointer"
+                            >
+                              <AudioLines className="h-5 w-5" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Dictate</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <button
+                          type="submit"
+                          disabled={!form.watch("input")?.trim()}
+                          className="bg-primary hover:bg-primary/90 text-background-dark h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <ArrowUp className="h-5 w-5" />
+                          <span className="sr-only">Send</span>
+                        </button>
+                      </div>
+                    </div>
+                    <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
+                  </form>
+                </Form>
+                <p className="text-center text-[10px] text-slate-400 mt-3 font-medium">
+                  StockMind can make mistakes. Verify important financial info.
                 </p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg mt-4">
-                {[
-                  "What is FPT stock price?",
-                  "Should I buy VNM?",
-                  "Explain P/E ratio",
-                  "get FPT stock price and report",
-                ].map((suggestion, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => onHandleSuggestion(suggestion)}
-                    className="p-3 text-sm text-left border rounded-xl hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
             </div>
-          )}
-        </ScrollArea>
-
-        <div className="my-2 w-full flex justify-center pointer-events-none shrink-0">
-          <div className="w-full max-w-3xl pointer-events-auto shadow-2xl rounded-2xl bg-background/80 backdrop-blur-md border border-border/50">
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="p-2">
-                {attachment && (
-                  <div className="relative flex items-center gap-2 px-3 py-2 bg-muted/50 rounded-md border border-border/50 w-fit mb-2 ml-2 mt-2">
-                    <div className="flex items-center gap-2 text-sm text-foreground/80">
-                      {attachment.type.startsWith("image/") ? (
-                        <Image className="h-4 w-4" />
-                      ) : (
-                        <FileText className="h-4 w-4" />
-                      )}
-                      <span className="max-w-[150px] truncate">{attachment.name}</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="h-5 w-5 rounded-full hover:bg-background/80"
-                      onClick={() => setAttachment(null)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-                <FormField
-                  control={form.control}
-                  name="input"
-                  render={({ field }) => (
-                    <FormItem className="flex-1">
-                      <FormControl>
-                        <Input
-                          className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent py-6 text-base text-primary shadow-none resize-none"
-                          placeholder="Ask StockMind about market trends..."
-                          autoComplete="off"
-                          {...field}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-                <div className="flex items-center justify-between gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon-sm"
-                        className="bg-background/80 data-[state=open]:bg-secondary data-[state=open]:text-secondary-foreground"
-                      >
-                        <Paperclip />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      className="w-(--radix-dropdown-menu-trigger-width) min-w-40 rounded-lg border border-border"
-                      align="start"
-                    >
-                      <DropdownMenuItem onClick={() => handleFileClick("*/*")}>
-                        <FileText className="h-4 w-4" />
-                        Upload file
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleFileClick("image/*")}>
-                        <Image className="h-4 w-4" />
-                        Upload photo
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="icon-sm"
-                          className="bg-background/80 rounded-full"
-                        >
-                          <AudioLines className="h-5 w-5" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Dictate</p>
-                      </TooltipContent>
-                    </Tooltip>
-                    <Button
-                      type="submit"
-                      size="icon-sm"
-                      className="bg-primary hover:bg-primary/90 transition-all shadow-sm mr-1"
-                      disabled={!form.watch("input")?.trim()}
-                    >
-                      <ArrowUp className="h-5 w-5" />
-                      <span className="sr-only">Send</span>
-                    </Button>
-                  </div>
-                </div>
-                <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileChange} />
-              </form>
-            </Form>
           </div>
-        </div>
-      </div>
+        </main>
+      </SidebarProvider>
+      <Toaster position="top-right" />
     </>
   );
 };

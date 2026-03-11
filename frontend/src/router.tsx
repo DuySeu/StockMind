@@ -1,5 +1,4 @@
 import { createBrowserRouter } from "react-router-dom";
-import Layout from "@/pages/layout";
 import LoginPage from "@/pages/LoginPage";
 import ErrorPage from "@/pages/ErrorPage";
 import WatchListPage from "@/pages/WatchList";
@@ -15,9 +14,7 @@ export const router = createBrowserRouter([
     errorElement: <ErrorPage />,
   },
   {
-    path: "/chatbot",
-    element: <Layout />,
-    errorElement: <ErrorPage />,
+    path: "/chat",
     children: [
       {
         index: true,
@@ -28,6 +25,7 @@ export const router = createBrowserRouter([
         element: <ChatbotPage />,
       },
     ],
+    errorElement: <ErrorPage />,
   },
   {
     path: "/watchlist",
@@ -46,6 +44,7 @@ export const router = createBrowserRouter([
         element: <ResearchResultPage />,
       },
     ],
+    errorElement: <ErrorPage />,
   },
   {
     path: "/login",

@@ -13,7 +13,6 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
@@ -21,21 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { useChatContext } from "@/hooks/context";
-import {
-  Bolt,
-  ChartNoAxesCombined,
-  Compass,
-  CreditCard,
-  EllipsisVertical,
-  Folder,
-  LogOut,
-  Moon,
-  Plus,
-  SquarePen,
-  Sun,
-  Trash2,
-} from "lucide-react";
+import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -54,35 +39,9 @@ type Session = {
   [key: string]: unknown;
 };
 
-// Menu items
-const menuItems = [
-  {
-    title: "Explore",
-    url: "/research",
-    icon: Compass,
-  },
-  {
-    title: "Watchlist",
-    url: "/watchlist",
-    icon: ChartNoAxesCombined,
-  },
-  {
-    title: "Library",
-    url: "/library",
-    icon: Folder,
-  },
-  {
-    title: "Settings",
-    url: "/setting",
-    icon: Bolt,
-  },
-];
-
-const SideBar = () => {
+const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string) => void }) => {
   const navigate = useNavigate();
   const { id } = useParams();
-  const { title, setTitle } = useChatContext();
-  const [theme, setTheme] = useState<"light" | "dark">("light");
   const [sessions, setSessions] = useState<Session[]>([]);
 
   const fetchSession = async () => {
@@ -98,14 +57,6 @@ const SideBar = () => {
   }, [title]);
 
   useEffect(() => {
-    // Check system theme preference
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-      document.documentElement.classList.add("dark");
-    }
-  }, []);
-
-  useEffect(() => {
     if (id) {
       const activeItem = sessions.find((item) => item.id === id);
       if (activeItem) {
@@ -114,31 +65,34 @@ const SideBar = () => {
     }
   }, [id, sessions]);
 
+  // Theme management
   const toggleTheme = () => {
-    if (theme === "light") {
-      setTheme("dark");
-      document.documentElement.classList.add("dark");
-    } else {
-      setTheme("light");
-      document.documentElement.classList.remove("dark");
+    if (typeof document !== "undefined") {
+      const isDark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     }
   };
 
-  const handleCreateSession = () => {
-    console.log("Create session");
-    navigate("/");
-  };
+  // Initialize theme on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
 
-  const handleLoadSession = (id: string) => {
-    navigate("/c/" + id);
-  };
+      if (savedTheme === "dark" || (!savedTheme && prefersDark)) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    }
+  }, []);
 
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await deleteSession(sessionId);
       await fetchSession();
       if (id && id === sessionId) {
-        navigate("/");
+        navigate("/chat");
       }
     } catch (error) {
       console.log(error);
@@ -150,76 +104,58 @@ const SideBar = () => {
       <SidebarHeader className="p-3">
         <span>StockMind</span>
         <button
-          className="bg-accent text-accent-foreground flex items-center justify-center gap-2 p-3 rounded-xl mx-2 cursor-pointer"
-          onClick={handleCreateSession}
+          className="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 px-4 rounded-full flex items-center justify-center gap-2 mb-8 shadow-sm transition-all"
+          onClick={() => navigate("/chat")}
         >
-          <Plus className="h-6 w-6 rounded-full bg-background text-accent p-1" /> New Chat
+          <Plus className="h-6 w-6" /> New Chat
         </button>
       </SidebarHeader>
       <SidebarContent className="overflow-hidden">
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
+        <SidebarGroupLabel>Chats</SidebarGroupLabel>
+        <ScrollArea className="h-full overflow-y-auto">
+          <SidebarGroupContent className="flex-1 min-h-0 flex flex-col px-2">
+            <SidebarMenu className="flex-1 min-h-0 flex flex-col">
+              {sessions.length > 0 ? (
+                sessions.map((item: any) => (
+                  <SidebarMenuItem key={item.id}>
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <SidebarMenuButton
+                          className={`${id === item.id && "border-l-3 border-accent"}`}
+                          onClick={() => navigate(item.id)}
+                        >
+                          <span className="truncate max-w-56">{item.title}</span>
+                        </SidebarMenuButton>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent className="w-40 border border-border">
+                        <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+                          Created at {new Date(item.updated_at).toLocaleDateString()}
+                        </ContextMenuLabel>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem>
+                          <SquarePen className="h-4 w-4" />
+                          Rename
+                        </ContextMenuItem>
+                        <ContextMenuItem variant="destructive" onClick={() => handleDeleteSession(item.id)}>
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  </SidebarMenuItem>
+                ))
+              ) : (
+                <SidebarMenuItem>
+                  <div className="flex w-full items-center justify-between">
+                    <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
+                      <span className="truncate">No sessions</span>
+                    </div>
+                  </div>
                 </SidebarMenuItem>
-              ))}
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup className="flex-1 min-h-0 p-0">
-          <SidebarGroupLabel>Chats</SidebarGroupLabel>
-          <ScrollArea className="h-full overflow-y-auto">
-            <SidebarGroupContent className="flex-1 min-h-0 flex flex-col px-2">
-              <SidebarMenu className="flex-1 min-h-0 flex flex-col">
-                {sessions.length > 0 ? (
-                  sessions.map((item: any) => (
-                    <SidebarMenuItem key={item.id}>
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>
-                          <SidebarMenuButton
-                            className={`${id === item.id && "border-l-3 border-accent"}`}
-                            onClick={() => handleLoadSession(item.id)}
-                          >
-                            <span className="truncate max-w-56">{item.title}</span>
-                          </SidebarMenuButton>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent className="w-40 border border-border">
-                          <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
-                            Created at {new Date(item.updated_at).toLocaleDateString()}
-                          </ContextMenuLabel>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem>
-                            <SquarePen className="h-4 w-4" />
-                            Rename
-                          </ContextMenuItem>
-                          <ContextMenuItem variant="destructive" onClick={() => handleDeleteSession(item.id)}>
-                            <Trash2 className="h-4 w-4" />
-                            Delete
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    </SidebarMenuItem>
-                  ))
-                ) : (
-                  <SidebarMenuItem>
-                    <div className="flex w-full items-center justify-between">
-                      <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                        <span className="truncate">No sessions</span>
-                      </div>
-                    </div>
-                  </SidebarMenuItem>
-                )}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </ScrollArea>
-        </SidebarGroup>
+        </ScrollArea>
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
@@ -262,12 +198,13 @@ const SideBar = () => {
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
                   <DropdownMenuItem onClick={toggleTheme}>
-                    {theme === "light" ? <Sun /> : <Moon />}
+                    <Sun className="dark:hidden" />
+                    <Moon className="hidden dark:block" />
                     Theme
                   </DropdownMenuItem>
                   <DropdownMenuItem>
-                    <CreditCard />
-                    Billing
+                    <Bolt />
+                    Settings
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />

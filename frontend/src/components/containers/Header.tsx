@@ -1,25 +1,22 @@
-import { Check, Ellipsis, PenLine, Upload, X } from "lucide-react";
+import { Check, Ellipsis, MessageSquareText, PenLine, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { useChatContext } from "@/hooks/context";
 
 interface HeaderProps {
-  icon?: React.ReactNode;
-  editable?: boolean;
   shouldAnimate?: boolean;
+  title: string;
+  setTitle: (title: string) => void;
 }
 
-const Header = ({ icon, editable, shouldAnimate }: HeaderProps) => {
+const Header = ({ shouldAnimate, title, setTitle }: HeaderProps) => {
   const [isEditing, setIsEditing] = useState(false);
-  const { title, setTitle } = useChatContext();
 
   const handleEdit = () => {
     setIsEditing(true);
   };
 
   const handleSave = () => {
-    setTitle(title);
     setIsEditing(false);
   };
 
@@ -30,7 +27,7 @@ const Header = ({ icon, editable, shouldAnimate }: HeaderProps) => {
   return (
     <header className="flex justify-between items-center py-3 px-4">
       <div className="flex items-center gap-2">
-        {icon}
+        <MessageSquareText className="text-primary-foreground w-6 h-6" />
         {isEditing ? (
           <>
             <Input
@@ -50,27 +47,22 @@ const Header = ({ icon, editable, shouldAnimate }: HeaderProps) => {
           <span
             className={`${
               shouldAnimate ? "animate-fade-right" : ""
-            } font-semibold text-md text-primary hidden md:block truncate max-w-[150px] md:max-w-[200px] lg:max-w-[300px]`}
+            } font-semibold text-md text-primary-foreground hidden md:block truncate max-w-[150px] md:max-w-[200px] lg:max-w-[300px]`}
           >
             {title}
           </span>
         )}
-        {editable && !isEditing && (
-          <Button
-            variant="secondary"
-            size="icon-sm"
-            className="bg-card/80 text-card-foreground/60"
-            onClick={handleEdit}
-          >
+        {title !== "StockMind" && !isEditing && (
+          <Button variant="secondary" size="icon-sm" onClick={handleEdit}>
             <PenLine />
           </Button>
         )}
       </div>
       <div className="flex items-center gap-2 text-primary">
-        <Button variant="outline" size="sm" className="hover:text-card-foreground/60">
+        <Button size="sm" className="hover:text-card-foreground/60">
           <Upload /> Share
         </Button>
-        <Button variant="outline" size="icon-sm" className="hover:text-card-foreground/60">
+        <Button size="icon-sm" className="hover:text-card-foreground/60">
           <Ellipsis />
         </Button>
       </div>
