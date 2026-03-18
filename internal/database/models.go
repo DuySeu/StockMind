@@ -17,6 +17,14 @@ type AgentFlow struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type News struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	Title       string             `db:"title" json:"title"`
+	Url         string             `db:"url" json:"url"`
+	Description string             `db:"description" json:"description"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Research struct {
 	ID             uuid.UUID          `db:"id" json:"id"`
 	Ticker         string             `db:"ticker" json:"ticker"`

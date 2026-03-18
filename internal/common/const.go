@@ -10,6 +10,8 @@ const (
 	TAVILY_URL = "https://api.tavily.com"
 )
 
+var NEWS_DOMAINS = []string{"cafef.vn", "cafebiz.vn", "vietstock.vn", "vnexpress.net", "tuoitre.vn", "vneconomy.vn", "plo.vn", "thesaigontimes.vn", "diendandoanhnghiep.vn", "baodautu.vn"}
+
 var VCI_HEADERS = map[string]string{
 	"User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
 	"Referer":         "https://trading.vietcap.com.vn/",

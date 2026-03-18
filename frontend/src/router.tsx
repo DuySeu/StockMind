@@ -6,6 +6,7 @@ import MarketResearcherPage from "./pages/MarketResearcherPage";
 import ResearchResultPage from "./pages/ResearchResultPage";
 import ChatbotPage from "./pages/Chatbot";
 import HomePage from "./pages/HomePage";
+import PendingPage from "./pages/PendingPage";
 
 export const router = createBrowserRouter([
   {
@@ -29,8 +30,8 @@ export const router = createBrowserRouter([
   },
   {
     path: "/watchlist",
-    errorElement: <ErrorPage />,
     element: <WatchListPage />,
+    errorElement: <ErrorPage />,
   },
   {
     path: "/research",
@@ -44,6 +45,11 @@ export const router = createBrowserRouter([
         element: <ResearchResultPage />,
       },
     ],
+    errorElement: <ErrorPage />,
+  },
+  {
+    path: "/news",
+    element: <PendingPage />,
     errorElement: <ErrorPage />,
   },
   {

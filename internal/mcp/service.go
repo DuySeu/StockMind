@@ -71,14 +71,14 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 	)
 
 	s.AddTool(
-		mcp.NewTool("web_search",
-			mcp.WithDescription("Get web search result for a query related to stock news"),
+		mcp.NewTool("get_news",
+			mcp.WithDescription("Get stock news for a query"),
 			mcp.WithString("query",
 				mcp.Required(),
-				mcp.Description("Search query"),
+				mcp.Description("Query related to stock news"),
 			),
 		),
-		WebSearchResult,
+		GetNews,
 	)
 
 	// Start server based on protocol
@@ -93,10 +93,7 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 				fmt.Printf("MCP HTTP server error: %v\n", err)
 			}
 		}()
-		return func() {
-			// server.NewStreamableHTTPServer doesn't expose a Shutdown method easily accessible here without more context,
-			// but for this implementation it runs until process termination.
-		}, nil
+		return func() {}, nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", protocol)
 	}

@@ -93,6 +93,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Post("/research", s.MarketResearchHandler)
 			r.Post("/research/stream", s.MarketResearchStreamHandler)
 		})
+
+		r.Route("/news", func(r chi.Router) {
+			r.Get("/", s.GetNewsHandler)
+		})
 	})
 
 	return r

@@ -1,10 +1,8 @@
 import { getAgentFlows } from "@/api/agent_flows";
-import Header from "@/components/containers/Header";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useChatContext } from "@/hooks/context";
 import type { AgentFlow } from "@/types/agent_flow";
-import { Box, ExternalLink, GitBranch, Layers, ShieldCheck, ShieldX, Bolt, Workflow, Terminal } from "lucide-react";
+import { Box, ExternalLink, GitBranch, Layers, ShieldCheck, ShieldX, Workflow, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const ConfigValue = ({ value, depth = 0 }: { value: unknown; depth?: number }) => {
@@ -130,11 +128,6 @@ const ConfigValue = ({ value, depth = 0 }: { value: unknown; depth?: number }) =
 
 const SettingPage = () => {
   const [agentFlows, setAgentFlows] = useState<AgentFlow[]>([]);
-  const { setTitle } = useChatContext();
-
-  useEffect(() => {
-    setTitle("Settings");
-  }, [setTitle]);
 
   const fetchAgentFlows = async () => {
     try {
@@ -151,8 +144,6 @@ const SettingPage = () => {
 
   return (
     <>
-      <Header icon={<Bolt className="text-primary w-6 h-6" />} />
-
       <div className="flex-1 overflow-hidden flex flex-col w-full min-h-0">
         <div className="flex flex-col gap-3 p-6 backdrop-blur-sm">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">

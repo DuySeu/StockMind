@@ -1,4 +1,4 @@
-package mcp
+package tavily
 
 import (
 	"bytes"
@@ -6,11 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
-	"stockmind/internal/common"
-	"time"
-
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // tavilyRequest represents the Tavily API request
@@ -38,46 +33,40 @@ type tavilyResponse struct {
 	} `json:"results"`
 }
 
-func WebSearchResult(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	query, err := request.RequireString("query")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
+// SearchResult represents a single search result
+type SearchResult struct {
+	Title       string `json:"title"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}
 
-	// Prepare request with native domain filtering
-	// Use configured search depth, default to "basic" if not set
-	searchDepth := "basic" // "basic" or "advanced"
-
+// SubmitResearch kicks off an async research job and returns the request ID.
+func (c *Client) SearchWeb(ctx context.Context, query string, includeDomains []string) ([]SearchResult, error) {
 	reqBody := tavilyRequest{
-		APIKey:            os.Getenv("TAVILY_API_KEY"),
+		APIKey:            c.apiKey,
 		Query:             query,
-		SearchDepth:       searchDepth,
+		SearchDepth:       "basic",
 		IncludeAnswer:     true,
 		IncludeImages:     false,
 		IncludeRawContent: false,
-		MaxResults:        10,
-		IncludeDomains:    []string{"vnexpress.net"},
+		MaxResults:        5,
+		IncludeDomains:    includeDomains,
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	// Create HTTP request
-	http_req, err := http.NewRequestWithContext(ctx, "POST", common.TAVILY_URL+"/search", bytes.NewBuffer(jsonData))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/search", bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	http_req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Execute request
-	resp, err := client.Do(http_req)
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -99,5 +88,20 @@ func WebSearchResult(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 		return nil, fmt.Errorf("tavily search returned no results")
 	}
 
-	return mcp.NewToolResultStructuredOnly(tavilyResp.Results), nil
+	// Convert to SearchResult - prefer raw_content for full text
+	results := make([]SearchResult, 0, len(tavilyResp.Results))
+	for _, r := range tavilyResp.Results {
+		// Use raw_content if available (full page content), otherwise use content (snippet)
+		description := r.Content
+		if r.RawContent != "" && len(r.RawContent) > len(r.Content) {
+			description = r.RawContent
+		}
+
+		results = append(results, SearchResult{
+			Title:       r.Title,
+			URL:         r.URL,
+			Description: description,
+		})
+	}
+	return results, nil
 }
