@@ -1,0 +1,134 @@
+<mxfile host="app.diagrams.net" modified="2026-03-19T00:00:00.000Z" agent="Claude" version="24.7.17">
+  <diagram id="arch_diagram" name="AWS Architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        
+        <!-- AWS Cloud Boundary Group -->
+        <mxCell id="2" value="Amazon Web Services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#FF9900;dashed=1;verticalAlign=top;fontSize=18;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="700" height="560" as="geometry"/>
+        </mxCell>
+        
+        <!-- VPC Boundary Group -->
+        <mxCell id="3" value="VPC" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#008000;dashed=1;verticalAlign=top;fontSize=16;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="260" y="80" width="650" height="490" as="geometry"/>
+        </mxCell>
+
+        <!-- Public Subnet Group -->
+        <mxCell id="4" value="Public Subnet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="280" y="120" width="160" height="420" as="geometry"/>
+        </mxCell>
+        
+        <!-- Private Subnet - ECS Group -->
+        <mxCell id="5" value="Private Subnet (App)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8fcf8;strokeColor=#82b366;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="460" y="120" width="220" height="420" as="geometry"/>
+        </mxCell>
+
+        <!-- Private Subnet - Data Group -->
+        <mxCell id="6" value="Private Subnet (Data)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4f8fb;strokeColor=#6c8ebf;dashed=1;verticalAlign=top;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="700" y="120" width="180" height="420" as="geometry"/>
+        </mxCell>
+        
+        <!-- Client User (AWS Client Shape) -->
+        <mxCell id="10" value="Investor / Client" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#232F3E;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.user;" vertex="1" parent="1">
+          <mxGeometry x="60" y="320" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Internet Gateway -->
+        <mxCell id="11" value="Internet Gateway" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.internet_gateway;" vertex="1" parent="1">
+          <mxGeometry x="190" y="320" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- ALB -->
+        <mxCell id="12" value="Application Load Balancer" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.application_load_balancer;" vertex="1" parent="1">
+          <mxGeometry x="330" y="320" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- NAT Gateway -->
+        <mxCell id="13" value="NAT Gateway" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#8C4FFF;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.nat_gateway;" vertex="1" parent="1">
+          <mxGeometry x="330" y="180" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Frontend Task (Fargate) -->
+        <mxCell id="14" value="Frontend Container&#10;(AWS Fargate)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#D1660F;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.fargate;" vertex="1" parent="1">
+          <mxGeometry x="540" y="210" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Go Backend Task (Fargate) -->
+        <mxCell id="15" value="Go Backend Container&#10;(AWS Fargate)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#D1660F;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.fargate;" vertex="1" parent="1">
+          <mxGeometry x="540" y="330" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- Python Tooling Task (Fargate) -->
+        <mxCell id="16" value="Python Container&#10;(AWS Fargate)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#D1660F;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.fargate;" vertex="1" parent="1">
+          <mxGeometry x="540" y="450" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- RDS Database -->
+        <mxCell id="17" value="Amazon RDS&#10;(PostgreSQL)" style="outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#3334B9;strokeColor=none;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=12;fontStyle=1;aspect=fixed;pointerEvents=1;shape=mxgraph.aws4.rds_postgresql_instance;" vertex="1" parent="1">
+          <mxGeometry x="760" y="330" width="60" height="60" as="geometry"/>
+        </mxCell>
+        
+        <!-- External APIs (External logic) -->
+        <mxCell id="18" value="External APIs&#10;(Anthropic/VNStock)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="160" height="80" as="geometry"/>
+        </mxCell>
+        
+        <!-- Edges linking everything -->
+        <mxCell id="20" value="HTTP(S)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="10" target="11">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="11" target="12">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <!-- ALB to Frontend -->
+        <mxCell id="22" value="/*" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.25;entryX=0;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="12" target="14">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <!-- ALB to Backend -->
+        <mxCell id="23" value="/v1/*" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.75;entryX=0;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="12" target="15">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <!-- Backend to Python (Internal CloudMap) -->
+        <mxCell id="24" value="AWS Cloud Map" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;" edge="1" parent="1" source="15" target="16">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <!-- Backend to RDS -->
+        <mxCell id="25" value="TCP 5432" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="15" target="17">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+        <!-- Fargate to NAT -->
+        <mxCell id="26" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="15" target="13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+               <mxPoint x="490" y="360"/>
+               <mxPoint x="490" y="210"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <mxCell id="27" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.75;strokeWidth=2;" edge="1" parent="1" source="16" target="13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+               <mxPoint x="480" y="480"/>
+               <mxPoint x="480" y="225"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- NAT to Internet out -->
+        <mxCell id="28" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;strokeWidth=2;" edge="1" parent="1" source="13" target="18">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
