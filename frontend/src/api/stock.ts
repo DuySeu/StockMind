@@ -1,7 +1,7 @@
 import api from ".";
 
-export const getPriceBoard = async () => {
-  const response = await api.get(`/stock/price-board`);
+export const getPriceBoard = async (limit?: number) => {
+  const response = await api.get(`/stock/price-board${limit ? `?limit=${limit}` : ""}`);
   return response.data;
 };
 

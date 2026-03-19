@@ -30,12 +30,7 @@ const Header = ({ shouldAnimate, title, setTitle }: HeaderProps) => {
         <MessageSquareText className="text-primary-foreground w-6 h-6" />
         {isEditing ? (
           <>
-            <Input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full text-primary"
-            />
+            <Input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full" />
             <Button variant="secondary" size="icon-sm" onClick={handleSave}>
               <Check />
             </Button>
@@ -46,14 +41,14 @@ const Header = ({ shouldAnimate, title, setTitle }: HeaderProps) => {
         ) : (
           <span
             className={`${
-              shouldAnimate ? "animate-fade-right" : ""
+              shouldAnimate && "animate-fade-right"
             } font-semibold text-md text-primary-foreground hidden md:block truncate max-w-[150px] md:max-w-[200px] lg:max-w-[300px]`}
           >
             {title}
           </span>
         )}
         {title !== "StockMind" && !isEditing && (
-          <Button variant="secondary" size="icon-sm" onClick={handleEdit}>
+          <Button variant="outline" size="icon-sm" onClick={handleEdit}>
             <PenLine />
           </Button>
         )}

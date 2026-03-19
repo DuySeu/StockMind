@@ -189,7 +189,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a3"))
+	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
 	var sessionIdPtr *uuid.UUID
 	if sessionID != uuid.Nil {
 		sessionIdPtr = &sessionID

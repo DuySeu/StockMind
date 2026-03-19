@@ -158,15 +158,15 @@ const MarketResearcherPage = () => {
 
   return (
     <div className="flex flex-col items-center p-3 gap-4">
-      <span className="text-sm text-accent mt-4 px-3 py-1 rounded-full bg-accent/10">
+      <span className="text-sm mt-4 px-3 py-1 rounded-full bg-secondary">
         Powered by Tavily <strong>/research</strong>
       </span>
-      <div className="text-2xl font-bold text-primary">Market Researcher</div>
+      <div className="text-2xl font-bold">Market Researcher</div>
       <div className="text-sm text-muted-foreground">
         Get comprehensive market insights and analysis for your favorite stocks.
       </div>
-      <div className="flex flex-col w-full max-w-4xl p-3 gap-4 bg-primary rounded-lg">
-        <span className="text-xl text-center font-bold text-primary-foreground">Enter stock Tickers</span>
+      <div className="flex flex-col w-full max-w-6xl p-3 gap-4 bg-secondary rounded-lg">
+        <span className="text-xl text-center font-bold text-secondary-foreground">Enter stock Tickers</span>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2">
             <FormField
@@ -175,17 +175,12 @@ const MarketResearcherPage = () => {
               render={({ field }) => (
                 <FormItem className="flex-1">
                   <FormControl>
-                    <Input
-                      {...field}
-                      className="text-primary placeholder:text-primary"
-                      placeholder="Enter symbols to research..."
-                      disabled={isLoading}
-                    />
+                    <Input {...field} placeholder="Enter symbols to research..." disabled={isLoading} />
                   </FormControl>
                 </FormItem>
               )}
             />
-            <Button type="submit" size="icon" variant="secondary" disabled={isLoading}>
+            <Button type="submit" size="icon" disabled={isLoading}>
               <Plus />
             </Button>
           </form>
@@ -195,7 +190,7 @@ const MarketResearcherPage = () => {
           {watchList.map((stock) => (
             <Button
               key={stock.id}
-              variant="secondary"
+              variant="outline"
               disabled={researchList.includes(stock.ticker) || researchList.length >= 5 || isLoading}
               onClick={() => setResearchList([...researchList, stock.ticker])}
             >
@@ -208,10 +203,9 @@ const MarketResearcherPage = () => {
             <span className="text-primary-foreground">Selected tickers ({researchList.length}/5):</span>
             <div className="flex flex-wrap gap-2">
               {researchList.map((stock) => (
-                <div key={stock} className="flex items-center bg-secondary rounded-md">
+                <div key={stock} className="flex items-center bg-primary rounded-md">
                   <span className="text-secondary-foreground p-2 pr-0">{stock}</span>
                   <Button
-                    variant="secondary"
                     size="icon-sm"
                     disabled={isLoading}
                     onClick={() => setResearchList(researchList.filter((s) => s !== stock))}
@@ -225,12 +219,7 @@ const MarketResearcherPage = () => {
         )}
 
         <div className="flex gap-2">
-          <Button
-            disabled={researchList.length === 0 || isLoading}
-            variant="secondary"
-            onClick={handleResearch}
-            className="flex-1"
-          >
+          <Button disabled={researchList.length === 0 || isLoading} onClick={handleResearch} className="flex-1">
             Get Daily Digest ({researchList.length} tickers)
           </Button>
           {isLoading && (
@@ -248,7 +237,6 @@ const MarketResearcherPage = () => {
               {tickerLatestSteps.map(([ticker, latestStep]) => {
                 const isCompleted = latestStep.step === "completed";
                 const isFailed = latestStep.step === "failed";
-
                 return (
                   <div
                     key={ticker}
@@ -301,7 +289,7 @@ const MarketResearcherPage = () => {
         )}
       </div>
       {researchReport && researchReport.length > 0 && (
-        <div className="w-full max-w-6xl bg-primary rounded-lg overflow-hidden">
+        <div className="w-full max-w-6xl rounded-lg overflow-hidden border border-border">
           <Table>
             <TableCaption>Table to verify stock that Tavily recommend with real-time price(1-3 months)</TableCaption>
             <TableHeader>

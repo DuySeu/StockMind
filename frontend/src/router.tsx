@@ -7,15 +7,43 @@ import ResearchResultPage from "./pages/ResearchResultPage";
 import ChatbotPage from "./pages/Chatbot";
 import HomePage from "./pages/HomePage";
 import PendingPage from "./pages/PendingPage";
+import { MainLayout } from "./components/layout/MainLayout";
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <HomePage />,
+    element: <MainLayout />,
     errorElement: <ErrorPage />,
+    children: [
+      {
+        index: true,
+        element: <HomePage />,
+      },
+      {
+        path: "watchlist",
+        element: <WatchListPage />,
+      },
+      {
+        path: "research",
+        children: [
+          {
+            index: true,
+            element: <MarketResearcherPage />,
+          },
+          {
+            path: ":id",
+            element: <ResearchResultPage />,
+          },
+        ],
+      },
+      {
+        path: "news",
+        element: <PendingPage />,
+      },
+    ],
   },
   {
-    path: "/chat",
+    path: "/c",
     children: [
       {
         index: true,
@@ -26,30 +54,6 @@ export const router = createBrowserRouter([
         element: <ChatbotPage />,
       },
     ],
-    errorElement: <ErrorPage />,
-  },
-  {
-    path: "/watchlist",
-    element: <WatchListPage />,
-    errorElement: <ErrorPage />,
-  },
-  {
-    path: "/research",
-    children: [
-      {
-        index: true,
-        element: <MarketResearcherPage />,
-      },
-      {
-        path: ":id",
-        element: <ResearchResultPage />,
-      },
-    ],
-    errorElement: <ErrorPage />,
-  },
-  {
-    path: "/news",
-    element: <PendingPage />,
     errorElement: <ErrorPage />,
   },
   {

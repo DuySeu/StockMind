@@ -20,7 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2 } from "lucide-react";
+import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2, TrendingUp } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -92,7 +92,7 @@ const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string)
       await deleteSession(sessionId);
       await fetchSession();
       if (id && id === sessionId) {
-        navigate("/chat");
+        navigate("/c");
       }
     } catch (error) {
       console.log(error);
@@ -102,10 +102,15 @@ const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string)
   return (
     <Sidebar className="border-none" collapsible="icon">
       <SidebarHeader className="p-3">
-        <span>StockMind</span>
+        <div className="flex items-center gap-2">
+          <div className="size-10 bg-primary rounded-lg flex items-center justify-center">
+            <TrendingUp className="size-5 text-primary-foreground" strokeWidth={3} />
+          </div>
+          <h2 className="text-2xl font-black tracking-tight">StockMind</h2>
+        </div>
         <button
-          className="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 px-4 rounded-full flex items-center justify-center gap-2 mb-8 shadow-sm transition-all"
-          onClick={() => navigate("/chat")}
+          className="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 px-4 rounded-full flex items-center justify-center gap-2 shadow-sm transition-all"
+          onClick={() => navigate("/c")}
         >
           <Plus className="h-6 w-6" /> New Chat
         </button>
@@ -122,7 +127,7 @@ const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string)
                       <ContextMenuTrigger asChild>
                         <SidebarMenuButton
                           className={`${id === item.id && "border-l-3 border-accent"}`}
-                          onClick={() => navigate(item.id)}
+                          onClick={() => navigate(`/c/${item.id}`)}
                         >
                           <span className="truncate max-w-56">{item.title}</span>
                         </SidebarMenuButton>

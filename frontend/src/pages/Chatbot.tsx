@@ -3,6 +3,7 @@ import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
 import SideBar from "@/components/containers/SideBar";
+import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -225,7 +226,7 @@ const ChatbotPage = () => {
     );
     if (!id && sessionId) {
       setTitle(data.input.trim());
-      navigate(`/${sessionId}`);
+      navigate(`/c/${sessionId}`);
     }
   };
 
@@ -236,15 +237,18 @@ const ChatbotPage = () => {
 
   return (
     <>
-      <SidebarProvider className="h-svh bg-sidebar overflow-hidden">
+      <SidebarProvider className="flex-1 w-full h-screen bg-sidebar overflow-hidden">
         <SideBar title={title} setTitle={setTitle} />
-        <main className="w-full flex flex-col border border-border transition-colors duration-300 rounded-2xl m-3 ml-0 overflow-hidden">
-          <div className="flex-1 flex flex-col bg-background-light dark:bg-background-dark relative h-full overflow-hidden">
+        <main className="w-full h-full flex flex-col">
+          <div className="mt-4 px-2">
+            <Navbar />
+          </div>
+          <div className="flex-1 flex flex-col bg-background-light dark:bg-background-dark relative h-full border border-border transition-colors duration-300 rounded-2xl m-4 ml-0 overflow-hidden">
             <Header shouldAnimate={!!id} title={title} setTitle={setTitle} />
             <div ref={scrollRef} className="flex-1 overflow-hidden flex flex-col relative w-full h-full">
               <ScrollArea className="flex-1 w-full h-full">
-                <div className="max-w-4xl mx-auto px-4 py-8 space-y-8 w-full min-h-full flex flex-col">
-                  {messages.length > 0 ? (
+                <div className="max-w-4xl mx-auto px-4 pt-8 pb-36 md:pb-40 space-y-8 w-full min-h-full flex flex-col">
+                  {messages.length > 0 || id ? (
                     <MessageList messages={messages} />
                   ) : (
                     <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 mt-10">

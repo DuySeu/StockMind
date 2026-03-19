@@ -12,7 +12,7 @@ const ResearchReport = ({ data }: { data: any }) => {
 
   return (
     <>
-      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-primary rounded-lg">
+      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-secondary rounded-lg">
         <h1 className="text-2xl font-bold">{data?.ticker}</h1>
         <p className="text-md">{data?.company_name}</p>
         {data.market_cap && data.pe_ratio && (
@@ -32,7 +32,7 @@ const ResearchReport = ({ data }: { data: any }) => {
           <p className="text-sm">{data?.summary}</p>
         </div>
       </div>
-      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-primary rounded-lg">
+      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-secondary rounded-lg">
         <h1 className="text-2xl font-bold">Key Insights</h1>
         <div className="w-full space-y-2">
           {data?.key_insights?.map((item: string, index: number) => (
@@ -43,24 +43,24 @@ const ResearchReport = ({ data }: { data: any }) => {
         </div>
       </div>
       <div className="grid grid-cols-3 w-full max-w-6xl rounded-lg gap-3">
-        <div className="rounded-lg p-3 bg-primary border border-border">
+        <div className="rounded-lg p-3 bg-secondary border border-border">
           <h1 className="text-md font-bold">Current Performance</h1>
           <p className="text-sm p-3 rounded-lg border border-border">{data?.current_performance}</p>
         </div>
-        <div className="rounded-lg p-3 bg-primary border border-border">
+        <div className="rounded-lg p-3 bg-secondary border border-border">
           <h1 className="text-md font-bold">Risk Assessment</h1>
           <p className="text-sm p-3 rounded-lg border border-border">{data?.risk_assessment}</p>
         </div>
-        <div className="rounded-lg p-3 bg-primary border border-border">
+        <div className="rounded-lg p-3 bg-secondary border border-border">
           <h1 className="text-md font-bold">Price Outlook</h1>
           <p className="text-sm p-3 rounded-lg border border-border">{data?.price_outlook}</p>
         </div>
       </div>
-      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-primary rounded-lg">
+      <div className="flex flex-col items-start w-full max-w-6xl p-3 bg-secondary rounded-lg">
         <h1 className="text-2xl font-bold">Final Recommendation</h1>
         <p className="text-sm p-3 rounded-lg border border-border">{data?.recommendation}</p>
       </div>
-      <Accordion type="single" collapsible className="w-full max-w-6xl px-3 bg-primary rounded-lg">
+      <Accordion type="single" collapsible className="w-full max-w-6xl px-3 bg-secondary rounded-lg">
         <AccordionItem value="sources">
           <AccordionTrigger>Research Sources ({data?.sources?.length})</AccordionTrigger>
           <AccordionContent className="space-y-2">

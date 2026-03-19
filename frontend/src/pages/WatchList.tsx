@@ -9,20 +9,12 @@ import { Plus, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 
-const WatchListPage = () => {
-  const [priceBoard, setPriceBoard] = useState<PriceBoard[]>([]);
+function Header({ setPriceBoard }: { setPriceBoard: (priceBoard: PriceBoard[]) => void }) {
   const form = useForm({
     defaultValues: {
       symbols: "",
     },
   });
-
-  useEffect(() => {
-    getPriceBoard().then((res) => {
-      setPriceBoard(res);
-    });
-  }, []);
-
   const onSubmit = async (data: any) => {
     try {
       await addSymbolInPriceBoard(data.symbols.toUpperCase());
@@ -39,35 +31,59 @@ const WatchListPage = () => {
     const res = await getPriceBoard();
     setPriceBoard(res);
   };
+  return (
+    <header className="w-full border-b border-primary/20 bg-background/80 backdrop-blur-md px-6 lg:px-10 py-4">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        {/* Logo */}
+        <div className="flex flex-col items-start gap-2">
+          <h2 className="text-2xl tracking-tight">Your Smart Watchlist</h2>
+          <p className="text-sm text-muted-foreground">Real-time AI insights for your selected tickers</p>
+        </div>
+
+        {/* Actions */}
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2 m-3">
+            <FormField
+              control={form.control}
+              name="symbols"
+              render={({ field }) => (
+                <FormItem className="flex-1">
+                  <FormControl>
+                    <Input {...field} className="text-secondary-foreground" placeholder="Enter symbols to watch..." />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <Button type="submit">
+              <Plus />
+              Add Stock
+            </Button>
+            <Button type="button" size="icon" onClick={handleRefresh}>
+              <RotateCw />
+            </Button>
+          </form>
+        </Form>
+      </div>
+    </header>
+  );
+}
+
+const WatchListPage = () => {
+  const [priceBoard, setPriceBoard] = useState<PriceBoard[]>([]);
+
+  useEffect(() => {
+    getPriceBoard().then((res) => {
+      setPriceBoard(res);
+    });
+  }, []);
 
   return (
-    <div className="p-3 space-y-4">
-      <h1 className="text-2xl font-bold text-primary">Watchlist</h1>
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="flex gap-2">
-          <FormField
-            control={form.control}
-            name="symbols"
-            render={({ field }) => (
-              <FormItem className="flex-1">
-                <FormControl>
-                  <Input {...field} className="text-secondary-foreground" placeholder="Enter symbols to watch..." />
-                </FormControl>
-              </FormItem>
-            )}
-          />
-          <Button type="submit" size="icon">
-            <Plus />
-          </Button>
-          <Button type="button" size="icon" onClick={handleRefresh}>
-            <RotateCw />
-          </Button>
-        </form>
-      </Form>
-      <div className="rounded-lg border overflow-hidden">
+    <div className="w-full flex-1 flex flex-col">
+      <Header setPriceBoard={setPriceBoard} />
+      <div className="rounded-lg border overflow-hidden m-3">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/50">
+            <TableRow>
               <TableHead className="w-[80px] font-bold">Symbol</TableHead>
               <TableHead className="min-w-[180px] font-bold">Company</TableHead>
               <TableHead className="text-right font-bold">Match</TableHead>
@@ -80,7 +96,7 @@ const WatchListPage = () => {
               <TableHead className="text-right font-bold">Low</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="text-secondary-foreground">
+          <TableBody>
             {priceBoard.map((stock: PriceBoard) => {
               const { listingInfo, matchPrice } = stock;
               const change = calculateChangePercent(matchPrice.matchPrice, matchPrice.referencePrice);

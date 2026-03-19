@@ -55,13 +55,14 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
                       </div>
                     );
                   }
-
                   // Text and Thinking parts get the bubble style
                   return (
                     <div
                       key={idx}
-                      className={`px-4 py-2 shadow-sm text-sm md:text-base leading-relaxed mb-1 ${
-                        isUser ? "rounded-2xl rounded-tr-sm bg-primary text-primary-foreground" : "text-card-foreground"
+                      className={`px-4 py-2 text-sm md:text-base leading-relaxed mb-1 ${
+                        isUser
+                          ? "rounded-2xl rounded-tr-sm shadow-sm bg-primary text-primary-foreground"
+                          : "text-card-foreground"
                       }`}
                     >
                       {content.type === "text" && <Markdown remarkPlugins={[remarkGfm]}>{content.text}</Markdown>}
@@ -87,7 +88,7 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
             ) : (
               <>
                 <span className="text-xs text-muted-foreground mb-1 px-1">Thinking</span>
-                <div className="px-4 py-2 shadow-sm text-sm md:text-base leading-relaxed text-card-foreground">
+                <div className="px-4 py-2 text-sm md:text-base leading-relaxed text-card-foreground">
                   <div className="flex items-center space-x-1">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-primary delay-0"></span>
                     <span className="h-2 w-2 animate-pulse rounded-full bg-primary delay-150"></span>

@@ -18,55 +18,12 @@ import {
   Check,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { getLatestNews } from "@/api/news";
+import type { PriceBoard } from "@/types/stock";
+import { getPriceBoard } from "@/api/stock";
 
 /* ───────────────────────── Data ───────────────────────── */
-
-const watchlistData = [
-  {
-    ticker: "FPT",
-    sector: "Technology",
-    price: "121,300",
-    change: "+2.3%",
-    changePositive: true,
-    signal: "Buy",
-    signalVariant: "buy" as const,
-    strength: 8.4,
-    strengthPct: 85,
-  },
-  {
-    ticker: "VNM",
-    sector: "Consumer Staples",
-    price: "68,500",
-    change: "-0.5%",
-    changePositive: false,
-    signal: "Hold",
-    signalVariant: "hold" as const,
-    strength: 5.2,
-    strengthPct: 50,
-  },
-  {
-    ticker: "MSN",
-    sector: "Retail",
-    price: "75,200",
-    change: "+1.2%",
-    changePositive: true,
-    signal: "Buy",
-    signalVariant: "buy" as const,
-    strength: 7.2,
-    strengthPct: 72,
-  },
-  {
-    ticker: "VIC",
-    sector: "Conglomerate",
-    price: "42,100",
-    change: "0.0%",
-    changePositive: null,
-    signal: "Neutral",
-    signalVariant: "neutral" as const,
-    strength: 4.5,
-    strengthPct: 45,
-  },
-];
 
 const capabilities = [
   {
@@ -88,37 +45,6 @@ const capabilities = [
     icon: LineChart,
     title: "Macro Insights",
     description: "Understand how SBV policy changes and global macro trends specifically impact your portfolio.",
-  },
-];
-
-const newsData = [
-  {
-    sentiment: "Positive",
-    sentimentColor: "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20",
-    time: "10 mins ago",
-    title: "SBV keeps policy rates unchanged, supporting banking liquidity.",
-    summary: "AI Summary: Positive for VCB, BID, and TCB. Expect increased trading volume in the banking sector.",
-    impact: "+1.5% Market Sentiment",
-    impactColor: "text-primary",
-  },
-  {
-    sentiment: "Negative",
-    sentimentColor: "text-rose-500 bg-rose-50 dark:bg-rose-900/20",
-    time: "1 hour ago",
-    title: "US Dollar Index (DXY) climbs to 105.2, pressuring VND exchange rate.",
-    summary: "AI Summary: Potential pressure on export-heavy companies with USD debt. Watch HPG and gas companies.",
-    impact: "-0.8% Forex Pressure",
-    impactColor: "text-destructive",
-  },
-  {
-    sentiment: "Neutral",
-    sentimentColor: "text-amber-500 bg-amber-50 dark:bg-amber-900/20",
-    time: "3 hours ago",
-    title: "VinFast deliveries reach new milestones in US market expansion.",
-    summary:
-      "AI Summary: Long-term positive for VIC/VHM, but market has already priced in most current delivery targets.",
-    impact: "No immediate change",
-    impactColor: "text-muted-foreground",
   },
 ];
 
@@ -158,44 +84,7 @@ const pricingPlans = [
 
 /* ───────────────────── Sub-Components ───────────────────── */
 
-function StickyHeader() {
-  return (
-    <header className="sticky top-0 z-50 w-full border-b border-primary/20 bg-background/80 backdrop-blur-md px-6 lg:px-20 py-4">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-2">
-          <div className="size-10 bg-primary rounded-lg flex items-center justify-center">
-            <TrendingUp className="size-5 text-primary-foreground" strokeWidth={3} />
-          </div>
-          <h2 className="text-2xl font-black tracking-tight">StockMind</h2>
-        </div>
 
-        {/* Nav */}
-        <nav className="hidden md:flex items-center gap-8">
-          {["Features", "Watchlist", "News", "Pricing"].map((item) => (
-            <a
-              key={item}
-              href={`#${item.toLowerCase()}`}
-              className="text-sm font-semibold hover:text-primary transition-colors"
-            >
-              {item}
-            </a>
-          ))}
-        </nav>
-
-        {/* Actions */}
-        <div className="flex items-center gap-4">
-          <Link to="/login" className="text-sm font-semibold hover:text-primary transition-colors hidden sm:block">
-            Login
-          </Link>
-          <Button className="rounded-xl px-6 py-2.5 font-bold text-sm shadow-lg shadow-primary/20">
-            <Link to="/chatbot">Try StockMind</Link>
-          </Button>
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function HeroSection() {
   return (
@@ -243,21 +132,32 @@ function HeroSection() {
   );
 }
 
-function TickerCard({
-  ticker,
-  sector,
-  price,
-  change,
-  changePositive,
-  signal,
-  signalVariant,
-  strength,
-  strengthPct,
-}: (typeof watchlistData)[number]) {
+function TickerCard({ listingInfo, matchPrice }: PriceBoard) {
+  if (!listingInfo || !matchPrice) return null;
+
+  const ticker = listingInfo.symbol;
+  const sector = listingInfo.enOrganShortName || "Unknown";
+
+  const priceVal = matchPrice.matchPrice || 0;
+  const refPrice = matchPrice.referencePrice || 0;
+  const priceDisplay = priceVal.toLocaleString();
+
+  const changeVal = priceVal - refPrice;
+  const changePct = refPrice > 0 ? (changeVal / refPrice) * 100 : 0;
+  const changePositive = changeVal > 0;
+  const changeStr = `${changeVal > 0 ? "+" : ""}${changePct.toFixed(1)}%`;
+
+  const signalVariant = changePositive ? "buy" : changeVal < 0 ? "sell" : "neutral";
+  const signal = changePositive ? "Buy" : changeVal < 0 ? "Sell" : "Hold";
+  const strength = changePositive ? 8.4 : changeVal < 0 ? 3.2 : 5.0;
+  const strengthPct = strength * 10;
+
   const signalBadgeClass =
     signalVariant === "buy"
       ? "bg-primary/20 text-emerald-700 dark:text-emerald-400"
-      : "bg-secondary text-muted-foreground";
+      : signalVariant === "sell"
+        ? "bg-rose-500/20 text-rose-700 dark:text-rose-400"
+        : "bg-secondary text-muted-foreground";
 
   const changeClass = changePositive
     ? "text-emerald-500"
@@ -270,7 +170,9 @@ function TickerCard({
       <div className="flex justify-between items-start mb-4">
         <div>
           <h4 className="text-xl font-black">{ticker}</h4>
-          <p className="text-xs text-muted-foreground">{sector}</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[120px]" title={sector}>
+            {sector}
+          </p>
         </div>
         <span className={`${signalBadgeClass} px-2 py-1 rounded text-xs font-bold uppercase tracking-wider`}>
           {signal}
@@ -278,8 +180,8 @@ function TickerCard({
       </div>
 
       <div className="mb-4">
-        <span className="text-2xl font-bold">{price}</span>
-        <span className={`${changeClass} text-sm font-bold ml-2`}>{change}</span>
+        <span className="text-2xl font-bold">{priceDisplay}</span>
+        <span className={`${changeClass} text-sm font-bold ml-2`}>{changeStr}</span>
       </div>
 
       <Progress
@@ -289,13 +191,20 @@ function TickerCard({
 
       <div className="flex justify-between mt-2 text-[10px] text-muted-foreground font-bold uppercase">
         <span>AI Strength</span>
-        <span>{strength}/10</span>
+        <span>{strength.toFixed(1)}/10</span>
       </div>
     </Card>
   );
 }
 
 function WatchlistSection() {
+  const [priceBoard, setPriceBoard] = useState<PriceBoard[]>([]);
+
+  useEffect(() => {
+    getPriceBoard(4).then((res) => {
+      setPriceBoard(res);
+    });
+  }, []);
   return (
     <section id="watchlist" className="py-20 px-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-10">
@@ -309,8 +218,8 @@ function WatchlistSection() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {watchlistData.map((d) => (
-          <TickerCard key={d.ticker} {...d} />
+        {priceBoard.map((d, i) => (
+          <TickerCard key={d.listingInfo?.symbol ?? i} {...d} />
         ))}
       </div>
     </section>
@@ -469,30 +378,109 @@ function StockAnalysisSection() {
 }
 
 function NewsSection() {
+  const [localNewsData, setLocalNewsData] = useState<any[]>([]);
+
+  useEffect(() => {
+    getLatestNews()
+      .then((res) => {
+        console.log(res);
+        if (Array.isArray(res)) {
+          // Process backend News into dynamic frontend elements
+          const formatted = res.map((item: any) => {
+            const descLower = String(item.description || "").toLowerCase();
+            const titleLower = String(item.title || "").toLowerCase();
+            const combined = titleLower + " " + descLower;
+
+            let sentiment = "Neutral";
+            let sentimentColor = "text-amber-500 bg-amber-50 dark:bg-amber-900/20";
+            let impact = "No immediate change";
+            let impactColor = "text-muted-foreground";
+
+            if (
+              combined.includes("tăng") ||
+              combined.includes("tích cực") ||
+              combined.includes("lợi nhuận") ||
+              combined.includes("chấp thuận")
+            ) {
+              sentiment = "Positive";
+              sentimentColor = "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20";
+              impact = "+ Market Sentiment";
+              impactColor = "text-primary";
+            } else if (
+              combined.includes("giảm") ||
+              combined.includes("lỗ") ||
+              combined.includes("rủi ro") ||
+              combined.includes("cảnh báo")
+            ) {
+              sentiment = "Negative";
+              sentimentColor = "text-rose-500 bg-rose-50 dark:bg-rose-900/20";
+              impact = "- Market Pressure";
+              impactColor = "text-destructive";
+            }
+
+            let summary = item.description || "";
+            if (summary.length > 150) {
+              summary = summary.substring(0, 147) + "...";
+            }
+
+            const dt = new Date(item.created_at || new Date());
+            const displayTime = isNaN(dt.getTime())
+              ? "Today"
+              : dt.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+
+            return {
+              sentiment,
+              sentimentColor,
+              time: displayTime,
+              title: item.title,
+              summary: "AI Summary: " + summary,
+              impact,
+              impactColor,
+              url: item.url,
+            };
+          });
+          setLocalNewsData(formatted);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch news:", err));
+  }, []);
+
   return (
     <section id="news" className="py-20 px-6 bg-background">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-3xl font-black mb-12 text-center">AI News Intelligence</h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {newsData.map((news, i) => (
-            <Card key={i} className="p-6 rounded-3xl gap-0">
-              <div className="flex items-center gap-2 mb-4">
-                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${news.sentimentColor}`}>
-                  {news.sentiment}
-                </span>
-                <span className="text-xs text-muted-foreground">{news.time}</span>
-              </div>
+          {localNewsData.length > 0 ? (
+            localNewsData.map((news: any, i: number) => (
+              <a
+                href={news.url || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                key={i}
+                className="block transition-transform hover:-translate-y-1"
+              >
+                <Card className="p-6 rounded-3xl gap-0 h-full">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${news.sentimentColor}`}>
+                      {news.sentiment}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{news.time}</span>
+                  </div>
 
-              <h3 className="font-bold mb-3 leading-snug">{news.title}</h3>
+                  <h3 className="font-bold mb-3 leading-snug">{news.title}</h3>
 
-              <div className="bg-secondary p-3 rounded-xl mb-4">
-                <p className="text-xs text-muted-foreground italic">{news.summary}</p>
-              </div>
+                  <div className="bg-secondary p-3 rounded-xl mb-4">
+                    <p className="text-xs text-muted-foreground italic line-clamp-3">{news.summary}</p>
+                  </div>
 
-              <p className={`text-xs font-bold ${news.impactColor}`}>Impact: {news.impact}</p>
-            </Card>
-          ))}
+                  <p className={`text-[10px] font-bold ${news.impactColor}`}>Impact: {news.impact}</p>
+                </Card>
+              </a>
+            ))
+          ) : (
+            <div className="col-span-3 text-center text-muted-foreground py-10">Fetching latest AI news...</div>
+          )}
         </div>
       </div>
     </section>
@@ -626,8 +614,7 @@ function Footer() {
 
 const HomePage = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans transition-colors">
-      <StickyHeader />
+    <div className="w-full flex-1">
       <HeroSection />
       <WatchlistSection />
       <CapabilitiesSection />

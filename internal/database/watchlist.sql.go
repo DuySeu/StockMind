@@ -34,11 +34,11 @@ func (q *Queries) DeleteWatchlistData(ctx context.Context, id uuid.UUID) (Watchl
 }
 
 const getWatchlist = `-- name: GetWatchlist :many
-SELECT id, ticker, created_at FROM watchlist ORDER BY created_at DESC
+SELECT id, ticker, created_at FROM watchlist ORDER BY created_at DESC LIMIT NULLIF($1::int, 0)
 `
 
-func (q *Queries) GetWatchlist(ctx context.Context) ([]Watchlist, error) {
-	rows, err := q.db.Query(ctx, getWatchlist)
+func (q *Queries) GetWatchlist(ctx context.Context, dollar_1 int32) ([]Watchlist, error) {
+	rows, err := q.db.Query(ctx, getWatchlist, dollar_1)
 	if err != nil {
 		return nil, err
 	}
