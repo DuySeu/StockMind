@@ -21,6 +21,7 @@ tmp/
 # IDE specific files
 .vscode
 .idea
+.agent
 
 # .env file
 .env

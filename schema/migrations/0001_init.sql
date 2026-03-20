@@ -77,6 +77,14 @@ CREATE TABLE IF NOT EXISTS watchlist (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS news (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    url VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 INSERT INTO watchlist (ticker) VALUES ('FPT'), ('BIG'), ('VRE'), ('VCG'), ('VPB');
 
 -- Default Agent Flow
@@ -85,9 +93,9 @@ INSERT INTO agent_flows (id, name, config) VALUES
 '{
     "agents": {
         "NormalChat": {
-            "provider": "anthropic",
+            "provider": "openai",
             "description": "Handles general chat interactions.",
-            "modelId": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+            "modelId": "nvidia/nemotron-3-nano-30b-a3b:free",
             "systemPrompt": "You are a helpful assistant.",
             "maxTokens": 8192,
             "thinkingToken": 1024,

@@ -1,59 +1,72 @@
-# StockMind (Stock market retrieve information application)
+# StockMind
 
-StockMind is an AI-powered assistant designed to simplify access to financial information and insights about the Vietnamese stock market. By combining financial data retrieval with intelligent analysis, StockMind helps investors and analysts make informed decisions more efficiently.
+StockMind is an AI-powered financial assistant tailored for the Vietnamese stock market. It streamlines the investment research process by providing intuitive access to financial data, intelligent analysis, and real-time market insights. By combining robust data retrieval with intelligent evaluations, StockMind empowers investors and analysts to make data-driven decisions efficiently.
 
-StockMind is fully using open source framework anh service
+---
 
-With StockMind, users can:
-• Retrieve and preview official financial statements of any listed company.
-• Access a comprehensive set of fundamental analysis indicators (P/E, P/S, ROA, ROE, EPS, etc.).
-• Evaluate stocks using the Piotroski F-Score, with a clear breakdown of all nine criteria.
-• Track financial events that may impact stock performance, including announcements, dividends, and regulatory updates.
-• (Optional extension) Analyze market sentiment from news and reports to capture investor mood beyond the numbers.
+## Table of Contents
+
+1. [Features](#features)
+2. [Tech Stack](#tech-stack)
+3. [Running Locally](#running-locally)
+
+---
+
+## Features
+
+StockMind includes a suite of tools for exploring the market, accessible via our intelligent conversational agent and market dashboard. 
+
+For a comprehensive breakdown of implemented and planned capabilities, please see our [Features Documentation](./docs/features/features.md).
+
+### Core Capabilities
+
+*   **Financial Data Access**: Retrieve and preview official financial statements for any listed company directly through the AI chat.
+*   **Fundamental Indicators**: Instantly access key metrics including P/E, P/S, ROA, ROE, EPS, PEG, and more.
+*   **Intelligent Evaluation**: Assess stocks systematically using established frameworks like the Piotroski F-Score and Altman Z-Score through automated market research reports.
+*   **Event Tracking & News**: Monitor critical financial events, earnings announcements, dividends, and regulatory updates affecting your portfolio.
+*   **Market Researcher & Watchlist**: Build your own watchlist of tickers and generate deep-dive automated research reports detailing fundamental analysis.
+
+---
 
 ## Tech Stack
 
-- Backend: Golang
-- Frontend: React
-- Tool Server: Python(vnstock3)
+*   **Backend**: Go (Golang)
+*   **Frontend**: React (Vite, TypeScript)
+*   **Data & Tooling Server**: Python (`vnstock3` integration)
+*   **Database**: PostgreSQL (via Docker)
 
-## Use case
+---
 
-### 1. Retrieve Financial Statements
+## Running Locally
 
-- Users can request the financial statement of any listed company (by company name or stock ticker).
-- The assistant will provide the financial statement in a previewable format within the application.
-- Users can also download the financial statement as a file for offline use.
+To run the StockMind application on your local machine for development or testing, follow these steps.
 
-### 2. Access Fundamental Analysis Indicators
+### Prerequisites
+*   [Go](https://go.dev/doc/install) (1.21+)
+*   [Node.js](https://nodejs.org/en) (v18+)
+*   [Docker](https://docs.docker.com/get-docker/) & Docker Compose
+*   (Optional) `make` utility installed.
 
-- Users can query key indicators for fundamental analysis of any stock, including but not limited to:
-  - P/E, P/S, PEG ratios
-  - ROA, ROE
-  - EPS, Book Value per Share
-  - Dividend Yield, Debt-to-Equity Ratio, and other standard financial metrics.
-- The assistant aggregates these indicators and presents them in a structured and easy-to-read format.
+### 1. Start the Database
+The project uses Docker to spin up the required PostgreSQL database. Run docker compose in detached mode:
 
-### 3. Evaluate Value Stocks (Piotroski Score)
+```bash
+docker-compose up -d
+```
 
-- Users can evaluate whether a stock qualifies as a "value stock" using the **Piotroski F-Score** framework. Ref: [https://www.investopedia.com/terms/p/piotroski-score.asp]
-- The assistant provides:
-  - A detailed explanation of each of the 9 criteria used in the score.
-  - A breakdown of how the company performs against each criterion.
-  - The final Piotroski Score with an interpretation of its implication for investment decisions.
+### 2. Run the Application
+You can easily start both the Go backend server and the React frontend development server simultaneously using the provided `Makefile` command:
 
-### 4. Evaluate Value Stocks (Altman Z-Score)
+```bash
+make run
+```
 
-- Users can evaluate whether a stock qualifies as a "value stock" using the **Altman Z-Score** framework. Ref: [https://www.investopedia.com/terms/a/altman.asp]
-- The assistant provides:
-  - A detailed explanation of each of the 5 criteria used in the score.
-  - A breakdown of how the company performs against each criterion.
-  - The final Altman Z-Score with an interpretation of its implication for investment decisions.
+This single command will:
+1. Start the Go backend on the appropriate port.
+2. Install the necessary NPM dependencies in the `frontend/` directory.
+3. Start the Vite React development server.
 
-### 5. Track Financial Events Affecting Stocks
+### 3. Access the Dashboard
+Once both servers are running, open your browser and navigate to the frontend URL (typically `http://localhost:5173`) to start using StockMind.
 
-- Users can query whether any financial events (e.g., earnings announcements, dividend declarations, mergers, acquisitions, or regulatory updates) are associated with a specific stock.
-- The assistant retrieves and displays:
-  - The **content** or description of the financial event.
-  - The **date** the event occurred or was announced.
-- This feature enables investors to stay informed about significant market-moving events and better understand the context behind stock performance.
+*(To stop the application, terminate the `make run` process and run `docker-compose down` to stop the database container).*
