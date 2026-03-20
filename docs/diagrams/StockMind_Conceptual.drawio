@@ -1,120 +1,207 @@
-<mxfile host="app.diagrams.net" modified="2026-03-19T00:00:00.000Z" agent="Claude" version="24.7.17">
-  <diagram id="conceptual_modules_grouped" name="Conceptual by Feature">
-    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="850" background="#1e1e1e">
+<mxfile host="app.diagrams.net" modified="2026-03-20T09:22:00.000Z" agent="Claude" version="24.7.17">
+  <diagram id="stockmind_conceptual_v3" name="StockMind Conceptual Design">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1300" pageHeight="950" background="#1a1a2e">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
-        
-        <!-- ============================================== -->
-        <!-- FEATURE MODULE 1: AI Assistant (Chatbot)       -->
-        <!-- ============================================== -->
-        <mxCell id="10" value="AI Assistant Module (Chatbot)" style="swimlane;html=1;startSize=40;fillColor=#1e3f66;strokeColor=#4178b5;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="80" y="80" width="300" height="420" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="11" value="Conversational UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
-          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="12" value="Session Memory Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
-          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="13" value="LLM Prompt Engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
-          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="14" value="Tool Execution Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
-          <mxGeometry x="50" y="320" width="200" height="50" as="geometry"/>
+
+        <!-- ════════════════════════════════════════════ -->
+        <!--  TITLE BANNER                               -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="title" value="StockMind — AI-Powered Vietnamese Stock Assistant" style="text;html=1;align=center;verticalAlign=middle;fontSize=22;fontStyle=1;fontColor=#00d4ff;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="200" y="20" width="900" height="40" as="geometry"/>
         </mxCell>
 
-        <!-- ============================================== -->
-        <!-- FEATURE MODULE 2: Market Dashboard             -->
-        <!-- ============================================== -->
-        <mxCell id="20" value="Market Dashboard Module" style="swimlane;html=1;startSize=40;fillColor=#234524;strokeColor=#5ead5a;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="440" y="80" width="300" height="420" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="21" value="Real-time Price Board UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
-          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="22" value="User Watchlist Tracker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
-          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="23" value="Financial News Aggregator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
-          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
+        <!-- ════════════════════════════════════════════ -->
+        <!--  ACTOR                                      -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="actor" value="Investor / User" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;fillColor=#00d4ff;strokeColor=#00a8cc;fontColor=#ffffff;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="40" y="440" width="40" height="70" as="geometry"/>
         </mxCell>
 
-        <!-- ============================================== -->
-        <!-- FEATURE MODULE 3: Market Researcher            -->
-        <!-- ============================================== -->
-        <mxCell id="30" value="Market Researcher Module" style="swimlane;html=1;startSize=40;fillColor=#412b4f;strokeColor=#a87bbd;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
-          <mxGeometry x="800" y="80" width="300" height="420" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="31" value="Deep-dive Report Generator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
-          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="32" value="Altman Z-Score Calculator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
-          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <mxCell id="33" value="Piotroski F-Score Calculator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
-          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
-        </mxCell>
-        
-        <!-- ============================================== -->
-        <!-- EXTERNAL DEPENDENCIES                          -->
-        <!-- ============================================== -->
-        <mxCell id="40" value="User / Investor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#888888;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
-          <mxGeometry x="575" y="550" width="30" height="60" as="geometry"/>
+        <!-- ════════════════════════════════════════════ -->
+        <!--  LAYER 1 — PRESENTATION (React / Vite)      -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="L1" value="Presentation Layer  ·  React / TypeScript / Vite" style="swimlane;html=1;startSize=36;fillColor=#16213e;strokeColor=#00d4ff;fontStyle=1;fontSize=15;fontColor=#00d4ff;horizontal=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="80" width="1000" height="150" as="geometry"/>
         </mxCell>
 
-        <mxCell id="41" value="LLM Providers (Anthropic)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="150" y="550" width="160" height="80" as="geometry"/>
+        <!-- Feature Columns: UI Cards -->
+        <mxCell id="ui_chat" value="💬  AI Chatbot UI&#xa;(SSE Streaming)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f3460;strokeColor=#00d4ff;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L1">
+          <mxGeometry x="40" y="60" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ui_dash" value="📊  Market Dashboard&#xa;(Price Board · Watchlist · News)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f3460;strokeColor=#53d8fb;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L1">
+          <mxGeometry x="390" y="60" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="ui_research" value="🔬  Market Researcher UI&#xa;(Generate &amp; View Reports)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0f3460;strokeColor=#a084e8;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L1">
+          <mxGeometry x="760" y="60" width="200" height="60" as="geometry"/>
         </mxCell>
 
-        <mxCell id="42" value="Vietnamese Market APIs" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="870" y="550" width="160" height="80" as="geometry"/>
+        <!-- ════════════════════════════════════════════ -->
+        <!--  LAYER 2 — BACKEND ENGINE (Go / Chi)        -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="L2" value="Backend Engine Layer  ·  Go / Chi  (REST + SSE)" style="swimlane;html=1;startSize=36;fillColor=#16213e;strokeColor=#53d8fb;fontStyle=1;fontSize=15;fontColor=#53d8fb;horizontal=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="270" width="1000" height="200" as="geometry"/>
         </mxCell>
 
-        <!-- ============================================== -->
-        <!-- EDGES                                          -->
-        <!-- ============================================== -->
-        
-        <!-- User Edges -->
-        <mxCell id="50" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.5;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="10">
+        <!-- Feature 1: AI Agent -->
+        <mxCell id="feat1_border" value="Feature: AI Assistant  (/v1/chat)" style="swimlane;html=1;startSize=28;fillColor=#0f3460;strokeColor=#00d4ff;fontColor=#00d4ff;fontStyle=1;fontSize=12;" vertex="1" parent="L2">
+          <mxGeometry x="30" y="50" width="260" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat1_session" value="Session Manager&#xa;(PostgreSQL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#00d4ff;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat1_border">
+          <mxGeometry x="10" y="38" width="110" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat1_agent" value="AI Agent Orchestrator&#xa;(Tool Router)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#00d4ff;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat1_border">
+          <mxGeometry x="140" y="38" width="110" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Feature 2: Dashboard API -->
+        <mxCell id="feat2_border" value="Feature: Market Dashboard  (/v1/stock/*)" style="swimlane;html=1;startSize=28;fillColor=#0f3460;strokeColor=#53d8fb;fontColor=#53d8fb;fontStyle=1;fontSize=12;" vertex="1" parent="L2">
+          <mxGeometry x="330" y="50" width="340" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat2_pb" value="Price Board API&#xa;(/stock/price-board)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#53d8fb;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat2_border">
+          <mxGeometry x="10" y="38" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat2_wl" value="Watchlist API&#xa;(/stock/watchlist)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#53d8fb;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat2_border">
+          <mxGeometry x="100" y="38" width="140" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat2_news" value="News API&#xa;(/stock/news)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#53d8fb;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat2_border">
+          <mxGeometry x="195" y="38" width="130" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- Feature 3: Research -->
+        <mxCell id="feat3_border" value="Feature: Market Researcher  (/v1/stock/research*)" style="swimlane;html=1;startSize=28;fillColor=#0f3460;strokeColor=#a084e8;fontColor=#a084e8;fontStyle=1;fontSize=12;" vertex="1" parent="L2">
+          <mxGeometry x="710" y="50" width="270" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat3_gen" value="Research Report&#xa;Generator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#a084e8;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat3_border">
+          <mxGeometry x="10" y="38" width="120" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="feat3_view" value="Stored Report&#xa;Viewer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#a084e8;fontColor=#ffffff;fontSize=11;" vertex="1" parent="feat3_border">
+          <mxGeometry x="140" y="38" width="120" height="50" as="geometry"/>
+        </mxCell>
+
+        <!-- ════════════════════════════════════════════ -->
+        <!--  LAYER 3 — DATA TOOLING (Python / vnstock3) -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="L3" value="Data Integration Layer  ·  Python / vnstock3" style="swimlane;html=1;startSize=36;fillColor=#16213e;strokeColor=#f0a500;fontStyle=1;fontSize=15;fontColor=#f0a500;horizontal=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="510" width="1000" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="l3_hs" value="📈  Historical Stock Data" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b00;strokeColor=#f0a500;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L3">
+          <mxGeometry x="40" y="55" width="190" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="l3_fs" value="🧾  Financial Statements" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b00;strokeColor=#f0a500;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L3">
+          <mxGeometry x="250" y="55" width="190" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="l3_fi" value="📐  Fundamental Indicators&#xa;(P/E, ROE, EPS, PEG…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b00;strokeColor=#f0a500;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L3">
+          <mxGeometry x="460" y="55" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="l3_news" value="📰  News &amp; Market Events" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b00;strokeColor=#f0a500;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L3">
+          <mxGeometry x="680" y="55" width="190" height="60" as="geometry"/>
+        </mxCell>
+
+        <!-- ════════════════════════════════════════════ -->
+        <!--  LAYER 4 — PERSISTENCE & EXTERNAL SERVICES  -->
+        <!-- ════════════════════════════════════════════ -->
+        <mxCell id="L4" value="Persistence &amp; External Services Layer" style="swimlane;html=1;startSize=36;fillColor=#16213e;strokeColor=#e94560;fontStyle=1;fontSize=15;fontColor=#e94560;horizontal=1;" vertex="1" parent="1">
+          <mxGeometry x="160" y="700" width="1000" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="l4_pg" value="🗄️  PostgreSQL&#xa;Session Memory&#xa;User Watchlists" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#1f0a0a;strokeColor=#e94560;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L4">
+          <mxGeometry x="60" y="40" width="140" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="l4_reports" value="🗃️  Research Reports&#xa;(PostgreSQL)&#xa;Stored Analyses" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=12;fillColor=#1f0a0a;strokeColor=#e94560;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L4">
+          <mxGeometry x="240" y="40" width="140" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="l4_llm" value="🤖  LLM Providers&#xa;Anthropic Claude&#xa;OpenAI GPT" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#1a0a2e;strokeColor=#a084e8;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L4">
+          <mxGeometry x="450" y="35" width="170" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="l4_vn" value="🏦  HoSE / HNX / UPCOM&#xa;Market Exchanges&#xa;(via vnstock3)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#0a1f2e;strokeColor=#00d4ff;fontColor=#ffffff;fontSize=12;fontStyle=1;" vertex="1" parent="L4">
+          <mxGeometry x="680" y="35" width="200" height="110" as="geometry"/>
+        </mxCell>
+
+        <!-- ════════════════════════════════════════════ -->
+        <!--  INTER-LAYER CONNECTOR EDGES                 -->
+        <!-- ════════════════════════════════════════════ -->
+
+        <!-- Actor → Presentation -->
+        <mxCell id="e1" value="Browser / Web" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;strokeColor=#00d4ff;fontColor=#00d4ff;fontSize=11;" edge="1" parent="1" source="actor" target="L1">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        
-        <mxCell id="51" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="20">
+
+        <!-- Presentation → Backend: Chat -->
+        <mxCell id="e2" value="POST /v1/chat (SSE)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.15;entryY=0;strokeWidth=2;strokeColor=#00d4ff;fontColor=#00d4ff;fontSize=11;" edge="1" parent="1" source="ui_chat" target="feat1_border">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="52" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="30">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        
-        <!-- API Interactions -->
-        <mxCell id="53" value="Prompts &amp; Context" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="13" target="41">
+        <!-- Presentation → Backend: Dashboard -->
+        <mxCell id="e3" value="GET /v1/stock/*" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#53d8fb;fontColor=#53d8fb;fontSize=11;" edge="1" parent="1" source="ui_dash" target="feat2_border">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
 
-        <mxCell id="54" value="vnstock3 Fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="14" target="42">
+        <!-- Presentation → Backend: Research -->
+        <mxCell id="e4" value="POST /v1/stock/research" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#a084e8;fontColor=#a084e8;fontSize=11;" edge="1" parent="1" source="ui_research" target="feat3_border">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Backend AI Agent → Data Tooling (tool calls) -->
+        <mxCell id="e5" value="Tool Call Request" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.2;exitY=1;entryX=0.1;entryY=0;strokeWidth=2;strokeColor=#f0a500;fontColor=#f0a500;fontSize=11;" edge="1" parent="1" source="feat1_agent" target="L3">
           <mxGeometry relative="1" as="geometry">
-              <Array as="points">
-                 <mxPoint x="400" y="425"/>
-                 <mxPoint x="400" y="520"/>
-                 <mxPoint x="950" y="520"/>
-              </Array>
+            <Array as="points">
+              <mxPoint x="302" y="505"/>
+              <mxPoint x="225" y="505"/>
+            </Array>
           </mxGeometry>
         </mxCell>
 
-        <mxCell id="55" value="Data Integration" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;dashed=1;" edge="1" parent="1" source="30" target="42">
+        <!-- Backend Dashboard → Data Tooling -->
+        <mxCell id="e6" value="Fetch Stock Metrics" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#f0a500;fontColor=#f0a500;fontSize=11;" edge="1" parent="1" source="feat2_border" target="L3">
           <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Backend Researcher → Data Tooling -->
+        <mxCell id="e7" value="Fetch Fundamentals" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.8;exitY=1;entryX=0.8;entryY=0;strokeWidth=2;strokeColor=#f0a500;fontColor=#f0a500;fontSize=11;" edge="1" parent="1" source="feat3_border" target="L3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1020" y="505"/>
+              <mxPoint x="970" y="505"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Data Tooling → External Market -->
+        <mxCell id="e8" value="vnstock3 API" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.85;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#f0a500;fontColor=#f0a500;fontSize=11;dashed=1;" edge="1" parent="1" source="L3" target="l4_vn">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <!-- Backend AI → LLM -->
+        <mxCell id="e9" value="Prompt + Tool Schema" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#a084e8;fontColor=#a084e8;fontSize=11;dashed=1;" edge="1" parent="1" source="feat1_agent" target="l4_llm">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="355" y="672"/>
+              <mxPoint x="535" y="672"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Backend AI → Session DB -->
+        <mxCell id="e10" value="Read/Write Session" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#e94560;fontColor=#e94560;fontSize=11;dashed=1;" edge="1" parent="1" source="feat1_session" target="l4_pg">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="665"/>
+              <mxPoint x="130" y="665"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Researcher → Reports DB -->
+        <mxCell id="e11" value="Store Reports" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#e94560;fontColor=#e94560;fontSize=11;dashed=1;" edge="1" parent="1" source="feat3_view" target="l4_reports">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="855" y="672"/>
+              <mxPoint x="310" y="672"/>
+            </Array>
+          </mxGeometry>
         </mxCell>
 
       </root>
