@@ -1,117 +1,122 @@
 <mxfile host="app.diagrams.net" modified="2026-03-19T00:00:00.000Z" agent="Claude" version="24.7.17">
-  <diagram id="layered_diagram" name="Layered Conceptual">
-    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" background="#1e1e1e">
+  <diagram id="conceptual_modules_grouped" name="Conceptual by Feature">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="850" background="#1e1e1e">
       <root>
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
         
-        <!-- Investor Object (Top) -->
-        <mxCell id="2" value="Investor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#1e3f66;strokeColor=#4178b5;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="485" y="40" width="30" height="60" as="geometry"/>
+        <!-- ============================================== -->
+        <!-- FEATURE MODULE 1: AI Assistant (Chatbot)       -->
+        <!-- ============================================== -->
+        <mxCell id="10" value="AI Assistant Module (Chatbot)" style="swimlane;html=1;startSize=40;fillColor=#1e3f66;strokeColor=#4178b5;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="80" y="80" width="300" height="420" as="geometry"/>
         </mxCell>
         
-        <!-- Layer 1: Presentation Layer -->
-        <mxCell id="10" value="Presentation Layer (Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;verticalAlign=top;align=left;spacing=10;fontStyle=1;fontSize=16;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="100" y="140" width="800" height="120" as="geometry"/>
-        </mxCell>
-        <mxCell id="11" value="Market Dashboards" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3f66;strokeColor=#4178b5;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="180" y="180" width="160" height="50" as="geometry"/>
-        </mxCell>
-        <mxCell id="12" value="Conversational UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3f66;strokeColor=#4178b5;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="420" y="180" width="160" height="50" as="geometry"/>
-        </mxCell>
-        <mxCell id="13" value="Real-time Widgets" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1e3f66;strokeColor=#4178b5;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="660" y="180" width="160" height="50" as="geometry"/>
+        <mxCell id="11" value="Conversational UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
+          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
         </mxCell>
         
-        <!-- Layer 2: Business Logic & AI -->
-        <mxCell id="20" value="AI Orchestration &amp; Business Logic Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;verticalAlign=top;align=left;spacing=10;fontStyle=1;fontSize=16;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="100" y="300" width="800" height="120" as="geometry"/>
-        </mxCell>
-        <mxCell id="21" value="Agent Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#234524;strokeColor=#5ead5a;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="250" y="340" width="160" height="50" as="geometry"/>
-        </mxCell>
-        <mxCell id="22" value="Tool Execution Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#234524;strokeColor=#5ead5a;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="590" y="340" width="160" height="50" as="geometry"/>
+        <mxCell id="12" value="Session Memory Manager" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
+          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
         </mxCell>
         
-        <!-- Layer 3: Data Engine Layer -->
-        <mxCell id="30" value="Data Integration Engine Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;verticalAlign=top;align=left;spacing=10;fontStyle=1;fontSize=16;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="100" y="460" width="800" height="120" as="geometry"/>
+        <mxCell id="13" value="LLM Prompt Engine" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
+          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="31" value="vnstock3 Python wrapper" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="320" y="500" width="160" height="50" as="geometry"/>
-        </mxCell>
-        <mxCell id="32" value="Market Indicator Calculator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="520" y="500" width="160" height="50" as="geometry"/>
+        
+        <mxCell id="14" value="Tool Execution Router" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="10">
+          <mxGeometry x="50" y="320" width="200" height="50" as="geometry"/>
         </mxCell>
 
-        <!-- Layer 4: Storage & External -->
-        <mxCell id="40" value="Data Persistence &amp; External Integrations Layer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;verticalAlign=top;align=left;spacing=10;fontStyle=1;fontSize=16;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="100" y="620" width="800" height="150" as="geometry"/>
+        <!-- ============================================== -->
+        <!-- FEATURE MODULE 2: Market Dashboard             -->
+        <!-- ============================================== -->
+        <mxCell id="20" value="Market Dashboard Module" style="swimlane;html=1;startSize=40;fillColor=#234524;strokeColor=#5ead5a;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="440" y="80" width="300" height="420" as="geometry"/>
         </mxCell>
-        <mxCell id="41" value="User Persistence &amp; History&#10;(PostgreSQL)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#412b4f;strokeColor=#a87bbd;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="180" y="660" width="160" height="90" as="geometry"/>
+        
+        <mxCell id="21" value="Real-time Price Board UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
+          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="42" value="LLM Providers&#10;(Anthropic/OpenAI)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#412b4f;strokeColor=#a87bbd;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="420" y="660" width="160" height="90" as="geometry"/>
+        
+        <mxCell id="22" value="User Watchlist Tracker" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
+          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
         </mxCell>
-        <mxCell id="43" value="Vietnamese Market APIs" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#412b4f;strokeColor=#a87bbd;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
-          <mxGeometry x="660" y="660" width="160" height="90" as="geometry"/>
+        
+        <mxCell id="23" value="Financial News Aggregator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="20">
+          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
         </mxCell>
 
-        <!-- Edges linking everything -->
-        <mxCell id="50" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="2" target="12">
+        <!-- ============================================== -->
+        <!-- FEATURE MODULE 3: Market Researcher            -->
+        <!-- ============================================== -->
+        <mxCell id="30" value="Market Researcher Module" style="swimlane;html=1;startSize=40;fillColor=#412b4f;strokeColor=#a87bbd;fontStyle=1;fontSize=16;fontColor=#ffffff;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="800" y="80" width="300" height="420" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="31" value="Deep-dive Report Generator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
+          <mxGeometry x="50" y="80" width="200" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="32" value="Altman Z-Score Calculator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
+          <mxGeometry x="50" y="160" width="200" height="50" as="geometry"/>
+        </mxCell>
+        
+        <mxCell id="33" value="Piotroski F-Score Calculator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d2d2d;strokeColor=#888888;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="30">
+          <mxGeometry x="50" y="240" width="200" height="50" as="geometry"/>
+        </mxCell>
+        
+        <!-- ============================================== -->
+        <!-- EXTERNAL DEPENDENCIES                          -->
+        <!-- ============================================== -->
+        <mxCell id="40" value="User / Investor" style="shape=umlActor;verticalLabelPosition=bottom;verticalAlign=top;html=1;outlineConnect=0;fillColor=#ffffff;strokeColor=#888888;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="575" y="550" width="30" height="60" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="41" value="LLM Providers (Anthropic)" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="150" y="550" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="42" value="Vietnamese Market APIs" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;fillColor=#66401a;strokeColor=#c28113;fontStyle=1;fontColor=#ffffff;" vertex="1" parent="1">
+          <mxGeometry x="870" y="550" width="160" height="80" as="geometry"/>
+        </mxCell>
+
+        <!-- ============================================== -->
+        <!-- EDGES                                          -->
+        <!-- ============================================== -->
+        
+        <!-- User Edges -->
+        <mxCell id="50" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0;exitY=0.5;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="10">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="50a" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="2" target="11">
+        
+        <mxCell id="51" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=0;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="20">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="51" value="API / WebSocket" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="12" target="21">
+
+        <mxCell id="52" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=1;strokeWidth=2;strokeColor=#ffffff;" edge="1" parent="1" source="40" target="30">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="51a" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;strokeWidth=2;dashed=1;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="11" target="21">
+        
+        <!-- API Interactions -->
+        <mxCell id="53" value="Prompts &amp; Context" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="13" target="41">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="54" value="vnstock3 Fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="14" target="42">
           <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-               <mxPoint x="260" y="260"/>
-               <mxPoint x="150" y="260"/>
-               <mxPoint x="150" y="365"/>
-            </Array>
+              <Array as="points">
+                 <mxPoint x="400" y="425"/>
+                 <mxPoint x="400" y="520"/>
+                 <mxPoint x="950" y="520"/>
+              </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="52" value="Executes LLM Plan" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="21" target="22">
+
+        <mxCell id="55" value="Data Integration" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;dashed=1;" edge="1" parent="1" source="30" target="42">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="53" value="Fetches Data" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="22" target="31">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="53a" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;dashed=1;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="22" target="32">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="54" value="Saves Memory" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.25;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="21" target="41">
-          <mxGeometry relative="1" as="geometry">
-             <Array as="points">
-               <mxPoint x="290" y="440"/>
-               <mxPoint x="260" y="440"/>
-             </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="55" value="Natural Language Prompts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="21" target="42">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="330" y="420"/>
-              <mxPoint x="500" y="420"/>
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="56" value="Market Fetch" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;exitX=0.75;exitY=1;entryX=0.5;entryY=0;strokeWidth=2;strokeColor=#ffffff;fontColor=#ffffff;" edge="1" parent="1" source="31" target="43">
-          <mxGeometry relative="1" as="geometry">
-             <Array as="points">
-                <mxPoint x="440" y="600"/>
-                <mxPoint x="740" y="600"/>
-             </Array>
-          </mxGeometry>
-        </mxCell>
+
       </root>
     </mxGraphModel>
   </diagram>
