@@ -17,6 +17,7 @@ A reliable, scalable, and secure Go backend foundation that handles seamless fin
 - ✓ LLM integrations (Anthropic/OpenAI) via internal AI orchestration — existing
 - ✓ MCP (Model Context Protocol) external tool integration — existing
 - ✓ Core financial evaluation frameworks — existing
+- ✓ **[Phase 1: Dependency Injection Assembly]** Global package configurations (LLM Configs and Stream Managers) decoupled into native dependency injection pipelines to eradicate hidden state.
 
 ### Active
 
@@ -46,7 +47,7 @@ The application already works conceptually but has accrued technical debt in its
 <!-- Decisions that constrain future work. Add throughout project lifecycle. -->
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Priority on Go Backend | Fixing backend memory and structural coupling provides the highest stability ROI before attempting UI or full database migrations. | — Pending |
+| Priority on Go Backend | Fixing backend memory and structural coupling provides the highest stability ROI before attempting UI or full database migrations. | Initial decoupling (Phase 1) complete. |
 
 ## Evolution
 
@@ -66,4 +67,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-31 after initialization*
+*Last updated: 2026-03-31 after Phase 1 completion*
