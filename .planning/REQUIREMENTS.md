@@ -22,4 +22,6 @@
 - **LLM Circuit Breaking** — Resiliency external to context timeouts is deferred.
 
 ## Traceability
-<!-- Will be populated automatically when roadmap phases are generated -->
+- **ARCH-01**: Maps to Phase 1
+- **ARCH-02**: Maps to Phase 2
+- **RELI-01**: Maps to Phase 3
