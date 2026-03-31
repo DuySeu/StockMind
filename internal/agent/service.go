@@ -25,7 +25,7 @@ type AgentService struct {
 
 func NewService(ctx context.Context, dbPool *pgxpool.Pool, config LLMProviderConfig) (*AgentService, error) {
 	log.Println("Initializing LLM service...")
-	
+
 	return &AgentService{
 		config:  config,
 		ctx:     ctx,

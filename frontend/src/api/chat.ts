@@ -16,33 +16,47 @@ export interface ChatResponse {
   };
 }
 
-export const chatWithLLM = async (
+export const startChatSession = async (
   content: string,
   sessionId: string | undefined,
-  onMessage: (data: ChatResponse) => void,
-  onError: (error: any) => void,
   file?: File | null
+): Promise<string> => {
+  let body;
+  const headers: Record<string, string> = {};
+
+  if (file) {
+    const formData = new FormData();
+    formData.append("content", content);
+    if (sessionId) formData.append("session_id", sessionId);
+    formData.append("file", file);
+    body = formData;
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({ content, session_id: sessionId });
+  }
+
+  const response = await fetch(`${api.defaults.baseURL}/chat`, {
+    method: "POST",
+    headers,
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.session_id;
+};
+
+export const streamChatSession = async (
+  sessionId: string,
+  onMessage: (data: ChatResponse) => void,
+  onError: (error: any) => void
 ) => {
   try {
-    let body;
-    const headers: Record<string, string> = {};
-
-    if (file) {
-      const formData = new FormData();
-      formData.append("content", content);
-      if (sessionId) formData.append("session_id", sessionId);
-      formData.append("file", file);
-      body = formData;
-      // Do NOT set Content-Type header for FormData, browser does it with boundary
-    } else {
-      headers["Content-Type"] = "application/json";
-      body = JSON.stringify({ content, session_id: sessionId });
-    }
-
-    const response = await fetch(`${api.defaults.baseURL}/chat`, {
-      method: "POST",
-      headers,
-      body,
+    const response = await fetch(`${api.defaults.baseURL}/chat/stream?session_id=${sessionId}`, {
+      method: "GET",
     });
 
     if (!response.ok) {
@@ -69,9 +83,6 @@ export const chatWithLLM = async (
         if (line.startsWith("data: ")) {
           const data = line.slice(6);
           try {
-            // Handle potential multiple JSON objects in one line if backend flushes weirdly,
-            // though \n\n split should handle standard SSE.
-            // The backend sends: fmt.Fprintf(w, "data: %s\n\n", data)
             const parsed = JSON.parse(data) as ChatResponse;
             onMessage(parsed);
           } catch (e) {

@@ -95,7 +95,7 @@ INSERT INTO agent_flows (id, name, config) VALUES
         "NormalChat": {
             "provider": "openai",
             "description": "Handles general chat interactions.",
-            "modelId": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "modelId": "nvidia/nemotron-3-super-120b-a12b:free",
             "systemPrompt": "You are a helpful assistant.",
             "maxTokens": 8192,
             "thinkingToken": 1024,

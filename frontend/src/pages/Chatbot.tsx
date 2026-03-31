@@ -1,4 +1,4 @@
-import { chatWithLLM, getMessages } from "@/api/chat";
+import { startChatSession, streamChatSession, getMessages } from "@/api/chat";
 import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
@@ -49,18 +49,34 @@ const ChatbotPage = () => {
     }
   }, [messages]);
 
-  // Fetch messages when id changes
+  // Fetch messages & Handle reconnect when id changes
   useEffect(() => {
-    const fetchMessages = async () => {
+    const fetchMessagesAndStream = async () => {
       if (id) {
-        const messages = await getMessages(id);
-        setMessages(messages);
+        const loadedMessages = await getMessages(id);
+        
+        const isUserLast = loadedMessages.length > 0 && loadedMessages[loadedMessages.length - 1].role === "user";
+        let targetIndex = loadedMessages.length;
+        if (isUserLast) {
+          loadedMessages.push({ role: "assistant", content: [] });
+        } else {
+          targetIndex = loadedMessages.length - 1;
+        }
+        setMessages(loadedMessages);
+
+        await streamChatSession(
+          id,
+          (data) => handleStreamEvent(data, targetIndex),
+          (error) => {
+            console.log("Stream check finished or not active", error);
+          }
+        );
       } else {
         setMessages([]);
       }
     };
 
-    fetchMessages();
+    fetchMessagesAndStream();
   }, [id]);
 
   useEffect(() => {
@@ -91,11 +107,109 @@ const ChatbotPage = () => {
     }
   };
 
+  const handleStreamEvent = (data: any, _ignoredIndex: number, sessionIdToSet?: string) => {
+    switch (data.type) {
+      case "thinking_delta":
+      case "text_delta": {
+        setMessages((prev) => {
+          const updated = [...prev];
+          let lastIndex = updated.length - 1;
+          
+          // Find the last assistant message, or create one if the last message is not assistant
+          if (lastIndex < 0 || updated[lastIndex].role !== "assistant") {
+            updated.push({ role: "assistant", content: [] });
+            lastIndex = updated.length - 1;
+          }
+
+          const currentMessage = updated[lastIndex];
+          const newContent = [...(currentMessage.content || [])];
+          
+          if (data.type === "thinking_delta") {
+            const delta = data.data?.thinking ?? "";
+            let idx = newContent.findIndex((c: any) => c.type === "thinking");
+            if (idx === -1) {
+              newContent.push({ type: "thinking", thinking: "", is_open: true });
+              idx = newContent.length - 1;
+            }
+            const block = newContent[idx] as any;
+            if (block.type === "thinking") {
+              newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
+            }
+          } else {
+            const delta = data.data?.text ?? "";
+            let idx = newContent.findIndex((c: any) => c.type === "text");
+            if (idx === -1) {
+              newContent.push({ type: "text", text: "" });
+              idx = newContent.length - 1;
+            }
+            const block = newContent[idx] as any;
+            if (block.type === "text") {
+              newContent[idx] = { ...block, text: (block.text ?? "") + delta };
+            }
+          }
+          
+          updated[lastIndex] = { ...currentMessage, content: newContent };
+          return updated;
+        });
+        break;
+      }
+      case "tool_use": {
+        const tool_calls = data.data?.tool_calls;
+        if (tool_calls) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            let lastIndex = updated.length - 1;
+            if (lastIndex < 0 || updated[lastIndex].role !== "assistant") {
+              updated.push({ role: "assistant", content: [] });
+              lastIndex = updated.length - 1;
+            }
+            const currentMessage = updated[lastIndex];
+            const existingToolCalls = currentMessage.tool_calls || [];
+            updated[lastIndex] = {
+              ...currentMessage,
+              tool_calls: [...existingToolCalls, tool_calls],
+            };
+            return updated;
+          });
+        }
+        break;
+      }
+      case "tool_result": {
+        setMessages((prev) => [...prev, data.data?.result as Message]);
+        break;
+      }
+      case "complete": {
+        if (sessionIdToSet) {
+          // Handled outside
+        }
+        setMessages((prev) => {
+          const updated = [...prev];
+          // Close thinking for ALL assistant messages or just the last one?
+          // LLM Turn completion only affects the last assistant message
+          const lastIndex = updated.length - 1;
+          if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
+            const currentMessage = updated[lastIndex];
+            const newContent = [...(currentMessage.content || [])];
+            const idx = newContent.findIndex((c: any) => c.type === "thinking");
+            if (idx !== -1) {
+              const block = newContent[idx] as any;
+              if (block.type === "thinking") {
+                newContent[idx] = { ...block, is_open: false };
+              }
+            }
+            updated[lastIndex] = { ...currentMessage, content: newContent };
+          }
+          return updated;
+        });
+        break;
+      }
+    }
+  };
+
   const onSubmit = async (data: FieldValues) => {
     const fileToSend = attachment; // Capture attachment before clearing
     form.reset();
     setAttachment(null);
-    let sessionId: string | undefined = undefined;
 
     const content: any[] = [];
     if (fileToSend) {
@@ -119,114 +233,30 @@ const ChatbotPage = () => {
     const assistantIndex = messages.length + 1;
     setMessages((prev) => [...prev, { role: "assistant", content: [] }]);
 
-    await chatWithLLM(
-      data.input.trim(),
-      id || undefined,
-      (data) => {
-        switch (data.type) {
-          case "thinking_delta": {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
-              const newContent = [...(currentMessage.content || [])];
-
-              const delta = data.data?.thinking ?? "";
-              let idx = newContent.findIndex((c) => c.type === "thinking");
-              if (idx === -1) {
-                newContent.push({
-                  type: "thinking",
-                  thinking: "",
-                  is_open: true,
-                });
-                idx = newContent.length - 1;
-              }
-              const block = newContent[idx];
-              if (block.type === "thinking") {
-                newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
-              }
-              updated[assistantIndex] = { ...currentMessage, content: newContent };
-              return updated;
-            });
-            break;
-          }
-          case "tool_use": {
-            const tool_calls = data.data?.tool_calls;
-            if (tool_calls) {
-              setMessages((prev) => {
-                const updated = [...prev];
-                const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
-                const existingToolCalls = currentMessage.tool_calls || [];
-                updated[assistantIndex] = {
-                  ...currentMessage,
-                  tool_calls: [...existingToolCalls, tool_calls],
-                };
-                return updated;
-              });
-            }
-            break;
-          }
-          case "tool_result": {
-            setMessages((prev) => [...prev, data.data?.result as Message]);
-            break;
-          }
-          case "text_delta": {
-            setMessages((prev) => {
-              const updated = [...prev];
-              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
-              const newContent = [...(currentMessage.content || [])];
-
-              const delta = data.data?.text ?? "";
-              let idx = newContent.findIndex((c) => c.type === "text");
-              if (idx === -1) {
-                newContent.push({ type: "text", text: "" });
-                idx = newContent.length - 1;
-              }
-              const block = newContent[idx];
-              if (block.type === "text") {
-                newContent[idx] = { ...block, text: (block.text ?? "") + delta };
-              }
-              updated[assistantIndex] = { ...currentMessage, content: newContent };
-              return updated;
-            });
-            break;
-          }
-          case "complete": {
-            sessionId = data.data?.session_id;
-            setMessages((prev) => {
-              const updated = [...prev];
-              const currentMessage = updated[assistantIndex] || { role: "assistant", content: [] };
-              const newContent = [...(currentMessage.content || [])];
-
-              const idx = newContent.findIndex((c) => c.type === "thinking");
-              if (idx !== -1) {
-                const block = newContent[idx];
-                if (block.type === "thinking") {
-                  newContent[idx] = { ...block, is_open: false };
-                }
-              }
-              updated[assistantIndex] = { ...currentMessage, content: newContent };
-              return updated;
-            });
-            break;
-          }
+    try {
+      const activeSessionId = await startChatSession(data.input.trim(), id || undefined, fileToSend);
+      if (!id && activeSessionId) {
+        setTitle(data.input.trim());
+        navigate(`/c/${activeSessionId}`, { replace: true });
+      }
+      
+      await streamChatSession(
+        activeSessionId,
+        (data) => handleStreamEvent(data, assistantIndex, activeSessionId),
+        (error) => {
+          console.error("Error sending message:", error);
+          setMessages((prev) => {
+            const updated = [...prev];
+            updated[assistantIndex] = {
+              role: "assistant",
+              content: [{ type: "text", text: "Error sending message" }],
+            };
+            return updated;
+          });
         }
-      },
-      (error) => {
-        console.error("Error sending message:", error);
-        setMessages((prev) => {
-          const updated = [...prev];
-          updated[assistantIndex] = {
-            role: "assistant",
-            content: [{ type: "text", text: "Error sending message" }],
-          };
-          return updated;
-        });
-      },
-      fileToSend,
-    );
-    if (!id && sessionId) {
-      setTitle(data.input.trim());
-      navigate(`/c/${sessionId}`);
+      );
+    } catch(err) {
+      console.error(err);
     }
   };
 
