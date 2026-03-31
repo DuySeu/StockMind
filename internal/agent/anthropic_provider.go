@@ -232,12 +232,11 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 	return result, stopReason, nil
 }
 
-func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error) {
 	a := p.agent
 	lastMessage := message.OfAnthropic
-	result := database.MessageUnion{}
 	if lastMessage == nil {
-		return result, fmt.Errorf("last message is not an Anthropic message")
+		return nil, fmt.Errorf("last message is not an Anthropic message")
 	}
 	// Find the tool use block
 	toolUseBlocks := []anthropic.ToolUseBlockParam{}
@@ -249,7 +248,7 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 	}
 	if len(toolUseBlocks) == 0 {
 		fmt.Println("No tool use blocks found in chat history", "sessionId", a.session.ID, "agentName", a.name)
-		return result, fmt.Errorf("no tool use blocks found in chat history")
+		return nil, fmt.Errorf("no tool use blocks found in chat history")
 	}
 	toolUseMessage := anthropic.MessageParam{
 		Role:    anthropic.MessageParamRoleUser,
@@ -261,14 +260,14 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 		parts := strings.SplitN(toolUse.Name, "--", 2)
 		if len(parts) != 2 {
 			fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Name)
-			return result, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
+			return nil, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
 		}
 		mcpName := parts[0]
 		toolName := parts[1]
 		mcpClient, ok := a.mcpClients[mcpName]
 		if !ok {
 			fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
-			return result, fmt.Errorf("MCP client not found: %s", mcpName)
+			return nil, fmt.Errorf("MCP client not found: %s", mcpName)
 		}
 		// Serialize the input JSON into map[string] any
 		toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
@@ -282,14 +281,10 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 					},
 				},
 			},
-			// Header: http.Header{
-			// 	"X-Session-ID": []string{a.session.ID.String()},
-			// 	"X-User-ID":    []string{a.session.UserID.String()},
-			// },
 		})
 		if err != nil {
 			fmt.Println("Failed to call tool", "sessionId", a.session.ID, "agentName", a.name, "toolName", toolUse.Name, "error", err)
-			return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Name, err)
+			return nil, fmt.Errorf("failed to call tool %s: %w", toolUse.Name, err)
 		}
 
 		toolResult := anthropic.ContentBlockParamUnion{
@@ -317,11 +312,10 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 					Type:       EventTypeToolResult,
 					ToolUse:    ToolCallWrapper{Anthropic: toolUseMessage},
 					ToolResult: ToolResultWrapper{Anthropic: toolResult},
-					IsEnd:      true,
+					IsEnd:      false,
 				},
 			)
 		}
 	}
-	result.OfAnthropic = &toolUseMessage
-	return result, nil
+	return []database.MessageUnion{{OfAnthropic: &toolUseMessage}}, nil
 }

@@ -144,15 +144,21 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 	}
 	log.Println("Database connection established")
 
+	// Create LLM Config
+	llmConfig := agent.LoadLLMConfig()
+
 	// Create an agent service
-	agent, err := agent.NewService(ctx, dbPool)
+	agent, err := agent.NewService(ctx, dbPool, llmConfig)
 	if err != nil {
 		log.Println("Failed to create agent service", "error", err)
 		return nil, nil, err
 	}
 
+	// Create stream manager
+	streamManager := server.NewStreamManager()
+
 	// Create a server for the application
-	server := server.NewServer(dbPool, agent, port)
+	server := server.NewServer(dbPool, agent, streamManager, port)
 	runContext, cancel := context.WithCancel(ctx)
 
 	// Create a done channel to signal when the shutdown is complete

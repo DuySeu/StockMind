@@ -124,6 +124,7 @@ func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.Me
 			}
 			switch {
 			case delta.Content != "":
+				contentItem.Content += delta.Content
 				if len(contentItem.MultiContent) > 0 && contentItem.MultiContent[len(contentItem.MultiContent)-1].Type == openai.ChatMessagePartTypeText {
 					contentItem.MultiContent[len(contentItem.MultiContent)-1].Text += delta.Content
 				} else {
@@ -165,12 +166,11 @@ func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.Me
 	}
 }
 
-func (p *OpenAIProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+func (p *OpenAIProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error) {
 	a := p.agent
 	lastMessage := message.OfOpenAI
-	result := database.MessageUnion{}
 	if lastMessage == nil {
-		return result, fmt.Errorf("last message is not an OpenAI message")
+		return nil, fmt.Errorf("last message is not an OpenAI message")
 	}
 	fmt.Printf("toolUseOpenAI: processing tool calls (count: %d)\n", len(lastMessage.ToolCalls))
 
@@ -178,99 +178,94 @@ func (p *OpenAIProvider) ToolUse(ctx context.Context, message *database.MessageU
 	toolUseBlocks := lastMessage.ToolCalls
 	if len(toolUseBlocks) == 0 {
 		fmt.Println("No tool use blocks found in chat history", "sessionId", a.session.ID, "agentName", a.name)
-		return result, fmt.Errorf("no tool use blocks found in chat history")
+		return nil, fmt.Errorf("no tool use blocks found in chat history")
 	}
 
-	// For now, we only support one tool call per turn because MessageUnion only supports one message
-	// TODO: Support multiple tool calls by updating MessageUnion to support list of messages
-	if len(toolUseBlocks) > 1 {
-		fmt.Println("Warning: Multiple tool calls detected, but only the first one will be processed correctly due to current limitation")
-		fmt.Println("toolUseOpenAI: tool calls:", toolUseBlocks)
-	}
+	results := make([]database.MessageUnion, 0, len(toolUseBlocks))
 
-	// We will process the first tool call and return it as the result
-	toolUse := toolUseBlocks[0]
-	fmt.Printf("toolUseOpenAI: invoking tool (name: %s, id: %s)\n", toolUse.Function.Name, toolUse.ID)
+	for _, toolUse := range toolUseBlocks {
+		fmt.Printf("toolUseOpenAI: invoking tool (name: %s, id: %s)\n", toolUse.Function.Name, toolUse.ID)
 
-	// Callback: Start tool execution
-	if callback != nil {
-		callback(ChatEvent{
-			Type:    EventTypeToolUse,
-			ToolUse: ToolCallWrapper{OpenAI: toolUse},
-		})
-	}
-
-	// Normally toolUse.Name will have format <mcp>/<tool_name>
-	parts := strings.SplitN(toolUse.Function.Name, "--", 2)
-	if len(parts) != 2 {
-		fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Function.Name)
-		return result, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
-	}
-	mcpName := parts[0]
-	toolName := parts[1]
-	mcpClient, ok := a.mcpClients[mcpName]
-	if !ok {
-		fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
-		return result, fmt.Errorf("MCP client not found: %s", mcpName)
-	}
-
-	// Parse arguments
-	var arguments map[string]interface{}
-	if toolUse.Function.Arguments != "" {
-		if err := json.Unmarshal([]byte(toolUse.Function.Arguments), &arguments); err != nil {
-			return result, fmt.Errorf("failed to unmarshal tool arguments: %w", err)
+		// Callback: Start tool execution
+		if callback != nil {
+			callback(ChatEvent{
+				Type:    EventTypeToolUse,
+				ToolUse: ToolCallWrapper{OpenAI: toolUse},
+			})
 		}
-	} else {
-		arguments = make(map[string]interface{})
-	}
 
-	// Serialize the input JSON into map[string] any
-	toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
-		Params: mcp.CallToolParams{
-			Name:      toolName,
-			Arguments: arguments,
-			Meta: &mcp.Meta{
-				AdditionalFields: map[string]any{
-					"user_id":    a.session.CreatedBy,
-					"session_id": a.session.ID,
+		// Normally toolUse.Name will have format <mcp>/<tool_name>
+		parts := strings.SplitN(toolUse.Function.Name, "--", 2)
+		if len(parts) != 2 {
+			fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Function.Name)
+			return nil, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
+		}
+		mcpName := parts[0]
+		toolName := parts[1]
+		mcpClient, ok := a.mcpClients[mcpName]
+		if !ok {
+			fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
+			return nil, fmt.Errorf("MCP client not found: %s", mcpName)
+		}
+
+		// Parse arguments
+		var arguments map[string]interface{}
+		if toolUse.Function.Arguments != "" {
+			if err := json.Unmarshal([]byte(toolUse.Function.Arguments), &arguments); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal tool arguments: %w", err)
+			}
+		} else {
+			arguments = make(map[string]interface{})
+		}
+
+		// Serialize the input JSON into map[string] any
+		toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
+			Params: mcp.CallToolParams{
+				Name:      toolName,
+				Arguments: arguments,
+				Meta: &mcp.Meta{
+					AdditionalFields: map[string]any{
+						"user_id":    a.session.CreatedBy,
+						"session_id": a.session.ID,
+					},
 				},
 			},
-		},
-	})
-	if err != nil {
-		fmt.Printf("toolUseOpenAI: tool invocation failed (tool: %s, error: %v)\n",
-			toolUse.Function.Name, err)
-		return result, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
-	}
-
-	// Convert the tool response content to string
-	var contentBuilder strings.Builder
-	for _, content := range toolResponse.Content {
-		switch content := content.(type) {
-		case mcp.TextContent:
-			contentBuilder.WriteString(content.Text)
-			fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
-		}
-	}
-
-	// OpenAI tool messages require Content as a plain string, not MultiContent
-	toolResult := openai.ChatCompletionMessage{
-		Role:       openai.ChatMessageRoleTool,
-		ToolCallID: toolUse.ID,
-		Content:    contentBuilder.String(),
-		Name:       toolUse.Function.Name,
-	}
-
-	// Callback: End tool execution
-	if callback != nil {
-		callback(ChatEvent{
-			Type:       EventTypeToolResult,
-			ToolUse:    ToolCallWrapper{OpenAI: toolUse},
-			ToolResult: ToolResultWrapper{OpenAI: toolResult},
 		})
-	}
+		if err != nil {
+			fmt.Printf("toolUseOpenAI: tool invocation failed (tool: %s, error: %v)\n",
+				toolUse.Function.Name, err)
+			return nil, fmt.Errorf("failed to call tool %s: %w", toolUse.Function.Name, err)
+		}
 
-	result.OfOpenAI = &toolResult
-	fmt.Printf("toolUseOpenAI: tool executed successfully\n")
-	return result, nil
+		// Convert the tool response content to string
+		var contentBuilder strings.Builder
+		for _, content := range toolResponse.Content {
+			switch content := content.(type) {
+			case mcp.TextContent:
+				contentBuilder.WriteString(content.Text)
+				fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Function.Name, "text", content.Text)
+			}
+		}
+
+		// OpenAI tool messages require Content as a plain string, not MultiContent
+		toolResult := openai.ChatCompletionMessage{
+			Role:       openai.ChatMessageRoleTool,
+			ToolCallID: toolUse.ID,
+			Content:    contentBuilder.String(),
+			Name:       toolUse.Function.Name,
+		}
+
+		// Callback: End tool execution
+		if callback != nil {
+			callback(ChatEvent{
+				Type:       EventTypeToolResult,
+				ToolUse:    ToolCallWrapper{OpenAI: toolUse},
+				ToolResult: ToolResultWrapper{OpenAI: toolResult},
+			})
+		}
+
+		results = append(results, database.MessageUnion{OfOpenAI: &toolResult})
+		fmt.Printf("toolUseOpenAI: tool executed successfully\n")
+	}
+	return results, nil
 }

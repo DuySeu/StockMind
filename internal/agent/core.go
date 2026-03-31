@@ -28,6 +28,7 @@ func init() {
 	_ = godotenv.Load()
 }
 
+// Agent represents an instantiated AI worker bounded to a session, configuration, and tools.
 type Agent struct {
 	name       string
 	session    database.Session
@@ -37,6 +38,7 @@ type Agent struct {
 	mcpClients map[string]*mcp_client.Client // Cache of MCP clients by mcp config
 }
 
+// NewAgent initializes and returns a new Agent instance, preparing any necessary MCP clients.
 func NewAgent(ctx context.Context, session database.Session, name string, config database.AgentConfig, provider LLMProvider) (*Agent, error) {
 	a := &Agent{
 		name:       name,
@@ -136,6 +138,6 @@ func (a *Agent) Completion(ctx context.Context, messages []*database.MessageUnio
 	return a.provider.Completion(ctx, messages, callback)
 }
 
-func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error) {
+func (a *Agent) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error) {
 	return a.provider.ToolUse(ctx, message, callback)
 }

@@ -13,5 +13,5 @@ type LLMProvider interface {
 	Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error)
 
 	// ToolUse processes a tool use request from the LLM
-	ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) (database.MessageUnion, error)
+	ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error)
 }

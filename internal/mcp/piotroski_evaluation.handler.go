@@ -95,10 +95,22 @@ func GetPiotroskiEvaluation(ctx context.Context, request mcp.CallToolRequest) (*
 	}
 
 	// Extract data
-	data := result["data"].(map[string]interface{})
-	financialRatio := data["CompanyFinancialRatio"].(map[string]interface{})
-	ratios := financialRatio["ratio"].([]interface{})
-	periods := financialRatio["period"].([]interface{})
+	data, ok := result["data"].(map[string]interface{})
+	if !ok {
+		return mcp.NewToolResultError("invalid response format: data field missing or not a map"), nil
+	}
+	financialRatio, ok := data["CompanyFinancialRatio"].(map[string]interface{})
+	if !ok {
+		return mcp.NewToolResultError("invalid response format: CompanyFinancialRatio missing or not a map"), nil
+	}
+	ratios, ok := financialRatio["ratio"].([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("invalid response format: ratio missing or not a list"), nil
+	}
+	periods, ok := financialRatio["period"].([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("invalid response format: period missing or not a list"), nil
+	}
 
 	if len(periods) == 0 || len(ratios) == 0 {
 		return mcp.NewToolResultError("no financial data found"), nil
@@ -146,12 +158,7 @@ func GetPiotroskiEvaluation(ctx context.Context, request mcp.CallToolRequest) (*
 	}
 
 	// 3. Cash Flow from Operations
-	var scoreCFO bool
-	if ocf > netIncome {
-		scoreCFO = true
-	} else {
-		scoreCFO = false
-	}
+	scoreCFO := ocf > netIncome
 
 	// 4. Quality of Earnings (OCF > Net Income)
 	scoreQualityOfEarnings := ocf > netIncome

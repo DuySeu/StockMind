@@ -42,21 +42,24 @@ type AWSCredentialConfig struct {
 	RoleSessionName string `json:"roleSessionName,omitempty" yaml:"roleSessionName,omitempty"` // optional
 }
 
-var DefaultOpenAIConfig = OpenAIConfig{
-	AuthType: "open_router",
-	APIKey:   os.Getenv("OPENROUTER_API_KEY"),
-	BaseURL:  "https://openrouter.ai/api/v1",
-}
-
-var DefaultAnthropicConfig = AnthropicConfig{
-	AuthType: "aws",
-	AWS: AWSCredentialConfig{
-		Type:            "assume_role",
-		Region:          "ap-southeast-1",
-		RoleARN:         "arn:aws:iam::130506138320:role/bedrock-cross-account-role",
-		Duration:        3600,
-		RoleSessionName: "llm-test-session",
-	},
+func LoadLLMConfig() LLMProviderConfig {
+	return LLMProviderConfig{
+		OpenAI: OpenAIConfig{
+			AuthType: "open_router",
+			APIKey:   os.Getenv("OPENROUTER_API_KEY"),
+			BaseURL:  "https://openrouter.ai/api/v1",
+		},
+		Anthropic: AnthropicConfig{
+			AuthType: "aws",
+			AWS: AWSCredentialConfig{
+				Type:            "assume_role",
+				Region:          "ap-southeast-1",
+				RoleARN:         "arn:aws:iam::130506138320:role/bedrock-cross-account-role",
+				Duration:        3600,
+				RoleSessionName: "llm-test-session",
+			},
+		},
+	}
 }
 
 // func LoadConfig(filePath string) (*Config, error) {

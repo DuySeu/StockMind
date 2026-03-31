@@ -46,6 +46,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Websocket
 		// r.Get("/ws", s.websocketHandler)
 		r.Post("/chat", s.chatHandler)
+		r.Get("/chat/stream", s.chatStreamHandler)
 
 		// Users
 		r.Route("/users", func(r chi.Router) {
@@ -124,12 +125,7 @@ func spaHandler() http.HandlerFunc {
 	}
 }
 
-func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
-	// SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
+func parseChatRequest(r *http.Request) (string, uuid.UUID, []agent.Attachment, error) {
 	var content string
 	var sessionID uuid.UUID
 	var attachments []agent.Attachment
@@ -138,8 +134,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		// Parse multipart form
 		if err := r.ParseMultipartForm(10 << 20); err != nil { // 10 MB limit
-			fmt.Println("invalid multipart form:", err)
-			return
+			return "", uuid.Nil, nil, fmt.Errorf("invalid multipart form: %w", err)
 		}
 		content = r.FormValue("content")
 		sessionIDStr := r.FormValue("session_id")
@@ -176,15 +171,25 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		// Parse JSON body
 		var body Message
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			fmt.Println("invalid body:", err)
-			return
+			return "", uuid.Nil, nil, fmt.Errorf("invalid body: %w", err)
 		}
 		content = body.Content
 		sessionID = body.SessionId
 	}
 
+	return content, sessionID, attachments, nil
+}
+
+func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
+	content, sessionID, attachments, err := parseChatRequest(r)
+	if err != nil {
+		fmt.Printf("chatHandler parsing error: %v\n", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	if content == "" && len(attachments) == 0 {
-		fmt.Println("content or attachment is required")
+		http.Error(w, "content or attachment is required", http.StatusBadRequest)
 		return
 	}
 
@@ -197,61 +202,162 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionIdPtr, &content)
 	if err != nil {
-		fmt.Println("Failed to get or create session", "error", err)
+		fmt.Printf("Failed to get or create session: %v\n", err)
+		http.Error(w, "Failed to get or create session", http.StatusInternalServerError)
 		return
 	}
+	
 	// Initilize session
 	err = session.Initialize()
 	if err != nil {
-		fmt.Println("Failed to initialize session", "error", err)
+		fmt.Printf("Failed to initialize session: %v\n", err)
+		http.Error(w, "Failed to initialize session", http.StatusInternalServerError)
 		return
 	}
-	inThinkingBlock := false
-	session.AddChatCallback(func(event agent.ChatEvent) error {
-		switch event.Type {
-		case agent.EventTypeText:
-			if inThinkingBlock {
-				inThinkingBlock = false
-			}
-			writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": event.Content}})
-		case agent.EventTypeThinking:
-			if !inThinkingBlock {
-				inThinkingBlock = true
-			}
-			writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": event.Content}})
-		case agent.EventTypeToolUse:
-			writeSSE(w, map[string]any{"type": "tool_use", "data": map[string]any{"tool_calls": event.ToolUse}})
-		case agent.EventTypeToolResult:
-			writeSSE(w, map[string]any{"type": "tool_result", "data": map[string]any{"result": event.ToolResult}})
-		}
-		if event.IsEnd {
-			writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": session.SessionID().String()}})
-		}
-		return nil
-	})
 
-	err = session.HumanInput(content, attachments)
-	if err != nil {
-		fmt.Println("Failed to send human input", "error", err)
+	stream := s.streamManager.CreateStream(session.SessionID())
+
+	go func() {
+		defer func() {
+			stream.Close()
+		}()
+
+		session.AddChatCallback(func(event agent.ChatEvent) error {
+			stream.AddEvent(event)
+			return nil
+		})
+
+		err = session.HumanInput(content, attachments)
+		if err != nil {
+			fmt.Printf("Failed to send human input: %v\n", err)
+			return
+		}
+		
+		nLoop := 0
+		fmt.Println("Starting agent execution loop")
+		for !session.IsHumanTurn() {
+			fmt.Printf("Loop iteration %d: continuing turn...\n", nLoop+1)
+			err = session.ContinueTurn()
+			if err != nil {
+				fmt.Printf("Failed to continue turn (iteration: %d, error: %v)\n", nLoop+1, err)
+				return
+			}
+			fmt.Printf("Loop iteration %d: completed successfully\n", nLoop+1)
+			nLoop++
+			if nLoop > 10 {
+				fmt.Println("Too many loops (max: 10), something is wrong")
+				return
+			}
+		}
+		fmt.Printf("Agent execution loop completed after %d iterations\n", nLoop)
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"session_id": session.SessionID().String(),
+	})
+}
+
+func (s *Server) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
+	sessionIDStr := r.URL.Query().Get("session_id")
+	if sessionIDStr == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
 		return
 	}
-	nLoop := 0
-	fmt.Println("Starting agent execution loop")
-	for !session.IsHumanTurn() {
-		fmt.Printf("Loop iteration %d: continuing turn...\n", nLoop+1)
-		err = session.ContinueTurn()
-		if err != nil {
-			fmt.Printf("Failed to continue turn (iteration: %d, error: %v)\n", nLoop+1, err)
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		http.Error(w, "invalid session_id format", http.StatusBadRequest)
+		return
+	}
+
+	stream, exists := s.streamManager.GetStream(sessionID)
+	
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	if !exists {
+		// Stream might be completed or never existed. Send a complete event to be safe.
+		writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": sessionID.String()}})
+		return
+	}
+
+	ch, history, isComplete := stream.Subscribe()
+	if !isComplete {
+		defer stream.Unsubscribe(ch)
+	}
+
+	// Replay history buffer
+	inThinkingBlock := false
+	for _, event := range history {
+		sendEventToSSE(w, sessionID.String(), event, &inThinkingBlock)
+	}
+
+	if isComplete {
+		return
+	}
+
+	// Listen for new events
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
 			return
-		}
-		fmt.Printf("Loop iteration %d: completed successfully\n", nLoop+1)
-		nLoop++
-		if nLoop > 10 {
-			fmt.Println("Too many loops (max: 10), something is wrong")
-			return
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			sendEventToSSE(w, sessionID.String(), event, &inThinkingBlock)
 		}
 	}
-	fmt.Printf("Agent execution loop completed after %d iterations\n", nLoop)
+}
+
+func sendEventToSSE(w http.ResponseWriter, sessionID string, event agent.ChatEvent, inThinkingBlock *bool) {
+	switch event.Type {
+	case agent.EventTypeText:
+		if *inThinkingBlock {
+			*inThinkingBlock = false
+		}
+		writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": event.Content}})
+	case agent.EventTypeThinking:
+		if !*inThinkingBlock {
+			*inThinkingBlock = true
+		}
+		writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": event.Content}})
+	case agent.EventTypeToolUse:
+		writeSSE(w, map[string]any{"type": "tool_use", "data": map[string]any{"tool_calls": event.ToolUse}})
+	case agent.EventTypeToolResult:
+		// Map backend wrapper to frontend Message object
+		var res map[string]any
+		if event.ToolResult.OpenAI.Role != "" {
+			res = map[string]any{
+				"role": "tool",
+				"content": []any{
+					map[string]any{"type": "text", "text": event.ToolResult.OpenAI.Content},
+				},
+				"tool_call_id": event.ToolResult.OpenAI.ToolCallID,
+			}
+		} else if event.ToolResult.Anthropic.OfToolResult != nil {
+			var content []any
+			for _, part := range event.ToolResult.Anthropic.OfToolResult.Content {
+				if part.OfText != nil {
+					content = append(content, map[string]any{"type": "text", "text": part.OfText.Text})
+				}
+			}
+			res = map[string]any{
+				"role": "tool",
+				"content": content,
+				"tool_call_id": event.ToolResult.Anthropic.OfToolResult.ToolUseID,
+			}
+		} else {
+			// Fallback
+			res = map[string]any{"role": "tool", "content": []any{}}
+		}
+		writeSSE(w, map[string]any{"type": "tool_result", "data": map[string]any{"result": res}})
+	}
+	if event.IsEnd {
+		writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": sessionID}})
+	}
 }
 
 func writeSSE(w http.ResponseWriter, v any) {

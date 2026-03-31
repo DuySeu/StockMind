@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"stockmind/internal/agent"
 	"stockmind/internal/database"
@@ -15,40 +16,42 @@ import (
 )
 
 type Server struct {
-	port   int
-	db     *database.Queries
-	dbPool *pgxpool.Pool
-	agent  *agent.AgentService
-	tavily *tavily.Client
+	port          int
+	db            *database.Queries
+	dbPool        *pgxpool.Pool
+	agent         *agent.AgentService
+	tavily        *tavily.Client
+	streamManager *StreamManager
 }
 
-func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, port string) *http.Server {
+func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, streamManager *StreamManager, port string) *http.Server {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		portInt = 8080
 	}
-	NewServer := &Server{
-		port:   portInt,
-		db:     database.New(dbPool),
-		dbPool: dbPool,
-		agent:  agent,
-		tavily: tavily.NewClient(),
+	srv := &Server{
+		port:          portInt,
+		db:            database.New(dbPool),
+		dbPool:        dbPool,
+		agent:         agent,
+		tavily:        tavily.NewClient(),
+		streamManager: streamManager,
 	}
 
 	// Ensure default user exists
-	if err := NewServer.EnsureDefaultUser(); err != nil {
-		fmt.Printf("Warning: Failed to ensure default user: %v\n", err)
+	if err := srv.EnsureDefaultUser(); err != nil {
+		log.Printf("Warning: Failed to ensure default user: %v\n", err)
 	}
 
 	// Ensure default agent flow is updated
-	if err := NewServer.EnsureDefaultAgentFlow(); err != nil {
-		fmt.Printf("Warning: Failed to ensure default agent flow: %v\n", err)
+	if err := srv.EnsureDefaultAgentFlow(); err != nil {
+		log.Printf("Warning: Failed to ensure default agent flow: %v\n", err)
 	}
 
 	// Declare Server config
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", NewServer.port),
-		Handler:      NewServer.RegisterRoutes(),
+		Addr:         fmt.Sprintf(":%d", srv.port),
+		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 5 * time.Minute, // increased for SSE streaming (research can take 2+ min)

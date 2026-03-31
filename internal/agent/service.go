@@ -23,14 +23,9 @@ type AgentService struct {
 	ctx     context.Context
 }
 
-func NewService(ctx context.Context, dbPool *pgxpool.Pool) (*AgentService, error) {
+func NewService(ctx context.Context, dbPool *pgxpool.Pool, config LLMProviderConfig) (*AgentService, error) {
 	log.Println("Initializing LLM service...")
-	// Initialize all provider configs - agents may use different providers than the default
-	config := LLMProviderConfig{
-		OpenAI:    DefaultOpenAIConfig,
-		Anthropic: DefaultAnthropicConfig,
-	}
-
+	
 	return &AgentService{
 		config:  config,
 		ctx:     ctx,

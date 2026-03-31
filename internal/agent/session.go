@@ -398,7 +398,7 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	if agent == nil {
 		return fmt.Errorf("agent %s not found in session manager", *lastNode.AgentName)
 	}
-	message, err := agent.ToolUse(sm.ctx, &lastHistory.Content, sm.chatCallback)
+	messages, err := agent.ToolUse(sm.ctx, &lastHistory.Content, sm.chatCallback)
 	if err != nil {
 		fmt.Printf("continueTurnToolCall: tool execution failed: %v\n", err)
 		return fmt.Errorf("failed to call tool use on agent %s: %w", *lastNode.AgentName, err)
@@ -407,19 +407,21 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	fmt.Printf("continueTurnToolCall: tools executed successfully, storing results\n")
 
 	// Store the result to history
-	historyID := uuid.Must(uuid.NewV7())
-	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
-		ID:         historyID,
-		SessionID:  sm.session.ID,
-		Content:    message,
-		StopReason: database.StopReasonToolResult,
-		Node:       lastNode.ID,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to add chat history: %w", err)
+	for _, message := range messages {
+		historyID := uuid.Must(uuid.NewV7())
+		history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
+			ID:         historyID,
+			SessionID:  sm.session.ID,
+			Content:    message,
+			StopReason: database.StopReasonToolResult,
+			Node:       lastNode.ID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add chat history: %w", err)
+		}
+		sm.history = append(sm.history, history)
+		fmt.Printf("continueTurnToolCall: tool results stored (history_id: %s)\n", historyID)
 	}
-	sm.history = append(sm.history, history)
-	fmt.Printf("continueTurnToolCall: tool results stored (history_id: %s)\n", historyID)
 	return nil
 }
 
