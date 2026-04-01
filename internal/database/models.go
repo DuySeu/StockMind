@@ -17,6 +17,19 @@ type AgentFlow struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type Document struct {
+	ID         uuid.UUID          `db:"id" json:"id"`
+	Name       string             `db:"name" json:"name"`
+	FileType   string             `db:"file_type" json:"file_type"`
+	SizeBytes  int64              `db:"size_bytes" json:"size_bytes"`
+	Status     string             `db:"status" json:"status"`
+	ChunkCount int32              `db:"chunk_count" json:"chunk_count"`
+	Strategy   string             `db:"strategy" json:"strategy"`
+	ErrorMsg   pgtype.Text        `db:"error_msg" json:"error_msg"`
+	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
 type News struct {
 	ID          uuid.UUID          `db:"id" json:"id"`
 	Title       string             `db:"title" json:"title"`
