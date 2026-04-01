@@ -14,6 +14,7 @@ import (
 	"stockmind/internal/agent"
 	"stockmind/internal/database"
 	"stockmind/internal/mcp"
+	"stockmind/internal/rag"
 	"stockmind/internal/server"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -143,6 +144,21 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		return nil, nil, err
 	}
 	log.Println("Database connection established")
+
+	// Initialize Qdrant Client
+	qdrantHost := os.Getenv("QDRANT_HOST")
+	if qdrantHost == "" {
+		qdrantHost = "localhost"
+	}
+	qdrantPort := os.Getenv("QDRANT_PORT")
+	if qdrantPort == "" {
+		qdrantPort = "6334"
+	}
+
+	_, err = rag.InitQdrant(ctx, qdrantHost, qdrantPort)
+	if err != nil {
+		log.Fatalf("Failed to initialize Qdrant: %v", err)
+	}
 
 	// Create LLM Config
 	llmConfig := agent.LoadLLMConfig()
