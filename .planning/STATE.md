@@ -1,32 +1,56 @@
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: Executing Phase 2
-last_updated: "2026-03-31T03:34:25.633Z"
-progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 1
----
-
 # Project State
+
+**Project:** StockMind RAG Knowledge Base
+**Milestone:** RAG Feature
+**Updated:** 2026-04-01
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-03-31)
+See: `.planning/PROJECT.md` (updated 2026-04-01)
 
-**Core value**: A reliable, scalable, and secure Go backend foundation that handles seamless financial data retrieval and AI orchestrations without performance bottlenecks or memory leaks.
-**Current focus**: Phase 1: Dependency Injection Assembly (Pending execution start)
+**Core value:** Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm kiếm trong knowledge base nội bộ, đồng thời vẫn giữ khả năng gọi agent tools cho các tác vụ khác — tất cả được điều phối tự động dựa trên intent.
 
-## Active Context
+**Current focus:** Not started — ready for Phase 1
 
-- **Memory**: Go Backend Audit & Refactor tracking.
-- **Milestone Phase**: None active yet.
+## Current Phase
 
-## Phase Tracking
+**Phase:** — (initialization complete, not started)
+**Next action:** Run `/gsd-plan-phase 1` to begin Phase 1: Infrastructure & Database
 
-- Phase 1 (Dependency Injection Assembly): Status = Not Started 
-- Phase 2 (Database Interface Abstraction): Status = Not Started 
-- Phase 3 (Secure Context Management): Status = Not Started
+## Roadmap Status
+
+| Phase | Name | Status |
+|-------|------|--------|
+| 1 | Infrastructure & Database | ⬜ Not Started |
+| 2 | Document Parser | ⬜ Not Started |
+| 3 | Chunking, Embedding & Storage | ⬜ Not Started |
+| 4 | Async Worker & REST API | ⬜ Not Started |
+| 5 | RAG MCP Tool & Routing | ⬜ Not Started |
+| 6 | Frontend UI | ⬜ Not Started |
+
+## Key Artifacts
+
+- `.planning/PROJECT.md` — Project context and requirements
+- `.planning/REQUIREMENTS.md` — 34 v1 requirements
+- `.planning/ROADMAP.md` — 6-phase execution plan
+- `.planning/research/SUMMARY.md` — Research synthesis
+- `.planning/research/STACK.md` — Technology decisions
+- `.planning/research/ARCHITECTURE.md` — System design
+- `.planning/research/PITFALLS.md` — Critical risks
+
+## Key Technical Decisions
+
+- **Embedding model:** `nomic-ai/nomic-embed-text-v1.5` via OpenRouter (768-dim, multilingual)
+- **Vector DB:** Qdrant self-hosted, collection `stockmind_knowledge`
+- **Go client:** `github.com/qdrant/go-client` (gRPC)
+- **PDF parsing:** `pdfcpu` (Apache 2.0)
+- **DOCX parsing:** stdlib `archive/zip` + `encoding/xml`
+- **Chunking default:** recursive, 512 tokens, 10% overlap
+- **RAG integration:** MCP tool `retrieve_knowledge`, intent-routed by LLM
+- **Processing:** async worker pool (2 goroutines), buffered channel cap=10
+
+## Critical Pitfalls to Remember
+
+1. **Embedding model consistency** — store model name in DB, assert at startup
+2. **Tool description precision** — retrieve_knowledge must have clear NOT-FOR boundary
+3. **Worker context wiring** — must respect server shutdown context
