@@ -14,7 +14,7 @@ The existing StockMind stack handles RAG well with minimal additions:
 - **MCP framework already in place** — register `retrieve_knowledge` as another MCP tool; the routing infrastructure is free.
 - **Only new external dependency:** `github.com/qdrant/go-client` + `github.com/pdfcpu/pdfcpu`
 - **DOCX parsing** uses stdlib (`archive/zip` + `encoding/xml`) — no extra dependency.
-- **Recommended embedding model:** `nomic-ai/nomic-embed-text-v1.5` (free on OpenRouter, 768-dim, multilingual — best for Vietnamese/English mix)
+- **Confirmed embedding model:** `nvidia/llama-nemotron-embed-vl-1b-v2:free` — the **only $0 free model** on OpenRouter (confirmed via API Apr 2026), 2048-dim, 131K context, multimodal-capable
 
 ### 2. Architecture Fits Cleanly Into Existing Layers
 
@@ -38,11 +38,13 @@ Despite 4+ strategies in literature, practical recommendation for this use case:
 
 **Default params:** 512 tokens, 10% overlap. Let user pick strategy at upload time.
 
+> Note: With `nvidia/llama-nemotron-embed-vl-1b-v2:free` having 131K context, chunk size limit is effectively irrelevant. Keep 512 tokens for retrieval precision, not due to model constraint.
+
 ### 4. Three Critical Non-Negotiables
 
 From PITFALLS.md, these must be built correctly from day one:
 
-**① Embedding model consistency** — Store model name in DB; assert at startup it matches Qdrant collection.
+**① Embedding model consistency** — Store `nvidia/llama-nemotron-embed-vl-1b-v2:free` + dimension `2048` in DB and Qdrant collection metadata; assert at startup they match.
 
 **② RAG tool description precision** — Tool description must explicitly state what it IS and ISN'T for (live prices vs. knowledge base). This is the entire routing mechanism.
 

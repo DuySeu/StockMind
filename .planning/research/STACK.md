@@ -2,6 +2,7 @@
 
 **Domain:** RAG pipeline + Vector DB + Go backend
 **Researched:** 2026-04-01
+**Updated:** 2026-04-01 (embedding model confirmed from OpenRouter API)
 **Confidence:** HIGH
 
 ## Recommended Stack
@@ -34,19 +35,27 @@
 
 ## Embedding Model Selection
 
-**OpenRouter Free Embedding Models (verified via `/api/v1/embeddings/models`):**
+**Selected Model (confirmed free via OpenRouter `/api/v1/embeddings/models` API):**
 
-| Model | Dimensions | Context | Notes |
-|-------|-----------|---------|-------|
-| `nomic-ai/nomic-embed-text-v1.5` | 768 | 8192 tokens | **Recommended** — strong multilingual, good for Vietnamese |
-| `jina-ai/jina-embeddings-v2-base-en` | 768 | 8192 tokens | English-only, less suitable for Vietnamese financial terms |
-| `thenlper/gte-large` | 1024 | 512 tokens | High quality but short context window |
+| Model | Dimensions | Context | Price | Notes |
+|-------|-----------|---------|-------|-------|
+| `nvidia/llama-nemotron-embed-vl-1b-v2:free` | **2048** | **131,072 tokens** | **$0.00** | ✅ **Selected** — only truly free model, multimodal (text+image) |
 
-**Recommendation: `nomic-ai/nomic-embed-text-v1.5`**
-- Best multilingual support (important for Vietnamese + English mixed financial docs)
-- 8192 token context fits most document chunks comfortably
-- Free tier on OpenRouter
-- 768 dimensions → reasonable Qdrant storage
+**Full OpenRouter embedding catalog (Apr 2026) — other options for reference:**
+
+| Model | Dim | Context | Price | Multilingual |
+|-------|-----|---------|-------|-------------|
+| `intfloat/multilingual-e5-large` | 1024 | 512 | $0.01/1M | ✅ 90+ langs |
+| `baai/bge-m3` | 1024 | 8,192 | $0.01/1M | ✅ 100+ langs |
+| `qwen/qwen3-embedding-8b` | — | 32,000 | $0.01/1M | ✅ Multilingual |
+| `google/gemini-embedding-001` | — | 20,000 | $0.15/1M | ✅ Top MTEB |
+
+**Why `nvidia/llama-nemotron-embed-vl-1b-v2:free`:**
+- Only $0 free model available on OpenRouter as of Apr 2026
+- 131,072 token context — effectively no chunk-size limit
+- OpenAI-compatible API — drop-in with go-openai SDK + base URL override
+- Multimodal (text+image) — future-proof if PDF image extraction added later
+- **Upgrade path:** `baai/bge-m3` ($0.01/1M) if Vietnamese recall rate is insufficient
 
 ## Qdrant Configuration
 
@@ -62,9 +71,11 @@ qdrant:
 ```
 
 **Collection settings:**
-- Distance: `Cosine` (aligned with nomic-embed-text training)
-- Vector size: 768
+- Distance: `Cosine`
+- Vector size: **2048** (matches `llama-nemotron-embed-vl-1b-v2` output dimensions)
 - `on_disk: false` for ≤50 docs scale (RAM is fine)
+
+> ⚠️ **Critical:** Vector dimension must match embedding model exactly. If model is changed, collection must be deleted and re-created, all documents re-indexed.
 
 ## Alternatives Considered
 

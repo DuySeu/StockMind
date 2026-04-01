@@ -40,8 +40,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-01)
 
 ## Key Technical Decisions
 
-- **Embedding model:** `nomic-ai/nomic-embed-text-v1.5` via OpenRouter (768-dim, multilingual)
-- **Vector DB:** Qdrant self-hosted, collection `stockmind_knowledge`
+- **Embedding model:** `nvidia/llama-nemotron-embed-vl-1b-v2:free` via OpenRouter (2048-dim, 131K ctx, multimodal, $0 confirmed)
+- **Vector DB:** Qdrant self-hosted, collection `stockmind_knowledge` (vector_size: 2048, cosine)
 - **Go client:** `github.com/qdrant/go-client` (gRPC)
 - **PDF parsing:** `pdfcpu` (Apache 2.0)
 - **DOCX parsing:** stdlib `archive/zip` + `encoding/xml`

@@ -62,8 +62,8 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 
 **Lý do dùng OpenRouter cho embedding:**
 - API key đã tồn tại trong hệ thống
-- Free tier có các model embedding chất lượng (nomic-embed-text, jina-embeddings)
-- Tránh thêm API key mới
+- `nvidia/llama-nemotron-embed-vl-1b-v2:free` là model $0 duy nhất trên OpenRouter (xác nhận Apr 2026)
+- Tránh thêm API key mới; dùng go-openai SDK với base URL override
 
 ## Constraints
 
@@ -80,7 +80,7 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 |----------|-----------|---------|
 | RAG as MCP Tool (`retrieve_knowledge`) | Tận dụng MCP framework hiện có, LLM tự quyết định khi nào dùng | — Pending |
 | Qdrant self-hosted via Docker | Không cần cloud account, phù hợp dev setup hiện tại | — Pending |
-| OpenRouter cho embedding (free model) | Tái dùng API key hiện có, zero cost | — Pending |
+| `nvidia/llama-nemotron-embed-vl-1b-v2:free` cho embedding | Model $0 duy nhất trên OpenRouter (xác nhận Apr 2026), 2048-dim, 131K context, multimodal | — Pending |
 | Async processing với background goroutine | Upload UX không bị block, cần graceful shutdown | — Pending |
 | Metadata trong PostgreSQL, vectors trong Qdrant | Tách biệt relational metadata và vector storage | — Pending |
 | Intent routing qua LLM (không classifier riêng) | Đơn giản hơn, LLM đã hiểu context của conversation | — Pending |
