@@ -7,10 +7,10 @@
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Qdrant self-hosted chạy qua Docker Compose, accessible từ Go backend (gRPC port 6334)
-- [ ] **INFRA-02**: Qdrant collection `stockmind_knowledge` được khởi tạo tự động khi server start (768 dimensions, cosine distance)
-- [ ] **INFRA-03**: Backend retry Qdrant connection khi startup với exponential backoff (5 lần, 1s→16s)
-- [ ] **INFRA-04**: Goose migration tạo bảng `documents` với các fields: id, name, file_type, size_bytes, status, chunk_count, strategy, error_msg, created_at, updated_at
+- [x] **INFRA-01**: Qdrant self-hosted chạy qua Docker Compose, accessible từ Go backend (gRPC port 6334)
+- [x] **INFRA-02**: Qdrant collection `stockmind_knowledge` được khởi tạo tự động khi server start (768 dimensions, cosine distance)
+- [x] **INFRA-03**: Backend retry Qdrant connection khi startup với exponential backoff (5 lần, 1s→16s)
+- [x] **INFRA-04**: Goose migration tạo bảng `documents` với các fields: id, name, file_type, size_bytes, status, chunk_count, strategy, error_msg, created_at, updated_at
 
 ### Document Upload
 
@@ -24,11 +24,11 @@
 
 - [ ] **PROC-01**: Background worker nhận job và parse text từ file: PDF (pdfcpu), DOCX (stdlib zip+xml), MD (strip formatting), TXT (raw)
 - [ ] **PROC-02**: Worker validate chất lượng text sau parsing: nếu < 100 ký tự có nghĩa → mark `failed` với thông báo rõ ràng
-- [ ] **PROC-03**: Text được chunk theo strategy đã chọn với params mặc định: 512 tokens, 10% overlap
-- [ ] **PROC-04**: Chunks được embed bằng `nomic-ai/nomic-embed-text-v1.5` qua OpenRouter API (batch 20 chunks/call)
-- [ ] **PROC-05**: Vectors được upsert lên Qdrant với payload chứa: document_id, chunk_index, text content
-- [ ] **PROC-06**: Sau khi xong, DB được update: `status = ready`, `chunk_count = N`; file tạm được xóa
-- [ ] **PROC-07**: Nếu bất kỳ bước nào lỗi, `status = failed`, `error_msg` chứa nguyên nhân; file tạm được xóa
+- [x] **PROC-03**: Text được chunk theo strategy đã chọn với params mặc định: 512 tokens, 10% overlap
+- [x] **PROC-04**: Chunks được embed bằng `nomic-ai/nomic-embed-text-v1.5` qua OpenRouter API (batch 20 chunks/call)
+- [x] **PROC-05**: Vectors được upsert lên Qdrant với payload chứa: document_id, chunk_index, text content
+- [x] **PROC-06**: Sau khi xong, DB được update: `status = ready`, `chunk_count = N`; file tạm được xóa
+- [x] **PROC-07**: Nếu bất kỳ bước nào lỗi, `status = failed`, `error_msg` chứa nguyên nhân; file tạm được xóa
 - [ ] **PROC-08**: Worker pool có tối đa 2 concurrent jobs; wired vào server shutdown context (graceful stop)
 - [ ] **PROC-09**: Job queue là buffered channel capacity 10; nếu đầy, upload nhận 503 Service Unavailable
 
@@ -97,10 +97,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 1 | Pending |
-| INFRA-02 | Phase 1 | Pending |
-| INFRA-03 | Phase 1 | Pending |
-| INFRA-04 | Phase 1 | Pending |
+| INFRA-01 | Phase 1 | Complete |
+| INFRA-02 | Phase 1 | Complete |
+| INFRA-03 | Phase 1 | Complete |
+| INFRA-04 | Phase 1 | Complete |
 | UPLOAD-01 | Phase 4 | Pending |
 | UPLOAD-02 | Phase 6 | Pending |
 | UPLOAD-03 | Phase 4 + Phase 6 | Pending |
@@ -108,11 +108,11 @@
 | UPLOAD-05 | Phase 4 | Pending |
 | PROC-01 | Phase 2 | Pending |
 | PROC-02 | Phase 2 | Pending |
-| PROC-03 | Phase 3 | Pending |
-| PROC-04 | Phase 3 | Pending |
-| PROC-05 | Phase 3 | Pending |
-| PROC-06 | Phase 3 | Pending |
-| PROC-07 | Phase 3 | Pending |
+| PROC-03 | Phase 3 | Complete |
+| PROC-04 | Phase 3 | Complete |
+| PROC-05 | Phase 3 | Complete |
+| PROC-06 | Phase 3 | Complete |
+| PROC-07 | Phase 3 | Complete |
 | PROC-08 | Phase 4 | Pending |
 | PROC-09 | Phase 4 | Pending |
 | DOC-01 | Phase 4 | Pending |

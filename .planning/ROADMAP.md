@@ -160,10 +160,10 @@
 
 | Phase | Name | Requirements | Est. Complexity |
 |-------|------|-------------|-----------------|
-| 1 | Infrastructure & Database | INFRA-01~04 | Low |
+| 1 | 3/3 | Complete    | 2026-04-01 |
 | 2 | Document Parser | PROC-01~02 | Medium |
-| 3 | Chunking, Embedding & Storage | PROC-03~07 | High |
-| 4 | Async Worker & REST API | UPLOAD, PROC-08~09, DOC | High |
+| 3 | Chunking, Embedding & Storage | Complete    | 2026-04-02 |
+| 4 | Async Worker & REST API | Planned | High |
 | 5 | RAG MCP Tool & Routing | RAG-01~06 | Medium |
 | 6 | Frontend UI | UPLOAD-02, UI-01~07 | Medium |
 
