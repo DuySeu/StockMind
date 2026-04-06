@@ -143,14 +143,10 @@ const SettingPage = () => {
   }, []);
 
   return (
-    <>
-      <div className="flex-1 overflow-hidden flex flex-col w-full min-h-0">
-        <div className="flex flex-col gap-3 p-6 backdrop-blur-sm">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
-            Agent Flows
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl">Configure and monitor your active agent workflows.</p>
-        </div>
+    <div className="flex flex-col items-center p-3 gap-4">
+      <div className="text-2xl font-bold">Agent Flows</div>
+      <div className="text-sm text-muted-foreground">Configure and monitor your active agent workflows.</div>
+      <div className="flex flex-col w-full max-w-6xl p-3 gap-4 bg-secondary rounded-lg">
         <ScrollArea className="flex-1 w-full min-h-0">
           <div className="flex-1 flex flex-col gap-8 p-4 md:p-6 max-w-7xl mx-auto w-full">
             <div className="flex flex-col gap-6">
@@ -219,7 +215,7 @@ const SettingPage = () => {
           </div>
         </ScrollArea>
       </div>
-    </>
+    </div>
   );
 };
 

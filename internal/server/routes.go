@@ -194,7 +194,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
+	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a4"))
 	var sessionIdPtr *uuid.UUID
 	if sessionID != uuid.Nil {
 		sessionIdPtr = &sessionID
@@ -206,7 +206,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to get or create session", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Initilize session
 	err = session.Initialize()
 	if err != nil {
@@ -215,7 +215,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stream := s.streamManager.CreateStream(session.SessionID())
+	stream := s.streamManager.CreateStream(session.GetSessionID())
 
 	go func() {
 		defer func() {
@@ -227,12 +227,12 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 
-		err = session.HumanInput(content, attachments)
+		err = session.HumanInput(content)
 		if err != nil {
 			fmt.Printf("Failed to send human input: %v\n", err)
 			return
 		}
-		
+
 		nLoop := 0
 		fmt.Println("Starting agent execution loop")
 		for !session.IsHumanTurn() {
@@ -254,7 +254,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"session_id": session.SessionID().String(),
+		"session_id": session.GetSessionID().String(),
 	})
 }
 
@@ -271,7 +271,7 @@ func (s *Server) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stream, exists := s.streamManager.GetStream(sessionID)
-	
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -345,8 +345,8 @@ func sendEventToSSE(w http.ResponseWriter, sessionID string, event agent.ChatEve
 				}
 			}
 			res = map[string]any{
-				"role": "tool",
-				"content": content,
+				"role":         "tool",
+				"content":      content,
 				"tool_call_id": event.ToolResult.Anthropic.OfToolResult.ToolUseID,
 			}
 		} else {

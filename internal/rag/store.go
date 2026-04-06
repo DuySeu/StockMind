@@ -4,19 +4,81 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/qdrant/go-client/qdrant"
+	"github.com/sethvargo/go-retry"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 const (
-	// collectionName is the Qdrant collection used by StockMind RAG.
-	collectionName = "stockmind_knowledge"
+	// CollectionName is the Qdrant collection used by StockMind RAG.
+	CollectionName = "stockmind_knowledge"
 
 	// modelMetaKey is the collection alias used to persist the embedding model
 	// name so that we can assert consistency on subsequent startups.
 	modelMetaKey = "embedding_model"
 )
+
+// ---- Connection & Initialization ----
+
+// InitQdrant establishes a connection to Qdrant with fibonacci retry backoff.
+// It creates the "stockmind_knowledge" collection with 2048 dimensions if not present.
+func InitQdrant(ctx context.Context, host, port string) (*grpc.ClientConn, error) {
+	addr := fmt.Sprintf("%s:%s", host, port)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to init grpc client: %w", err)
+	}
+
+	collectionsClient := qdrant.NewCollectionsClient(conn)
+
+	b := retry.NewFibonacci(1 * time.Second)
+	b = retry.WithMaxRetries(5, b)
+
+	err = retry.Do(ctx, b, func(ctx context.Context) error {
+		_, reqErr := collectionsClient.Get(ctx, &qdrant.GetCollectionInfoRequest{
+			CollectionName: CollectionName,
+		})
+		
+		if reqErr != nil {
+			if st, ok := status.FromError(reqErr); ok && st.Code() == codes.NotFound {
+				return nil
+			}
+			log.Printf("Qdrant check failed: %v", reqErr)
+			return retry.RetryableError(reqErr)
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("qdrant unavailable after retries: %w", err)
+	}
+
+	_, createErr := collectionsClient.Create(ctx, &qdrant.CreateCollection{
+		CollectionName: CollectionName,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     2048,
+			Distance: qdrant.Distance_Cosine,
+		}),
+	})
+	
+	if createErr != nil {
+		if st, ok := status.FromError(createErr); !ok || st.Code() != codes.AlreadyExists {
+			return nil, fmt.Errorf("failed to create stockmind_knowledge collection: %w", createErr)
+		}
+	}
+
+	log.Printf("Qdrant collection ready: %s", CollectionName)
+	return conn, nil
+}
+
+// ---- Store Interface & Implementation ----
 
 // Store is the interface for persisting chunk vectors and metadata into Qdrant.
 // Implementations must be safe for concurrent use.
@@ -30,7 +92,6 @@ type Store interface {
 }
 
 // QdrantStore implements Store using the official Qdrant gRPC Go client.
-// It reuses the *qdrant.PointsClient initialised by InitQdrant during startup.
 type QdrantStore struct {
 	points            qdrant.PointsClient
 	collections       qdrant.CollectionsClient
@@ -39,51 +100,30 @@ type QdrantStore struct {
 
 // NewQdrantStore creates a QdrantStore. Call CheckModelConsistency after
 // construction to assert the collection was built with the same model.
-//
-// pointsClient should come from InitQdrant; collectionsClient is derived from
-// the same gRPC connection.
-func NewQdrantStore(pointsClient qdrant.PointsClient, collectionsClient qdrant.CollectionsClient) *QdrantStore {
+func NewQdrantStore(conn *grpc.ClientConn) *QdrantStore {
 	return &QdrantStore{
-		points:          pointsClient,
-		collections:     collectionsClient,
+		points:          qdrant.NewPointsClient(conn),
+		collections:     qdrant.NewCollectionsClient(conn),
 		configuredModel: embeddingModel, // constant from embedder.go
 	}
 }
 
 // CheckModelConsistency retrieves the collection's stored embedding model from
 // its on-disk metadata and compares it against the configured model.
-//
-// On first run the field is absent — it writes the model name and returns nil.
-// On subsequent runs it returns an error if the stored model differs.
-//
-// Call this once during server startup, after InitQdrant.
 func (s *QdrantStore) CheckModelConsistency(ctx context.Context) error {
-	info, err := s.collections.Get(ctx, &qdrant.GetCollectionInfoRequest{
-		CollectionName: collectionName,
+	_, err := s.collections.Get(ctx, &qdrant.GetCollectionInfoRequest{
+		CollectionName: CollectionName,
 	})
 	if err != nil {
 		return fmt.Errorf("qdrant store: failed to get collection info: %w", err)
 	}
 
-	// The collection payload schema is not the right place for collection-level
-	// metadata; Qdrant exposes it through collection aliases. We use the
-	// collection's custom key-value metadata field (on_disk_payload / params).
-	// Since Qdrant doesn't have a native key-value store for this, we persist
-	// the model name as a special "config" point with id=0 and no vector.
-	//
-	// Practical approach: we store a sentinel point with id=0 that only carries
-	// a payload with the embedding_model key. This point is excluded from
-	// searches by filtering on chunk_index >= 0 (our real chunks).
-	_ = info // used for liveness check above
-
 	return s.assertModelPoint(ctx)
 }
 
-// assertModelPoint reads or writes the sentinel config point (id=uint64(0))
-// that records the embedding model used to create the collection.
 func (s *QdrantStore) assertModelPoint(ctx context.Context) error {
 	resp, err := s.points.Get(ctx, &qdrant.GetPoints{
-		CollectionName: collectionName,
+		CollectionName: CollectionName,
 		Ids:            []*qdrant.PointId{qdrant.NewIDNum(0)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
@@ -92,15 +132,12 @@ func (s *QdrantStore) assertModelPoint(ctx context.Context) error {
 	}
 
 	if len(resp.Result) == 0 {
-		// First run — write the sentinel.
 		return s.writeModelPoint(ctx)
 	}
 
-	// Second+ run — compare stored model with configured.
 	result := resp.Result[0]
 	stored, ok := result.Payload[modelMetaKey]
 	if !ok {
-		// Sentinel exists but has no model key — treat as first run.
 		return s.writeModelPoint(ctx)
 	}
 
@@ -114,14 +151,10 @@ func (s *QdrantStore) assertModelPoint(ctx context.Context) error {
 	return nil
 }
 
-// writeModelPoint upserts the sentinel config point (id=0) with the embedding
-// model name as payload.
 func (s *QdrantStore) writeModelPoint(ctx context.Context) error {
-	// Config point uses a zero vector with the correct dimension so that Qdrant
-	// accepts it. We always filter it out with chunk_index >= 0 in real queries.
 	zeroVec := make([]float32, embeddingDimensions)
 	_, err := s.points.Upsert(ctx, &qdrant.UpsertPoints{
-		CollectionName: collectionName,
+		CollectionName: CollectionName,
 		Points: []*qdrant.PointStruct{
 			{
 				Id:      qdrant.NewIDNum(0),
@@ -139,12 +172,7 @@ func (s *QdrantStore) writeModelPoint(ctx context.Context) error {
 	return nil
 }
 
-// Upsert inserts or updates all chunks for a document. Each chunk becomes one
-// Qdrant point with the payload:
-//
-//	{doc_id, chunk_index, text, strategy}
-//
-// Points are keyed by a deterministic UUID derived from docID + chunk_index.
+// Upsert inserts or updates all chunks for a document.
 func (s *QdrantStore) Upsert(ctx context.Context, docID string, chunks []string, vectors [][]float32, strategy Strategy) error {
 	if len(chunks) != len(vectors) {
 		return errors.New("qdrant store: chunks and vectors length mismatch")
@@ -153,13 +181,11 @@ func (s *QdrantStore) Upsert(ctx context.Context, docID string, chunks []string,
 		return errors.New("qdrant store: docID must not be empty")
 	}
 	if len(chunks) == 0 {
-		return nil // nothing to do
+		return nil
 	}
 
 	points := make([]*qdrant.PointStruct, 0, len(chunks))
 	for i, text := range chunks {
-		// Derive a stable UUID for each chunk: namespace(docID) + chunk_index.
-		// This lets us re-index a document idempotently (upsert behaviour).
 		chunkID := uuid.NewSHA1(uuid.MustParse(docID), []byte(fmt.Sprintf("%d", i)))
 
 		points = append(points, &qdrant.PointStruct{
@@ -175,7 +201,7 @@ func (s *QdrantStore) Upsert(ctx context.Context, docID string, chunks []string,
 	}
 
 	_, err := s.points.Upsert(ctx, &qdrant.UpsertPoints{
-		CollectionName: collectionName,
+		CollectionName: CollectionName,
 		Points:         points,
 	})
 	if err != nil {
@@ -191,7 +217,7 @@ func (s *QdrantStore) Delete(ctx context.Context, docID string) error {
 	}
 
 	_, err := s.points.Delete(ctx, &qdrant.DeletePoints{
-		CollectionName: collectionName,
+		CollectionName: CollectionName,
 		Points: &qdrant.PointsSelector{
 			PointsSelectorOneOf: &qdrant.PointsSelector_Filter{
 				Filter: &qdrant.Filter{

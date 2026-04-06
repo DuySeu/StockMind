@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+
 	"stockmind/internal/database"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -12,9 +13,16 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+const (
+	DEFAULT_MAX_TURNS = 100
+)
+
+
+// Wrapper around different LLM clients
+// For easy extension in the future
 type LLMClientWrapper struct {
-	OfOpenAI    *openai.Client
 	OfAnthropic *anthropic.Client
+	OfOpenAI    *openai.Client
 }
 
 type AgentService struct {
@@ -33,16 +41,6 @@ func NewService(ctx context.Context, dbPool *pgxpool.Pool, config LLMProviderCon
 	}, nil
 }
 
-// getImplByProvider returns an initialized struct that implements LLMProvider interface
-// The returned struct must NOT have the 'agent' field set yet, as the agent is not created.
-// This requires a slight adjustment: implementing structs (OpenAIProvider/AnthropicProvider)
-// should allow setting the agent later or the interface needs to account for this.
-// Given the existing design where Agent accesses Config/Tools, passing Agent to the Provider is correct.
-// But we can't create Provider with Agent because Agent needs Provider. Circular dependency.
-// Solution:
-// 1. Create LLMClientWrapper (RAW client) first.
-// 2. Create Agent with RAW client or placeholder.
-// 3. Construct concrete Provider (wrapping RAW client + Agent) and assign to Agent.
 func (s *AgentService) getClientByProvider(provider database.ModelProvider) (*LLMClientWrapper, error) {
 	var client *LLMClientWrapper
 	var err error
@@ -78,10 +76,10 @@ func (s *AgentService) GetOrCreateSession(userID, agentFlowID, sessionID *uuid.U
 		// Get Agent Flow Configuration
 		agentFlow, err = s.queries.GetAgentFlowById(s.ctx, *agentFlowID)
 		if err != nil {
-			log.Printf("failed to get agent flow by ID: %v (agent_flow_id: %s)", err, *agentFlowID)
+			log.Printf("Failed to get agent flow by ID: %v", err)
 			return nil, err
 		}
-		log.Printf("creating new session (user_id: %s, agent_flow_id: %s, agent_flow_name: %s)", *userID, *agentFlowID, agentFlow.Name)
+		log.Printf("Creating new session: %s", userID.String())
 		newSessionName := "New Session"
 		if sessionName != nil && *sessionName != "" {
 			newSessionName = *sessionName
@@ -93,24 +91,24 @@ func (s *AgentService) GetOrCreateSession(userID, agentFlowID, sessionID *uuid.U
 			Title:       newSessionName,
 		})
 		if err != nil {
-			log.Printf("failed to create new session: %v", err)
+			log.Printf("Failed to create new session: %v", err)
 			return nil, err
 		}
-		log.Printf("new session created (session_id: %s, user_id: %s)", *sessionID, *userID)
+		log.Printf("New session created: %s", userID.String())
 	} else {
 		// Fetch existing session from the database
 		session, err = s.queries.GetSessionByID(s.ctx, *sessionID)
 		if err != nil {
-			log.Printf("failed to get session by ID: %v (session_id: %s)", err, *sessionID)
+			log.Printf("Failed to get session by ID: %v", err)
 			return nil, err
 		}
 		// Get Agent Flow Configuration
 		agentFlow, err = s.queries.GetAgentFlowById(s.ctx, session.AgentFlowID)
 		if err != nil {
-			log.Printf("failed to get agent flow by ID: %v (agent_flow_id: %s)", err, session.AgentFlowID)
+			log.Printf("Failed to get agent flow by ID: %v", err)
 			return nil, err
 		}
-		log.Printf("existing session fetched (session_id: %s, user_id: %s, agent_flow_id: %s, agent_flow_name: %s)", *sessionID, session.CreatedBy, session.AgentFlowID, agentFlow.Name)
+		log.Printf("Existing session fetched: %s", sessionID.String())
 	}
 
 	ctx, cancel := context.WithCancel(s.ctx)
@@ -119,7 +117,7 @@ func (s *AgentService) GetOrCreateSession(userID, agentFlowID, sessionID *uuid.U
 		cancel:       cancel,
 		session:      session,
 		agentFlowCfg: agentFlow.Config,
-		llm:          s,
+		agent:        s,
 		history:      []database.SessionHistory{},
 		nodes:        make(map[string]database.Node),
 	}

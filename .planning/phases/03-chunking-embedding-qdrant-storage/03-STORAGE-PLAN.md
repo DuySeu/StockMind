@@ -23,7 +23,7 @@ Add an implementation `QdrantStore` using `github.com/qdrant/go-client/qdrant`.
 Include payload mapping ( `doc_id`, `chunk_index`, `text`, `strategy`).
 </action>
 <read_first>
-- internal/rag/client.go (to reuse existing connection pool)
+- internal/rag/store.go
 - .planning/phases/03-chunking-embedding-qdrant-storage/03-CONTEXT.md
 </read_first>
 <acceptance_criteria>

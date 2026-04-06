@@ -3,6 +3,7 @@ module stockmind
 go 1.25.1
 
 require (
+	github.com/abadojack/whatlanggo v1.0.1
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.6
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.6
@@ -13,12 +14,15 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mark3labs/mcp-go v0.39.1
+	github.com/nguyenthenguyen/docx v0.0.0-20230621112118-9c8e795a11db
 	github.com/pressly/goose/v3 v3.25.0
 	github.com/qdrant/go-client v1.17.1
 	github.com/sashabaranov/go-openai v1.41.1
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/urfave/cli/v3 v3.4.1
+	github.com/yuin/goldmark v1.8.2
 	google.golang.org/grpc v1.78.0
 )
 

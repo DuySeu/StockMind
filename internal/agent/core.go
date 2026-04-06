@@ -49,13 +49,6 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 		mcpClients: make(map[string]*mcp_client.Client),
 	}
 
-	// Double linking if providers need access to agent config/tools
-	// Since we construct provider BEFORE agent in current flow, we might need a Setter or redesign construction.
-	// But let's check: provider needs 'agent' because it reads config and tools.
-	// So actually we should construct Agent FIRST, then Provider, then set Provider to Agent.
-	// We will handle this in service.go or here.
-	// For now, let's keep it simple: we assume the caller handles the setup.
-
 	// Initialize all MCP and put them to mcpClient map
 	a.mcpClients = make(map[string]*mcp_client.Client, len(config.McpServers))
 	for _, mcpCfg := range config.McpServers {
@@ -84,6 +77,9 @@ func NewAgent(ctx context.Context, session database.Session, name string, config
 			tools[i].Name = fmt.Sprintf("%s--%s", mcpName, tools[i].Name)
 		}
 		a.tools = append(a.tools, tools...)
+	}
+	if a.provider != nil {
+		a.provider.SetAgent(a)
 	}
 	return a, nil
 }

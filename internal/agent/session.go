@@ -3,71 +3,29 @@ package agent
 import (
 	"context"
 	"fmt"
-
+	"log"
 	"stockmind/internal/database"
-
-	"encoding/base64"
-	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
-	openai "github.com/sashabaranov/go-openai"
 )
-
-type Attachment struct {
-	Name      string
-	MediaType string
-	Data      []byte
-}
-type EventType string
-
-const (
-	EventTypeText       EventType = "text"
-	EventTypeThinking   EventType = "thinking"
-	EventTypeToolUse    EventType = "tool_use"
-	EventTypeToolResult EventType = "tool_result"
-)
-
-type ToolCallWrapper struct {
-	OpenAI    openai.ToolCall
-	Anthropic anthropic.MessageParam
-}
-
-type ToolResultWrapper struct {
-	OpenAI    openai.ChatCompletionMessage
-	Anthropic anthropic.ContentBlockParamUnion
-}
-
-type ChatEvent struct {
-	Type       EventType
-	Content    string // Text or Thinking content
-	ToolUse    ToolCallWrapper
-	ToolResult ToolResultWrapper
-	IsEnd      bool // Signal end of block
-}
-
-type ChatCallBack func(event ChatEvent) error
 
 type SessionManager struct {
 	ctx          context.Context
 	cancel       context.CancelFunc
 	session      database.Session
 	agentFlowCfg database.AgentFlowConfig
-	llm          *AgentService
+	agent        *AgentService
 	history      []database.SessionHistory
 	nodes        map[string]database.Node // For quick lookup
 	agents       map[string]*Agent        // For quick lookup
 	chatCallback ChatCallBack
 }
 
-func (sm *SessionManager) SessionID() uuid.UUID {
-	return sm.session.ID
-}
-
 func (sm *SessionManager) Initialize() error {
 	// Fetch existing messages from DB
 	if len(sm.history) == 0 {
-		msgs, err := sm.llm.queries.GetSessionHistoryBySessionID(sm.ctx, sm.session.ID)
+		msgs, err := sm.agent.queries.GetSessionHistoryBySessionID(sm.ctx, sm.session.ID)
 		if err != nil {
 			return err
 		}
@@ -81,54 +39,29 @@ func (sm *SessionManager) Initialize() error {
 	// Initialize all agents
 	sm.agents = make(map[string]*Agent, len(sm.agentFlowCfg.Agents))
 	for name, agentCfg := range sm.agentFlowCfg.Agents {
-		// Get RAW providers first
-		rawClient, err := sm.llm.getClientByProvider(agentCfg.Provider)
+		// Get providers
+		providerWrap, err := sm.agent.getClientByProvider(agentCfg.Provider)
 		if err != nil {
 			return fmt.Errorf("failed to get LLM client for provider %s: %w", agentCfg.Provider, err)
 		}
 
-		// Initialize Agent WITHOUT Provider first (pass nil)
-		// We modify NewAgent to accept nil, OR we pass a dummy logic.
-		// Better approach: NewAgent logic for setting up Tools/MCP does NOT depend on Provider.
-		// So we create Agent, THEN we set the Provider implementation.
-		// However, NewAgent signature requires LLMProvider now.
-		// We can create a temporary placeholder or refactor NewAgent.
-		// Let's modify usage: We will construct the specific Provider Adapter here.
+		var llmProvider LLMProvider
+		switch agentCfg.Provider {
+		case database.ModelProviderOpenAI:
+			llmProvider = NewOpenAIProvider(providerWrap.OfOpenAI)
+		case database.ModelProviderAnthropic:
+			llmProvider = NewAnthropicProvider(providerWrap.OfAnthropic)
+		default:
+			return fmt.Errorf("unsupported provider: %s", agentCfg.Provider)
+		}
 
-		// 1. Create Agent with nil provider first (hacky but works if we set it immediately)
-		// Or pass a no-op implementation.
-		// Let's rely on standard Go:
-		// agent := &Agent{...} -> NewAgent does complex setup (MCP).
-
-		// Let's create the Agent first with a nil provider, then attach.
-		agent, err := NewAgent(sm.ctx, sm.session, name, agentCfg, nil)
+		agent, err := NewAgent(sm.ctx, sm.session, name, agentCfg, llmProvider)
 		if err != nil {
 			return fmt.Errorf("failed to initialize agent %s: %w", name, err)
 		}
-
-		// 2. Select and Create the concrete Provider specific to the Agent
-		var provider LLMProvider
-		switch agentCfg.Provider {
-		case database.ModelProviderOpenAI:
-			if rawClient.OfOpenAI == nil {
-				return fmt.Errorf("OpenAI client is nil for agent %s", name)
-			}
-			provider = NewOpenAIProvider(rawClient.OfOpenAI, agent)
-		case database.ModelProviderAnthropic:
-			if rawClient.OfAnthropic == nil {
-				return fmt.Errorf("Anthropic client is nil for agent %s", name)
-			}
-			provider = NewAnthropicProvider(rawClient.OfAnthropic, agent)
-		default:
-			return fmt.Errorf("unsupported provider %s for agent %s", agentCfg.Provider, name)
-		}
-
-		// 3. Set the provider to the agent
-		agent.provider = provider
-
-		fmt.Println("Agent initialized", "name", name, "model_provider", agentCfg.Provider, "tools_count", len(agent.tools))
 		sm.agents[name] = agent
 	}
+
 	return nil
 }
 
@@ -162,14 +95,6 @@ func (sm *SessionManager) IsHumanTurn() bool {
 		// Not tool call, so it must be start of flow
 		// If last node is agent, and stop reason is not tool_call, then we are at start of flow
 		if lastNode.Type == database.NodeTypeAgent && lastHistory.StopReason != database.StopReasonToolCall && lastHistory.StopReason != database.StopReasonToolResult {
-			// Check if there's a next agent node - if so, we should continue (not human turn yet)
-			if lastHistory.StopReason == database.StopReasonAgentDone && lastNode.Next != nil {
-				nextNode, exists := sm.nodes[*lastNode.Next]
-				if exists && nextNode.Type == database.NodeTypeAgent {
-					// There's a next agent, so it's NOT human's turn yet
-					return false
-				}
-			}
 			startOfFlow = true
 		}
 		// If last node is start, we should not be here
@@ -180,7 +105,7 @@ func (sm *SessionManager) IsHumanTurn() bool {
 	return startOfFlow
 }
 
-func (sm *SessionManager) HumanInput(message string, attachments []Attachment) error {
+func (sm *SessionManager) HumanInput(message string) error {
 	// Check if we are correctly at the start of the flows (start node)
 	// Either history is empty, or last node of the conversation is an end node
 	startOfFlow := len(sm.history) == 0
@@ -193,7 +118,7 @@ func (sm *SessionManager) HumanInput(message string, attachments []Attachment) e
 		// Not tool call, so it must be start of flow
 		// If last node is agent, and stop reason is not tool_call, then we are at start of flow
 		// If last node is start, we should not be here
-		if lastNode.Type == database.NodeTypeAgent && lastHistory.StopReason != "tool_call" {
+		if lastNode.Type == database.NodeTypeAgent && lastHistory.StopReason != database.StopReasonToolCall {
 			startOfFlow = true
 		}
 		// If last node is start, we should not be here
@@ -217,14 +142,14 @@ func (sm *SessionManager) HumanInput(message string, attachments []Attachment) e
 		return fmt.Errorf("next node %s not found in agent flow config", nextNodeID)
 	}
 	provider := sm.agentFlowCfg.Agents[*nextNode.AgentName].Provider
-	humanMsg, err := newHumanMessage(message, attachments, provider)
+	humanMsg, err := newHumanMessage(message, provider)
 	if err != nil {
 		return err
 	}
 
 	// Create new history entry and store it to DB
 	historyID := uuid.Must(uuid.NewV7())
-	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
+	history, err := sm.agent.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
 		Content:    humanMsg,
@@ -245,28 +170,21 @@ func (sm *SessionManager) ContinueTurn() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("ContinueTurn called (session: %s, node: %s, stop_reason: %s)\n",
-		sm.session.ID, lastNode.ID, lastHistory.StopReason)
-
 	switch lastHistory.StopReason {
 	case database.StopReasonUserInput:
-		fmt.Println("Handling UserInput -> calling continueTurnHumanInput")
 		// Continue with next agent node
 		// Suppose to be start node
 		err = sm.continueTurnHumanInput()
 	case database.StopReasonToolCall:
-		fmt.Println("Handling ToolCall -> calling continueTurnToolCall")
 		// Still agent node, call tools, append tool result to history
 		err = sm.continueTurnToolCall()
 	case database.StopReasonToolResult:
-		fmt.Println("Handling ToolResult -> calling continueTurnToolResult")
 		// Still agent node, call the agent again
 		err = sm.continueTurnToolResult()
 	case database.StopReasonAgentDone:
-		fmt.Println("Handling AgentDone -> checking for next node")
 		// Call next node. If no next node then end the turn
 		if lastNode.Next == nil {
-			fmt.Printf("No next node, turn is complete. To continue, add new human input %s\n", sm.session.ID.String())
+			log.Printf("No next node, turn is complete. To continue, add new human input. session_id: %s", sm.session.ID.String())
 			return nil
 		}
 		nextNode := sm.nodes[*lastNode.Next]
@@ -274,17 +192,19 @@ func (sm *SessionManager) ContinueTurn() error {
 			return fmt.Errorf("next node %s is not an agent node, cannot continue turn", nextNode.ID)
 		}
 		// Continue with next agent node
-		err = sm.continueTurnHumanInput()
+		// Processing message for next agent here
+		// Push to next agent node
+		// TODO: Implement next agent for multi agents here
 	default:
 		return fmt.Errorf("cannot continue turn, last history stop reason is %s", lastHistory.StopReason)
 	}
 	if err != nil {
-		fmt.Printf("Failed to continue turn: %v\n", err)
+		log.Printf("Failed to continue turn. session_id: %s, error: %v", sm.session.ID, err)
 		return err
 	}
 	sm.session.TurnCount++
 	// Update session turn count in DB
-	err = sm.llm.queries.UpdateSessionTurnCount(sm.ctx, database.UpdateSessionTurnCountParams{
+	err = sm.agent.queries.UpdateSessionTurnCount(sm.ctx, database.UpdateSessionTurnCountParams{
 		ID:        sm.session.ID,
 		TurnCount: sm.session.TurnCount,
 	})
@@ -294,38 +214,8 @@ func (sm *SessionManager) ContinueTurn() error {
 	return nil
 }
 
-func newHumanMessage(message string, attachments []Attachment, provider database.ModelProvider) (database.MessageUnion, error) {
+func newHumanMessage(message string, provider database.ModelProvider) (database.MessageUnion, error) {
 	switch provider {
-	case database.ModelProviderOpenAI:
-		parts := []openai.ChatMessagePart{}
-		if message != "" {
-			parts = append(parts, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: message})
-		}
-		for _, att := range attachments {
-			if strings.HasPrefix(att.MediaType, "image/") {
-				b64 := base64.StdEncoding.EncodeToString(att.Data)
-				url := fmt.Sprintf("data:%s;base64,%s", att.MediaType, b64)
-				parts = append(parts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeImageURL,
-					ImageURL: &openai.ChatMessageImageURL{
-						URL: url,
-					},
-				})
-			} else {
-				// Treat as text
-				parts = append(parts, openai.ChatMessagePart{
-					Type: openai.ChatMessagePartTypeText,
-					Text: fmt.Sprintf("\n[Attachment: %s]\n%s", att.Name, string(att.Data)),
-				})
-			}
-		}
-
-		return database.MessageUnion{
-			OfOpenAI: &openai.ChatCompletionMessage{
-				Role:         openai.ChatMessageRoleUser,
-				MultiContent: parts,
-			},
-		}, nil
 	case database.ModelProviderAnthropic:
 		return database.MessageUnion{
 			OfAnthropic: &anthropic.MessageParam{
@@ -368,7 +258,7 @@ func (sm *SessionManager) continueTurnHumanInput() error {
 	}
 	// Store the result to history
 	historyID := uuid.Must(uuid.NewV7())
-	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
+	history, err := sm.agent.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
 		Content:    result,
@@ -388,9 +278,6 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("continueTurnToolCall: executing tools (node: %s, agent: %s)\n",
-		lastNode.ID, *lastNode.AgentName)
-
 	if lastNode.Type != database.NodeTypeAgent {
 		return fmt.Errorf("last node %s is not an agent node, cannot continue turn", lastNode.ID)
 	}
@@ -400,16 +287,12 @@ func (sm *SessionManager) continueTurnToolCall() error {
 	}
 	messages, err := agent.ToolUse(sm.ctx, &lastHistory.Content, sm.chatCallback)
 	if err != nil {
-		fmt.Printf("continueTurnToolCall: tool execution failed: %v\n", err)
 		return fmt.Errorf("failed to call tool use on agent %s: %w", *lastNode.AgentName, err)
 	}
-
-	fmt.Printf("continueTurnToolCall: tools executed successfully, storing results\n")
-
 	// Store the result to history
 	for _, message := range messages {
 		historyID := uuid.Must(uuid.NewV7())
-		history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
+		history, err := sm.agent.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 			ID:         historyID,
 			SessionID:  sm.session.ID,
 			Content:    message,
@@ -420,7 +303,6 @@ func (sm *SessionManager) continueTurnToolCall() error {
 			return fmt.Errorf("failed to add chat history: %w", err)
 		}
 		sm.history = append(sm.history, history)
-		fmt.Printf("continueTurnToolCall: tool results stored (history_id: %s)\n", historyID)
 	}
 	return nil
 }
@@ -449,7 +331,7 @@ func (sm *SessionManager) continueTurnToolResult() error {
 	}
 	// Store the result to history
 	historyID := uuid.Must(uuid.NewV7())
-	history, err := sm.llm.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
+	history, err := sm.agent.queries.SessionAddChatHistory(sm.ctx, database.SessionAddChatHistoryParams{
 		ID:         historyID,
 		SessionID:  sm.session.ID,
 		Content:    result,
@@ -463,13 +345,6 @@ func (sm *SessionManager) continueTurnToolResult() error {
 	return nil
 }
 
-func (sm *SessionManager) continueTurnAgentInput() error {
-	lastNode, _, err := sm.lastHistoryInfo()
-	if err != nil {
-		return err
-	}
-	if lastNode.Type != database.NodeTypeAgent {
-		return fmt.Errorf("last node %s is not an agent node, cannot continue turn", lastNode.ID)
-	}
-	return nil
+func (sm *SessionManager) GetSessionID() uuid.UUID {
+	return sm.session.ID
 }

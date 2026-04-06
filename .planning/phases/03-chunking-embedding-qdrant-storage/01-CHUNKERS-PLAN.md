@@ -5,7 +5,7 @@ name: core-chunking-strategies
 wave: 1
 depends_on: []
 requirements: [PROC-03, PROC-04, PROC-05]
-files_modified: [internal/rag/chunker.go, internal/rag/chunker_fixed.go, internal/rag/chunker_recursive.go, internal/rag/chunker_paragraph.go, internal/rag/chunker_semantic.go]
+files_modified: [internal/rag/chunker.go]
 autonomous: true
 ---
 

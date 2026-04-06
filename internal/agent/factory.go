@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -17,37 +18,30 @@ import (
 func createOpenAIClient(config OpenAIConfig) (*LLMClientWrapper, error) {
 	var openaiClient *openai.Client
 
-	if config.AuthType == "openai" {
-		openaiClient = openai.NewClient(config.APIKey)
-	}
-	if config.AuthType == "open_router" {
+	if strings.Contains(config.BaseURL, "openrouter.ai") {
 		var defaultConfig openai.ClientConfig
 		key := config.APIKey
 		if key == "" {
-			return nil, fmt.Errorf("OPENAI_API_KEY is not found")
+			return nil, fmt.Errorf("OPENROUTER_API_KEY is not found")
 		}
 		defaultConfig = openai.DefaultConfig(key)
 		defaultConfig.BaseURL = config.BaseURL
 
 		openaiClient = openai.NewClientWithConfig(defaultConfig)
+	} else {
+		openaiClient = openai.NewClient(config.APIKey)
 	}
 	return &LLMClientWrapper{OfOpenAI: openaiClient}, nil
 }
 
 func createAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*LLMClientWrapper, error) {
 	var ac anthropic.Client
-	if cfg.AuthType == "" {
-		return nil, fmt.Errorf("AuthType is required: must be 'api_key' or 'aws'")
-	}
-	if cfg.AuthType == "api_key" {
+	if strings.Contains(cfg.BaseURL, "openrouter.ai") {
 		if cfg.APIKey == "" {
-			return nil, fmt.Errorf("API key is required for api_key auth type")
+			return nil, fmt.Errorf("API key is required")
 		}
-		ac = anthropic.NewClient(option.WithAPIKey(cfg.APIKey))
-	} else if cfg.AuthType == "aws" {
-		if cfg.AWS.Type == "" {
-			return nil, fmt.Errorf("AWS credential type is required for aws auth type")
-		}
+		ac = anthropic.NewClient(option.WithAPIKey(cfg.APIKey), option.WithBaseURL(cfg.BaseURL))
+	} else {
 		defaultAWSCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWS.Region))
 		if err != nil {
 			return nil, fmt.Errorf("Failed to load AWS config")
@@ -77,8 +71,6 @@ func createAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*LLMClient
 			}
 		}
 		ac = anthropic.NewClient(bedrock.WithConfig(awsCfg))
-	} else {
-		return nil, fmt.Errorf("unsupported AuthType: %s (must be 'api_key' or 'aws')", cfg.AuthType)
 	}
 	return &LLMClientWrapper{OfAnthropic: &ac}, nil
 }

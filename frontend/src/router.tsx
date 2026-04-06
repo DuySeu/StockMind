@@ -1,13 +1,14 @@
 import { createBrowserRouter } from "react-router-dom";
+import { MainLayout } from "@/components/layout/MainLayout";
 import LoginPage from "@/pages/LoginPage";
 import ErrorPage from "@/pages/ErrorPage";
 import WatchListPage from "@/pages/WatchList";
-import MarketResearcherPage from "./pages/MarketResearcherPage";
-import ResearchResultPage from "./pages/ResearchResultPage";
-import ChatbotPage from "./pages/Chatbot";
-import HomePage from "./pages/HomePage";
-import PendingPage from "./pages/PendingPage";
-import { MainLayout } from "./components/layout/MainLayout";
+import MarketResearcherPage from "@/pages/MarketResearcherPage";
+import ResearchResultPage from "@/pages/ResearchResultPage";
+import ChatbotPage from "@/pages/Chatbot";
+import HomePage from "@/pages/HomePage";
+import PendingPage from "@/pages/PendingPage";
+import SettingPage from "@/pages/SettingPage";
 
 export const router = createBrowserRouter([
   {
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
       {
         path: "news",
         element: <PendingPage />,
+      },
+      {
+        path: "settings",
+        element: <SettingPage />,
       },
     ],
   },

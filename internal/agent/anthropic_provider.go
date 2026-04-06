@@ -16,13 +16,15 @@ type AnthropicProvider struct {
 	agent  *Agent
 }
 
-func NewAnthropicProvider(client *anthropic.Client, agent *Agent) *AnthropicProvider {
+func NewAnthropicProvider(client *anthropic.Client) *AnthropicProvider {
 	return &AnthropicProvider{
 		client: client,
-		agent:  agent,
 	}
 }
 
+func (p *AnthropicProvider) SetAgent(agent *Agent) {
+	p.agent = agent
+}
 func (p *AnthropicProvider) newAnthropicMessage() anthropic.MessageNewParams {
 	a := p.agent
 	var msgParams anthropic.MessageNewParams
@@ -66,8 +68,8 @@ func (p *AnthropicProvider) newAnthropicMessage() anthropic.MessageNewParams {
 	return msgParams
 }
 
-func anthropicToDbStopReason(reason anthropic.StopReason) database.StopReason {
-	switch reason {
+func anthropicToDbStopReason(sr anthropic.StopReason) database.StopReason {
+	switch sr {
 	case anthropic.StopReasonMaxTokens:
 		return database.StopReasonMaxTokens
 	case anthropic.StopReasonToolUse:
@@ -142,14 +144,7 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 				thinking := msg.ContentBlock.AsThinking()
 				// If callback is provided, call it with initial thinking content
 				if callback != nil {
-					eventType := EventTypeThinking
-					_ = callback(
-						ChatEvent{
-							Type:    eventType,
-							Content: thinking.Thinking,
-							IsEnd:   false,
-						},
-					)
+					_ = callback(ChatEvent{Type: EventTypeThinking, Content: thinking.Thinking, IsEnd: false})
 				}
 				contentItem.OfThinking = &anthropic.ThinkingBlockParam{
 					Thinking: thinking.Thinking,
@@ -172,14 +167,7 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 			case "thinking_delta":
 				delta := msg.Delta.AsThinkingDelta()
 				if callback != nil {
-					eventType := EventTypeThinking
-					_ = callback(
-						ChatEvent{
-							Type:    eventType,
-							Content: delta.Thinking,
-							IsEnd:   false,
-						},
-					)
+					_ = callback(ChatEvent{Type: EventTypeThinking, Content: delta.Thinking, IsEnd: false})
 				}
 				contentItem.OfThinking.Thinking += delta.Thinking
 			case "signature_delta":
@@ -190,14 +178,7 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 			case "text_delta":
 				delta := msg.Delta.AsTextDelta()
 				if callback != nil {
-					eventType := EventTypeText
-					_ = callback(
-						ChatEvent{
-							Type:    eventType,
-							Content: delta.Text,
-							IsEnd:   false,
-						},
-					)
+					_ = callback(ChatEvent{Type: EventTypeText, Content: delta.Text, IsEnd: false})
 				}
 				contentItem.OfText.Text += delta.Text
 			case "input_json_delta":
@@ -216,13 +197,9 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 				contentItem.OfToolUse.Input = tool_use_input
 				toolUseInput.Reset()
 			}
-			_ = callback(
-				ChatEvent{
-					Type:    EventTypeText,
-					Content: "",
-					IsEnd:   true,
-				},
-			)
+			if callback != nil {
+				_ = callback(ChatEvent{IsEnd: true})
+			}
 			result.OfAnthropic.Content = append(result.OfAnthropic.Content, contentItem)
 			contentItem = anthropic.ContentBlockParamUnion{}
 			fmt.Println("Content Block Stop", "sessionId", a.session.ID, "agentName", a.name, "index", msg.Index)
@@ -235,6 +212,7 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error) {
 	a := p.agent
 	lastMessage := message.OfAnthropic
+	result := database.MessageUnion{}
 	if lastMessage == nil {
 		return nil, fmt.Errorf("last message is not an Anthropic message")
 	}
@@ -256,6 +234,15 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 	}
 	for _, toolUse := range toolUseBlocks {
 		fmt.Println("Invoking tool", "name", toolUse.Name, "input", toolUse.Input)
+
+		// Callback: Start tool execution
+		if callback != nil {
+			callback(ChatEvent{
+				Type:    EventTypeToolUse,
+				ToolUse: ToolCallWrapper{Anthropic: *lastMessage},
+			})
+		}
+
 		// Normally toolUse.Name will have format <mcp>/<tool_name>
 		parts := strings.SplitN(toolUse.Name, "--", 2)
 		if len(parts) != 2 {
@@ -305,17 +292,18 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 				fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Name, "text", content.Text)
 			}
 		}
-		toolUseMessage.Content = append(toolUseMessage.Content, toolResult)
+
+		// Callback: End tool execution
 		if callback != nil {
-			_ = callback(
-				ChatEvent{
-					Type:       EventTypeToolResult,
-					ToolUse:    ToolCallWrapper{Anthropic: toolUseMessage},
-					ToolResult: ToolResultWrapper{Anthropic: toolResult},
-					IsEnd:      false,
-				},
-			)
+			callback(ChatEvent{
+				Type:       EventTypeToolResult,
+				ToolUse:    ToolCallWrapper{Anthropic: *lastMessage},
+				ToolResult: ToolResultWrapper{Anthropic: toolResult},
+			})
 		}
+
+		toolUseMessage.Content = append(toolUseMessage.Content, toolResult)
 	}
-	return []database.MessageUnion{{OfAnthropic: &toolUseMessage}}, nil
+	result.OfAnthropic = &toolUseMessage
+	return []database.MessageUnion{result}, nil
 }

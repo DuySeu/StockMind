@@ -18,20 +18,20 @@ type Database struct {
 }
 
 type LLMProviderConfig struct {
+	AuthType  string          `json:"authType" yaml:"authType"` // "api_key" or "aws"
 	OpenAI    OpenAIConfig    `json:"openai" yaml:"openai,omitempty"`
 	Anthropic AnthropicConfig `json:"anthropic" yaml:"anthropic,omitempty"`
 }
 
 type OpenAIConfig struct {
-	AuthType string `json:"authType" yaml:"authType"` // "openai" or "open_router"
-	APIKey   string `json:"api_key" yaml:"api_key"`
-	BaseURL  string `json:"baseURL" yaml:"baseURL"`
+	APIKey  string `json:"api_key" yaml:"api_key"`
+	BaseURL string `json:"baseURL" yaml:"baseURL"`
 }
 
 type AnthropicConfig struct {
-	AuthType string              `json:"authType" yaml:"authType"` // "api_key" or "aws"
-	APIKey   string              `json:"api_key,omitempty" yaml:"api_key,omitempty"`
-	AWS      AWSCredentialConfig `json:"aws,omitempty" yaml:"aws,omitempty"`
+	APIKey  string              `json:"api_key,omitempty" yaml:"api_key,omitempty"`
+	BaseURL string              `json:"baseURL,omitempty" yaml:"baseURL,omitempty"`
+	AWS     AWSCredentialConfig `json:"aws,omitempty" yaml:"aws,omitempty"`
 }
 
 type AWSCredentialConfig struct {
@@ -44,21 +44,25 @@ type AWSCredentialConfig struct {
 
 func LoadLLMConfig() LLMProviderConfig {
 	return LLMProviderConfig{
+		AuthType: "api_key",
 		OpenAI: OpenAIConfig{
-			AuthType: "open_router",
-			APIKey:   os.Getenv("OPENROUTER_API_KEY"),
-			BaseURL:  "https://openrouter.ai/api/v1",
+			APIKey:  os.Getenv("OPENROUTER_API_KEY"),
+			BaseURL: "https://openrouter.ai/api/v1",
 		},
 		Anthropic: AnthropicConfig{
-			AuthType: "aws",
-			AWS: AWSCredentialConfig{
-				Type:            "assume_role",
-				Region:          "ap-southeast-1",
-				RoleARN:         "arn:aws:iam::130506138320:role/bedrock-cross-account-role",
-				Duration:        3600,
-				RoleSessionName: "llm-test-session",
-			},
+			BaseURL: "https://openrouter.ai/api",
+			APIKey:  os.Getenv("OPENROUTER_API_KEY"),
 		},
+		// Anthropic: AnthropicConfig{
+		// 	AuthType: "aws",
+		// 	AWS: AWSCredentialConfig{
+		// 		Type:            "assume_role",
+		// 		Region:          "ap-southeast-1",
+		// 		RoleARN:         "arn:aws:iam::130506138320:role/bedrock-cross-account-role",
+		// 		Duration:        3600,
+		// 		RoleSessionName: "llm-test-session",
+		// 	},
+		// },
 	}
 }
 

@@ -19,10 +19,13 @@ type OpenAIProvider struct {
 	agent  *Agent // Back-reference to access config and tools
 }
 
-func NewOpenAIProvider(client *openai.Client, agent *Agent) *OpenAIProvider {
+func (p *OpenAIProvider) SetAgent(agent *Agent) {
+	p.agent = agent
+}
+
+func NewOpenAIProvider(client *openai.Client) *OpenAIProvider {
 	return &OpenAIProvider{
 		client: client,
-		agent:  agent,
 	}
 }
 

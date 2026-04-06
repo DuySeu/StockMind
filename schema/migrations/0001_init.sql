@@ -85,15 +85,78 @@ CREATE TABLE IF NOT EXISTS news (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-INSERT INTO watchlist (ticker) VALUES ('FPT'), ('BIG'), ('VRE'), ('VCG'), ('VPB');
+CREATE TABLE IF NOT EXISTS documents (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(500) NOT NULL,
+    file_type   VARCHAR(10) NOT NULL CHECK (file_type IN ('pdf', 'docx', 'md', 'txt')),
+    size_bytes  BIGINT NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'processing', 'ready', 'failed')),
+    chunk_count INT4 NOT NULL DEFAULT 0,
+    strategy    VARCHAR(20) NOT NULL DEFAULT 'recursive'
+                    CHECK (strategy IN ('recursive', 'fixed', 'paragraph', 'semantic')),
+    error_msg   TEXT,
+    created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TRIGGER set_documents_updated_at
+    BEFORE UPDATE ON documents
+    FOR EACH ROW EXECUTE PROCEDURE trigger_set_timestamp();
+
+DROP TRIGGER IF EXISTS set_documents_updated_at ON documents;
+
+INSERT INTO watchlist (ticker) VALUES ('FPT'), ('DGC'), ('VRE'), ('VCG'), ('VPB');
 
 -- Default Agent Flow
 INSERT INTO agent_flows (id, name, config) VALUES
-('01993ca8-a62e-79e3-995c-a46e25a4a2a2', 'Default Flow', 
+('01993ca8-a62e-79e3-995c-a46e25a4a2a2', 'OpenAI Flow', 
 '{
     "agents": {
         "NormalChat": {
             "provider": "openai",
+            "description": "Handles general chat interactions.",
+            "modelId": "nvidia/nemotron-3-super-120b-a12b:free",
+            "systemPrompt": "You are a helpful assistant.",
+            "maxTokens": 8192,
+            "thinkingToken": 1024,
+            "temperature": 0.7,
+            "topP": 0.9,
+            "topK": 40,
+            "tools": [],
+            "mcpServers": [
+                {
+                    "name": "stocks-mcp",
+                    "protocol": "streamablehttp",
+                    "url": "http://localhost:8081/mcp"
+                }
+            ]
+        }
+    },
+    "nodes": [
+        {
+            "id": "start",
+            "type": "start",
+            "next": "NormalChat"
+        },
+        {
+            "id": "NormalChat",
+            "type": "agent",
+            "agentName": "NormalChat",
+            "next": "end",
+            "output": {
+                "type": "text",
+                "contentFormat": "{{.message}}",
+                "contentRole": "assistant"
+            }
+        }
+    ]
+}'),
+('01993ca8-a62e-79e3-995c-a46e25a4a2a4', 'Anthropic Flow', 
+'{
+    "agents": {
+        "NormalChat": {
+            "provider": "anthropic",
             "description": "Handles general chat interactions.",
             "modelId": "nvidia/nemotron-3-super-120b-a12b:free",
             "systemPrompt": "You are a helpful assistant.",

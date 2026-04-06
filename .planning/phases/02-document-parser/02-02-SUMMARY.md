@@ -5,6 +5,7 @@ Implemented text extraction for PDF and DOCX documents using prioritized 3rd-par
 ## Changes
 - Implemented `PDFParser` using `github.com/ledongthuc/pdf`.
 - Implemented `DOCXParser` using `github.com/nguyenthenguyen/docx`.
+- **Consolidation**: All parser logic (`PDF`, `DOCX`, `Markdown`, `TXT`) and `Validator` were consolidated into a single `internal/rag/parser.go` following Effective Go principles for cleaner package structure.
 - Added temporal buffering for DOCX/PDF readers to support random access on `io.Reader` sources.
 - Added XML tag stripping for DOCX output to extract clean text from the inner XML.
 
