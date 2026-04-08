@@ -22,6 +22,8 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 - ✓ Docker Compose infrastructure — existing
 - ✓ [Phase 1] Qdrant self-hosted via Docker (added to docker-compose)
 - ✓ [Phase 1] Bảng documents trong PostgreSQL + RAG package init
+- ✓ [Phase 5] RAG MCP tool: `retrieve_knowledge` — agent gọi khi intent phù hợp
+- ✓ [Phase 5] Intent-based routing: LLM quyết định dùng RAG tool hay agent tools khác
 
 ### Active
 
@@ -31,8 +33,6 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 - [ ] Async processing pipeline: parse → chunk → embed → lưu vào Qdrant
 - [ ] Chunking strategies: fixed-size, semantic, paragraph-based — chọn strategy khi upload
 - [ ] Embedding bằng free model trên OpenRouter (qua go-openai SDK, base URL override)
-- [ ] RAG MCP tool: `retrieve_knowledge` — agent gọi khi intent phù hợp
-- [ ] Intent-based routing: LLM quyết định dùng RAG tool hay agent tools khác
 - [ ] Frontend document management: danh sách tài liệu, trạng thái processing, xóa
 - [ ] Metadata tài liệu lưu trong PostgreSQL (tên, loại, trạng thái, timestamps)
 - [ ] Processing status tracking: pending → processing → ready / failed
@@ -79,12 +79,12 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| RAG as MCP Tool (`retrieve_knowledge`) | Tận dụng MCP framework hiện có, LLM tự quyết định khi nào dùng | — Pending |
+| RAG as MCP Tool (`retrieve_knowledge`) | Tận dụng MCP framework hiện có, LLM tự quyết định khi nào dùng | ✓ Validated (Phase 5) |
 | Qdrant self-hosted via Docker | Không cần cloud account, phù hợp dev setup hiện tại | ✓ Validated (Phase 1) |
 | `nvidia/llama-nemotron-embed-vl-1b-v2:free` cho embedding | Model $0 duy nhất trên OpenRouter (xác nhận Apr 2026), 2048-dim, 131K context, multimodal | — Pending |
 | Async processing với background goroutine | Upload UX không bị block, cần graceful shutdown | — Pending |
 | Metadata trong PostgreSQL, vectors trong Qdrant | Tách biệt relational metadata và vector storage | — Pending |
-| Intent routing qua LLM (không classifier riêng) | Đơn giản hơn, LLM đã hiểu context của conversation | — Pending |
+| Intent routing qua LLM (không classifier riêng) | Đơn giản hơn, LLM đã hiểu context của conversation | ✓ Validated (Phase 5) |
 | Chunking strategy chọn per-document khi upload | Linh hoạt theo loại tài liệu, nhưng không over-engineer | — Pending |
 
 ---
