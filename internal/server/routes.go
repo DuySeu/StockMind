@@ -98,6 +98,14 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Route("/news", func(r chi.Router) {
 			r.Get("/", s.GetNewsHandler)
 		})
+
+		// Documents
+		r.Route("/documents", func(r chi.Router) {
+			r.Post("/", s.UploadDocumentHandler)
+			r.Get("/", s.ListDocumentsHandler)
+			r.Get("/{id}", s.GetDocumentHandler)
+			r.Delete("/{id}", s.DeleteDocumentHandler)
+		})
 	})
 
 	return r

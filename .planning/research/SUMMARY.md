@@ -1,91 +1,33 @@
-# Research Summary — StockMind RAG Feature
+# Research Summary: Agent & MCP Refactor (v2.0)
 
-**Synthesized:** 2026-04-01
-**Research Files:** STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md
-
----
+## Overview
+This research focused on migrating the `agent` package to the official `anthropic-go-sdk` while fixing existing bugs and maintaining the current workflow structure (with an immutable `factory.go`).
 
 ## Key Findings
 
-### 1. Stack is Simpler Than Expected
+### 1. SDK Migration
+- **Recommendation**: Transition from manual API calls to the official `anthropic-sdk-go` client.
+- **Streaming**: Utilize `Messages.NewStreaming` for robust handling of text, thinking, and tool-use deltas.
+- **Standardization**: Use the SDK's built-in types (`MessageParam`, `ContentBlockParamUnion`) for all message construction.
 
-The existing StockMind stack handles RAG well with minimal additions:
-- **go-openai SDK already in codebase** — just override base URL to OpenRouter for embeddings. Zero new SDK needed.
-- **MCP framework already in place** — register `retrieve_knowledge` as another MCP tool; the routing infrastructure is free.
-- **Only new external dependency:** `github.com/qdrant/go-client` + `github.com/pdfcpu/pdfcpu`
-- **DOCX parsing** uses stdlib (`archive/zip` + `encoding/xml`) — no extra dependency.
-- **Confirmed embedding model:** `nvidia/llama-nemotron-embed-vl-1b-v2:free` — the **only $0 free model** on OpenRouter (confirmed via API Apr 2026), 2048-dim, 131K context, multimodal-capable
+### 2. MCP Orchestration
+- **Tool Discovery**: Fetch tools from `mcp-go` clients and rename with `--` delimiter to prevent collisions.
+- **Execution Loop**: Keep the `SessionManager` as the primary loop orchestrator (`StopReason` driven), but harden the `Provider`'s role in detecting and parsing tool requests.
 
-### 2. Architecture Fits Cleanly Into Existing Layers
+### 3. Architecture & Constraints
+- **Factory.go**: Remains the source of truth for SDK client creation.
+- **Provider Interface**: The `LLMProvider` interface is solid but needs consistent implementation in `AnthropicProvider` to avoid nil pointers.
+- **Callback Pattern**: Standardize `ChatEvent` to allow the frontend to distinguish between "thinking" blocks and final "text" content.
 
-New `internal/rag/` package handles all RAG-specific logic. No existing packages need structural changes:
-- `DocumentService` → new service, plugs into existing service layer pattern
-- `rag_tool.go` → new MCP tool, registers alongside existing Tavily/DB tools  
-- Document HTTP handlers → new, follow existing handler patterns in `/internal/server`
+### 4. Implementation Strategy
+- **Phase 1**: Refactor `AnthropicProvider.Completion` to use the SDK stream correctly and handle all delta types.
+- **Phase 2**: Fix `ToolUse` logic, specifically around tool name parsing and result conversion.
+- **Phase 3**: Audit `Agent` and `SessionManager` for metadata propagation and error handling.
 
-The async processing worker uses a **buffered channel + goroutine pool** wired to the server's shutdown context — fits cleanly into the existing server lifecycle.
-
-### 3. Chunking Strategy — Simplified Recommendation
-
-Despite 4+ strategies in literature, practical recommendation for this use case:
-
-| Strategy | Label | Recommended For |
-|----------|-------|----------------|
-| `recursive` | Smart Split ⭐ | **Default for most docs** |
-| `fixed` | Fixed Size | Uniform structured reports |
-| `paragraph` | By Paragraph | Articles, research papers |
-| `semantic` | By Topic | Mixed-topic documents |
-
-**Default params:** 512 tokens, 10% overlap. Let user pick strategy at upload time.
-
-> Note: With `nvidia/llama-nemotron-embed-vl-1b-v2:free` having 131K context, chunk size limit is effectively irrelevant. Keep 512 tokens for retrieval precision, not due to model constraint.
-
-### 4. Three Critical Non-Negotiables
-
-From PITFALLS.md, these must be built correctly from day one:
-
-**① Embedding model consistency** — Store `nvidia/llama-nemotron-embed-vl-1b-v2:free` + dimension `2048` in DB and Qdrant collection metadata; assert at startup they match.
-
-**② RAG tool description precision** — Tool description must explicitly state what it IS and ISN'T for (live prices vs. knowledge base). This is the entire routing mechanism.
-
-**③ Worker context wiring** — Background goroutines must respect server shutdown context to prevent leaks and partial writes.
-
-### 5. UX Flow Is Clear
-
-```
-Upload: select file → validates in browser → POST → 202 Accepted → 
-  status badge "Processing" → poll every 3s → "Ready" (or "Failed" with reason)
-
-Chat: user asks question → LLM decides → calls retrieve_knowledge tool →
-  Qdrant similarity search (cosine ≥ 0.70) → returns top-5 chunks →
-  LLM synthesizes answer
-```
+## Watch Out For
+- **JSON errors**: Ensure full buffering of tool arguments before unmarshaling.
+- **Nil Access**: Guard all SDK block unions before accessing specific fields.
+- **Concurrency**: Maintain context propagation to allow cancellation of long-running tool calls.
 
 ---
-
-## Recommended Phase Structure
-
-Based on build order dependencies:
-
-| Phase | Focus | Key Deliverables |
-|-------|-------|-----------------|
-| **Phase 1** | Infrastructure + DB | Qdrant Docker, documents migration, sqlc queries, Qdrant client init with retry |
-| **Phase 2** | Document Parsing | PDF (pdfcpu), DOCX (stdlib), MD, TXT parsers; text quality validation |
-| **Phase 3** | Chunking + Embedding | 4 chunking strategies, OpenRouter embedder, batch upsert to Qdrant |
-| **Phase 4** | Async Worker + Service | Worker goroutine pool, DocumentService, HTTP endpoints, status tracking |
-| **Phase 5** | MCP Tool + Routing | `retrieve_knowledge` tool with precise description, score threshold |
-| **Phase 6** | Frontend UI | Upload form with strategy picker, document list, status indicators |
-
----
-
-## Open Questions for Roadmap
-
-1. **Qdrant collection name:** Use `stockmind_knowledge` as the single global collection name.
-2. **Worker pool size:** 2 concurrent jobs is safe for 10MB max, 50 doc limit.
-3. **Score threshold:** Start at `0.70` — can be tuned via env var later.
-4. **Top-K:** Return 5 chunks by default — good balance of context vs. token usage.
-5. **Temp file cleanup:** Always delete temp file after processing (success or failure).
-
----
-*Research synthesis for: StockMind RAG Feature*
-*Synthesized: 2026-04-01*
+**Status**: Research Complete. Ready to define requirements.

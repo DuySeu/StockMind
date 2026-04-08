@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"stockmind/internal/agent"
 	"stockmind/internal/database"
+	"stockmind/internal/service"
 	"stockmind/internal/service/tavily"
 	"strconv"
 	"time"
@@ -22,20 +23,22 @@ type Server struct {
 	agent         *agent.AgentService
 	tavily        *tavily.Client
 	streamManager *StreamManager
+	documentService *service.DocumentService
 }
 
-func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, streamManager *StreamManager, port string) *http.Server {
+func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, streamManager *StreamManager, documentService *service.DocumentService, port string) *http.Server {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		portInt = 8080
 	}
 	srv := &Server{
-		port:          portInt,
-		db:            database.New(dbPool),
-		dbPool:        dbPool,
-		agent:         agent,
-		tavily:        tavily.NewClient(),
-		streamManager: streamManager,
+		port:            portInt,
+		db:              database.New(dbPool),
+		dbPool:          dbPool,
+		agent:           agent,
+		tavily:          tavily.NewClient(),
+		streamManager:   streamManager,
+		documentService: documentService,
 	}
 
 	// Ensure default user exists

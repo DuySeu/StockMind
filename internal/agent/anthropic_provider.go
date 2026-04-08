@@ -25,6 +25,7 @@ func NewAnthropicProvider(client *anthropic.Client) *AnthropicProvider {
 func (p *AnthropicProvider) SetAgent(agent *Agent) {
 	p.agent = agent
 }
+
 func (p *AnthropicProvider) newAnthropicMessage() anthropic.MessageNewParams {
 	a := p.agent
 	var msgParams anthropic.MessageNewParams
@@ -77,139 +78,152 @@ func anthropicToDbStopReason(sr anthropic.StopReason) database.StopReason {
 	case anthropic.StopReasonEndTurn:
 		return database.StopReasonAgentDone
 	default:
-		// Not handle for now
 		return database.StopReasonUnknown
 	}
 }
 
-// Assume Streaming by Default
-// Complete the turn with streaming
+// Completion sends messages to the LLM and returns the response with streaming support
 func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
+	if p.client == nil {
+		return database.MessageUnion{}, database.StopReasonUnknown, fmt.Errorf("Anthropic client is not initialized")
+	}
+
+	if p.agent == nil {
+		return database.MessageUnion{}, database.StopReasonUnknown, fmt.Errorf("agent is not initialized in AnthropicProvider")
+	}
 	a := p.agent
-	// Prepare messages for Anthropics
+
+	// Prepare messages for Anthropic
 	body := p.newAnthropicMessage()
 	for _, m := range messages {
 		if am := m.OfAnthropic; am != nil {
 			body.Messages = append(body.Messages, *am)
 		}
 	}
+
 	result := database.MessageUnion{
 		OfAnthropic: &anthropic.MessageParam{
 			Role:    anthropic.MessageParamRoleAssistant,
 			Content: []anthropic.ContentBlockParamUnion{},
 		},
 	}
+
 	var stopReason database.StopReason
-	// Call Anthropics API
-	if p.client == nil {
-		return result, stopReason, fmt.Errorf("Anthropic client is not initialized")
-	}
 	stream := p.client.Messages.NewStreaming(ctx, body)
-	if err := stream.Err(); err != nil {
-		return result, stopReason, err
-	}
-	toolUseInput := strings.Builder{}
-	contentBlockType := ""
-	contentItem := anthropic.ContentBlockParamUnion{}
-	// Handle the stream
+	defer stream.Close()
+
+	var currentContentItem *anthropic.ContentBlockParamUnion
+	var toolUseInput strings.Builder
+
 	for stream.Next() {
 		chunk := stream.Current()
-		// Handle the chunk
-		switch chunk.Type {
+
+		switch string(chunk.Type) {
 		case "message_start":
-			msg := chunk.AsMessageStart()
-			fmt.Println("Message Start",
-				"sessionId", a.session.ID,
-				"agentName", a.name,
-				"message_id", msg.Message.ID,
-				"inputToken", msg.Message.Usage.InputTokens,
-				"cachedCreationInputToken", msg.Message.Usage.CacheCreationInputTokens,
-				"cachedReadInputToken", msg.Message.Usage.CacheReadInputTokens)
-		case "message_delta":
-			msg := chunk.AsMessageDelta()
-			fmt.Println("Message Delta", "sessionId", a.session.ID, "agentName", a.name, "stop_reason", msg.Delta.StopReason, "outputTokens", msg.Usage.OutputTokens, "stop_sequence", msg.Delta.StopSequence)
-			stopReason = anthropicToDbStopReason(msg.Delta.StopReason)
-		case "message_stop":
-			_ = chunk.AsMessageStop()
-			fmt.Println("Message Stop", "sessionId", a.session.ID, "agentName", a.name)
+			ev := chunk.AsMessageStart()
+			fmt.Printf("Message Start: ID=%s, SessionID=%s\n", ev.Message.ID, a.session.ID)
+
 		case "content_block_start":
-			msg := chunk.AsContentBlockStart()
-			fmt.Println("Content Block Start", "sessionId", a.session.ID, "agentName", a.name, "block_type", msg.ContentBlock.Type)
-			contentBlockType = msg.ContentBlock.Type
-			switch msg.ContentBlock.Type {
+			ev := chunk.AsContentBlockStart()
+			currentContentItem = &anthropic.ContentBlockParamUnion{}
+
+			switch string(ev.ContentBlock.Type) {
 			case "text":
-				text := msg.ContentBlock.AsText()
-				contentItem.OfText = &anthropic.TextBlockParam{Text: text.Text}
-			case "thinking":
-				thinking := msg.ContentBlock.AsThinking()
-				// If callback is provided, call it with initial thinking content
-				if callback != nil {
-					_ = callback(ChatEvent{Type: EventTypeThinking, Content: thinking.Thinking, IsEnd: false})
+				block := ev.ContentBlock.AsText()
+				currentContentItem.OfText = &anthropic.TextBlockParam{
+					Text: block.Text,
 				}
-				contentItem.OfThinking = &anthropic.ThinkingBlockParam{
-					Thinking: thinking.Thinking,
+			case "thinking":
+				block := ev.ContentBlock.AsThinking()
+				currentContentItem.OfThinking = &anthropic.ThinkingBlockParam{
+					Thinking:  block.Thinking,
+					Signature: block.Signature,
+				}
+				if callback != nil {
+					_ = callback(ChatEvent{Type: EventTypeThinking, Content: block.Thinking})
 				}
 			case "tool_use":
-				toolUse := msg.ContentBlock.AsToolUse()
-				fmt.Println("Tool Use", "sessionId", a.session.ID, "agentName", a.name, "id", toolUse.ID, "tool", toolUse.Name, "input", string(toolUse.Input))
+				block := ev.ContentBlock.AsToolUse()
+				currentContentItem.OfToolUse = &anthropic.ToolUseBlockParam{
+					ID:   block.ID,
+					Name: block.Name,
+				}
 				toolUseInput.Reset()
-				// Initialize tool use block
-				contentItem.OfToolUse = &anthropic.ToolUseBlockParam{
-					ID:           msg.ContentBlock.ID,
-					Name:         msg.ContentBlock.Name,
-					CacheControl: toolUse.ToParam().CacheControl,
-					Input:        map[string]any{},
-				}
 			}
+
 		case "content_block_delta":
-			msg := chunk.AsContentBlockDelta()
-			switch msg.Delta.Type {
-			case "thinking_delta":
-				delta := msg.Delta.AsThinkingDelta()
-				if callback != nil {
-					_ = callback(ChatEvent{Type: EventTypeThinking, Content: delta.Thinking, IsEnd: false})
-				}
-				contentItem.OfThinking.Thinking += delta.Thinking
-			case "signature_delta":
-				delta := msg.Delta.AsSignatureDelta()
-				if contentItem.OfThinking != nil {
-					contentItem.OfThinking.Signature += delta.Signature
-				}
+			ev := chunk.AsContentBlockDelta()
+			if currentContentItem == nil {
+				continue
+			}
+
+			switch string(ev.Delta.Type) {
 			case "text_delta":
-				delta := msg.Delta.AsTextDelta()
-				if callback != nil {
-					_ = callback(ChatEvent{Type: EventTypeText, Content: delta.Text, IsEnd: false})
+				delta := ev.Delta.AsTextDelta()
+				if currentContentItem.OfText != nil {
+					currentContentItem.OfText.Text += delta.Text
+					if callback != nil {
+						_ = callback(ChatEvent{Type: EventTypeText, Content: delta.Text})
+					}
 				}
-				contentItem.OfText.Text += delta.Text
+			case "thinking_delta":
+				delta := ev.Delta.AsThinkingDelta()
+				if currentContentItem.OfThinking != nil {
+					currentContentItem.OfThinking.Thinking += delta.Thinking
+					if callback != nil {
+						_ = callback(ChatEvent{Type: EventTypeThinking, Content: delta.Thinking})
+					}
+				}
+			case "signature_delta":
+				delta := ev.Delta.AsSignatureDelta()
+				if currentContentItem.OfThinking != nil {
+					currentContentItem.OfThinking.Signature += delta.Signature
+				}
 			case "input_json_delta":
-				delta := msg.Delta.AsInputJSONDelta()
+				delta := ev.Delta.AsInputJSONDelta()
 				toolUseInput.WriteString(delta.PartialJSON)
 			}
+
 		case "content_block_stop":
-			_ = chunk.AsContentBlockStop()
-			msg := chunk.AsContentBlockStop()
-			if contentBlockType == "tool_use" {
-				tool_use_input := map[string]any{}
-				err := json.Unmarshal([]byte(toolUseInput.String()), &tool_use_input)
-				if err != nil {
+			if currentContentItem == nil {
+				continue
+			}
+
+			// Finalize ToolUse if needed
+			if currentContentItem.OfToolUse != nil {
+				var input map[string]any
+				if err := json.Unmarshal([]byte(toolUseInput.String()), &input); err != nil {
 					return result, stopReason, fmt.Errorf("failed to unmarshal tool use input: %w", err)
 				}
-				contentItem.OfToolUse.Input = tool_use_input
-				toolUseInput.Reset()
+				currentContentItem.OfToolUse.Input = input
 			}
+
+			// Append completed block to result
+			result.OfAnthropic.Content = append(result.OfAnthropic.Content, *currentContentItem)
+			currentContentItem = nil
+
+		case "message_delta":
+			ev := chunk.AsMessageDelta()
+			stopReason = anthropicToDbStopReason(ev.Delta.StopReason)
+
+		case "message_stop":
 			if callback != nil {
 				_ = callback(ChatEvent{IsEnd: true})
 			}
-			result.OfAnthropic.Content = append(result.OfAnthropic.Content, contentItem)
-			contentItem = anthropic.ContentBlockParamUnion{}
-			fmt.Println("Content Block Stop", "sessionId", a.session.ID, "agentName", a.name, "index", msg.Index)
 		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return result, stopReason, err
 	}
 
 	return result, stopReason, nil
 }
 
 func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.MessageUnion, callback ChatCallBack) ([]database.MessageUnion, error) {
+	if p.agent == nil {
+		return nil, fmt.Errorf("agent is not initialized")
+	}
 	a := p.agent
 	lastMessage := message.OfAnthropic
 	result := database.MessageUnion{}
@@ -225,7 +239,6 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 		}
 	}
 	if len(toolUseBlocks) == 0 {
-		fmt.Println("No tool use blocks found in chat history", "sessionId", a.session.ID, "agentName", a.name)
 		return nil, fmt.Errorf("no tool use blocks found in chat history")
 	}
 	toolUseMessage := anthropic.MessageParam{
@@ -233,30 +246,29 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 		Content: []anthropic.ContentBlockParamUnion{},
 	}
 	for _, toolUse := range toolUseBlocks {
-		fmt.Println("Invoking tool", "name", toolUse.Name, "input", toolUse.Input)
+		fmt.Printf("Invoking tool: name=%s, input=%v\n", toolUse.Name, toolUse.Input)
 
 		// Callback: Start tool execution
 		if callback != nil {
-			callback(ChatEvent{
+			_ = callback(ChatEvent{
 				Type:    EventTypeToolUse,
 				ToolUse: ToolCallWrapper{Anthropic: *lastMessage},
 			})
 		}
 
-		// Normally toolUse.Name will have format <mcp>/<tool_name>
+		// Tool name format <mcp>--<tool_name>
 		parts := strings.SplitN(toolUse.Name, "--", 2)
 		if len(parts) != 2 {
-			fmt.Println("Invalid tool name format, expected <mcp>--<tool_name>", "sessionId", a.session.ID, "agentName", a.name, "tool_name", toolUse.Name)
-			return nil, fmt.Errorf("invalid tool name format, expected <mcp>--<tool_name>")
+			return nil, fmt.Errorf("invalid tool name format: %s", toolUse.Name)
 		}
 		mcpName := parts[0]
 		toolName := parts[1]
 		mcpClient, ok := a.mcpClients[mcpName]
 		if !ok {
-			fmt.Println("MCP client not found", "sessionId", a.session.ID, "agentName", a.name, "mcpName", mcpName)
 			return nil, fmt.Errorf("MCP client not found: %s", mcpName)
 		}
-		// Serialize the input JSON into map[string] any
+
+		// Call tool with metadata
 		toolResponse, err := mcpClient.CallTool(ctx, mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
 				Name:      toolName,
@@ -270,7 +282,6 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 			},
 		})
 		if err != nil {
-			fmt.Println("Failed to call tool", "sessionId", a.session.ID, "agentName", a.name, "toolName", toolUse.Name, "error", err)
 			return nil, fmt.Errorf("failed to call tool %s: %w", toolUse.Name, err)
 		}
 
@@ -281,21 +292,20 @@ func (p *AnthropicProvider) ToolUse(ctx context.Context, message *database.Messa
 				IsError:   anthropic.Bool(toolResponse.IsError),
 			},
 		}
-		// Convert the tool response content to anthropic format
+
+		// Convert results back to SDK format
 		for _, content := range toolResponse.Content {
-			switch content := content.(type) {
-			case mcp.TextContent:
+			if tc, ok := content.(mcp.TextContent); ok {
 				toolResult.OfToolResult.Content = append(
 					toolResult.OfToolResult.Content,
-					anthropic.ToolResultBlockParamContentUnion{OfText: &anthropic.TextBlockParam{Text: content.Text}},
+					anthropic.ToolResultBlockParamContentUnion{OfText: &anthropic.TextBlockParam{Text: tc.Text}},
 				)
-				fmt.Println("Tool result: ", "sessionId", a.session.ID, "agentName", a.name, "tool_id", toolUse.ID, "tool_name", toolUse.Name, "text", content.Text)
 			}
 		}
 
 		// Callback: End tool execution
 		if callback != nil {
-			callback(ChatEvent{
+			_ = callback(ChatEvent{
 				Type:       EventTypeToolResult,
 				ToolUse:    ToolCallWrapper{Anthropic: *lastMessage},
 				ToolResult: ToolResultWrapper{Anthropic: toolResult},

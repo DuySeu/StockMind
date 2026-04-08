@@ -2,15 +2,34 @@
 
 StockMind là một trợ lý tài chính AI thông minh cho thị trường chứng khoán Việt Nam, kết hợp dữ liệu thị trường thời gian thực với khả năng truy xuất kiến thức chuyên sâu (RAG).
 
-## Current Milestone: v2.0 Agent & MCP Refactor
+## Current Milestone: v3.0 (Advanced RAG & Multimodal)
 
-**Goal:** Pivot the core agent engine to be robust, SDK-compliant, and fully capable of orchestrating MCP tools with standard streaming.
+**Goal:** Enhance the RAG pipeline with multimodal capabilities and advanced retrieval techniques.
 
 **Target features:**
+- **Multimodal Support**: Integration of vision-capable models for chart analysis.
+- **Hybrid Search**: Advanced lexical + semantic retrieval.
+- **Citations**: Source attribution in RAG responses.
+
+---
+
+## Future Goals (v4.0+)
+
+1. **User Isolation**: Multi-tenant knowledge isolation.
+2. **Agentic Workflows**: Multi-step reasoning chains for complex financial analysis.
+
+---
+
+## Shipped Milestones
+
+### v2.0 Shipped (Agent & MCP Refactor)
+> Completed: 2026-05-20
+
+Pivot the core agent engine to be robust, SDK-compliant, and fully capable of orchestrating MCP tools with standard streaming.
+
 - **Anthropic SDK Migration**: Official SDK integration across all agent providers.
 - **MCP Tool Orchestration**: Reliable detection and execution of external tools.
 - **Streaming Standardization**: Go-idiomatic streaming of both content and tool blocks.
-- **Zero-Touch Factory**: Implementation must respect the existing `internal/agent/factory.go`.
 - **Bug Remediation**: Hardening against current nil-pointer and serialization errors.
 
 ---
