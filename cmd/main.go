@@ -16,6 +16,7 @@ import (
 	"stockmind/internal/mcp"
 	"stockmind/internal/rag"
 	"stockmind/internal/server"
+	"stockmind/internal/service"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -98,23 +99,14 @@ func main() {
 
 func runMCP(ctx context.Context, protocol string) error {
 	log.Printf("Running MCP server with protocol: %s", protocol)
-	_, err := mcp.Start(ctx, protocol)
+	_, err := mcp.Start(ctx, protocol, nil, nil)
 	return err
 }
 
 func runServer(ctx context.Context, port string, mcpProtocol string) (context.Context, func(), error) {
 	log.Printf("Running server on port: %s", port)
 
-	var mcpShutdown func()
-	if mcpProtocol == "http" {
-		// Create MCP service and HTTP server
-		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
-		_, err := mcp.Start(ctx, mcpProtocol)
-		if err != nil {
-			log.Printf("Failed to start MCP: %v", err)
-			return nil, nil, err
-		}
-	}
+	// Will initialize MCP HTTP server after Qdrant/Embedder if needed
 
 	dbUrl := "postgres://" + os.Getenv("DB_USERNAME") + ":" + url.QueryEscape(os.Getenv("DB_PASSWORD")) + "@" + os.Getenv("DB_HOST") + ":" + os.Getenv("DB_PORT") + "/" + os.Getenv("DB_DATABASE") + "?sslmode=disable"
 
@@ -155,10 +147,38 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		qdrantPort = "6334"
 	}
 
-	_, err = rag.InitQdrant(ctx, qdrantHost, qdrantPort)
+	qdrantConn, err := rag.InitQdrant(ctx, qdrantHost, qdrantPort)
 	if err != nil {
 		log.Fatalf("Failed to initialize Qdrant: %v", err)
 	}
+	qdrantStore := rag.NewQdrantStore(qdrantConn)
+
+	// Initialize OpenRouter Embedder
+	openrouterKey := os.Getenv("OPENROUTER_API_KEY")
+	embedder, err := rag.NewOpenRouterEmbedder(openrouterKey, 20)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize embedder: %v", err)
+	}
+
+	var mcpShutdown func()
+	if mcpProtocol == "http" {
+		// Create MCP service and HTTP server
+		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
+		shutdown, err := mcp.Start(ctx, mcpProtocol, qdrantStore, embedder)
+		if err != nil {
+			log.Printf("Failed to start MCP: %v", err)
+			return nil, nil, err
+		}
+		mcpShutdown = shutdown
+	}
+
+	// Initialize Worker
+	dbQueries := database.New(dbPool)
+	worker := rag.NewWorker(dbQueries, qdrantStore, embedder)
+	
+	// Start the worker pool
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	worker.Start(workerCtx)
 
 	// Create LLM Config
 	llmConfig := agent.LoadLLMConfig()
@@ -167,14 +187,18 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 	agent, err := agent.NewService(ctx, dbPool, llmConfig)
 	if err != nil {
 		log.Println("Failed to create agent service", "error", err)
+		workerCancel() // Stop worker pool on failure to start server
 		return nil, nil, err
 	}
+
+	// Create Document Service
+	documentService := service.NewDocumentService(dbQueries, worker, qdrantStore)
 
 	// Create stream manager
 	streamManager := server.NewStreamManager()
 
 	// Create a server for the application
-	server := server.NewServer(dbPool, agent, streamManager, port)
+	server := server.NewServer(dbPool, agent, streamManager, documentService, port)
 	runContext, cancel := context.WithCancel(ctx)
 
 	// Create a done channel to signal when the shutdown is complete
@@ -201,10 +225,15 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 			mcpShutdown()
 		}
 
-		// Then shutdown HTTP server
+		// Shutdown HTTP server
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			log.Printf("stopping server: %v", err)
 		}
+
+		// Wait for worker pool to finish in-flight jobs gracefully
+		log.Printf("Shutting down async worker pool...")
+		workerCancel()
+		worker.Wait()
 
 		<-stopCh
 	}, nil

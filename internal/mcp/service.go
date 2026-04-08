@@ -6,9 +6,10 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"stockmind/internal/rag"
 )
 
-func Start(ctx context.Context, protocol string) (func(), error) {
+func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.Embedder) (func(), error) {
 	// Create MCP server
 	s := server.NewMCPServer(
 		"StockMind 🚀",
@@ -79,6 +80,17 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 			),
 		),
 		GetNews,
+	)
+
+	s.AddTool(
+		mcp.NewTool("retrieve_knowledge",
+			mcp.WithDescription("Retrieve detailed financial knowledge, concepts, definitions, or internal document information from the knowledge base. Use this for general queries, not for real-time stock prices or latest news."),
+			mcp.WithString("query",
+				mcp.Required(),
+				mcp.Description("Query related to financial knowledge or concepts"),
+			),
+		),
+		NewRetrieveKnowledgeHandler(store, embedder),
 	)
 
 	// Start server based on protocol
