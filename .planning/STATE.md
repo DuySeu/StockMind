@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: milestone
-status: Ready to plan
-last_updated: "2026-04-02T02:53:56.070Z"
+status: Executing Phase 05
+last_updated: "2026-04-08T03:42:58.699Z"
 progress:
   total_phases: 6
   completed_phases: 3
@@ -23,7 +23,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-01)
 
 **Core value:** Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm kiếm trong knowledge base nội bộ, đồng thời vẫn giữ khả năng gọi agent tools cho các tác vụ khác — tất cả được điều phối tự động dựa trên intent.
 
-**Current focus:** Phase 03 — chunking-embedding-qdrant-storage
+**Current focus:** Phase 05 — rag-mcp-tool-routing
 
 ## Current Phase
 

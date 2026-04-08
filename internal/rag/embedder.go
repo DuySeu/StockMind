@@ -38,6 +38,9 @@ type Embedder interface {
 	// has the same length as the input; Embed[i] is the embedding for input[i].
 	Embed(ctx context.Context, input []string) ([][]float32, error)
 
+	// EmbedQuery is a convenience helper for generating an embedding for a single string.
+	EmbedQuery(ctx context.Context, query string) ([]float32, error)
+
 	// Dimensions returns the vector length produced by this embedder.
 	Dimensions() int
 }
@@ -99,6 +102,21 @@ func (e *OpenRouterEmbedder) Embed(ctx context.Context, inputs []string) ([][]fl
 		copy(results[start:end], vecs)
 	}
 	return results, nil
+}
+
+// EmbedQuery generates an embedding for a single string.
+func (e *OpenRouterEmbedder) EmbedQuery(ctx context.Context, query string) ([]float32, error) {
+	if strings.TrimSpace(query) == "" {
+		return nil, errors.New("embedder: query must not be empty")
+	}
+	res, err := e.Embed(ctx, []string{query})
+	if err != nil {
+		return nil, err
+	}
+	if len(res) == 0 {
+		return nil, errors.New("embedder: no embedding returned for query")
+	}
+	return res[0], nil
 }
 
 // embedBatchWithRetry calls the OpenRouter embedding endpoint for a single

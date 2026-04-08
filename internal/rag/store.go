@@ -78,7 +78,12 @@ func InitQdrant(ctx context.Context, host, port string) (*grpc.ClientConn, error
 	return conn, nil
 }
 
-// ---- Store Interface & Implementation ----
+type SearchResult struct {
+	Text       string  `json:"text"`
+	Score      float32 `json:"score"`
+	DocID      string  `json:"doc_id"`
+	ChunkIndex int     `json:"chunk_index"`
+}
 
 // Store is the interface for persisting chunk vectors and metadata into Qdrant.
 // Implementations must be safe for concurrent use.
@@ -89,6 +94,9 @@ type Store interface {
 
 	// Delete removes all points associated with docID from the collection.
 	Delete(ctx context.Context, docID string) error
+
+	// Search returns the most similar chunks to the given vector, filtered by a minimum score threshold.
+	Search(ctx context.Context, vector []float32, topK int, threshold float32) ([]SearchResult, error)
 }
 
 // QdrantStore implements Store using the official Qdrant gRPC Go client.
@@ -233,3 +241,56 @@ func (s *QdrantStore) Delete(ctx context.Context, docID string) error {
 	}
 	return nil
 }
+
+// Search searches for the most similar chunks to the query vector.
+func (s *QdrantStore) Search(ctx context.Context, vector []float32, topK int, threshold float32) ([]SearchResult, error) {
+	if len(vector) == 0 {
+		return nil, errors.New("qdrant store: query vector must not be empty")
+	}
+	if topK <= 0 {
+		return nil, errors.New("qdrant store: topK must be positive")
+	}
+
+	searchReq := &qdrant.SearchPoints{
+		CollectionName: CollectionName,
+		Vector:         vector,
+		Limit:          uint64(topK),
+		WithPayload:    qdrant.NewWithPayload(true),
+		ScoreThreshold: &threshold,
+	}
+
+	resp, err := s.points.Search(ctx, searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("qdrant store: search failed: %w", err)
+	}
+
+	results := make([]SearchResult, 0, len(resp.Result))
+	for _, point := range resp.Result {
+		payload := point.Payload
+		
+		textStr := ""
+		if textVal, ok := payload["text"]; ok {
+			textStr = textVal.GetStringValue()
+		}
+		
+		docIDStr := ""
+		if docIDVal, ok := payload["doc_id"]; ok {
+			docIDStr = docIDVal.GetStringValue()
+		}
+		
+		var chunkIndex int = 0
+		if idxVal, ok := payload["chunk_index"]; ok {
+			chunkIndex = int(idxVal.GetIntegerValue())
+		}
+
+		results = append(results, SearchResult{
+			Text:       textStr,
+			Score:      point.Score,
+			DocID:      docIDStr,
+			ChunkIndex: chunkIndex,
+		})
+	}
+
+	return results, nil
+}
+

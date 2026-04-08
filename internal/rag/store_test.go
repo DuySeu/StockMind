@@ -49,3 +49,21 @@ func TestStoreConsistency_ConfiguredModel(t *testing.T) {
 		t.Errorf("expected configured model %q, got %q", embeddingModel, s.configuredModel)
 	}
 }
+
+func TestSearch_Validation(t *testing.T) {
+	s := &QdrantStore{} // uninitialized, but fine for validation tests
+
+	ctx := context.Background()
+
+	// 1. Empty vector
+	_, err := s.Search(ctx, []float32{}, 5, 0.7)
+	if err == nil || err.Error() != "qdrant store: query vector must not be empty" {
+		t.Errorf("expected empty vector error, got %v", err)
+	}
+
+	// 2. Invalid topK
+	_, err = s.Search(ctx, []float32{0.1, 0.2}, 0, 0.7)
+	if err == nil || err.Error() != "qdrant store: topK must be positive" {
+		t.Errorf("expected positive topK error, got %v", err)
+	}
+}
