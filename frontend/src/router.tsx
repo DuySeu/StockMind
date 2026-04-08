@@ -9,6 +9,7 @@ import ChatbotPage from "@/pages/Chatbot";
 import HomePage from "@/pages/HomePage";
 import PendingPage from "@/pages/PendingPage";
 import SettingPage from "@/pages/SettingPage";
+import DocumentPage from "@/pages/DocumentPage";
 
 export const router = createBrowserRouter([
   {
@@ -44,6 +45,10 @@ export const router = createBrowserRouter([
       {
         path: "settings",
         element: <SettingPage />,
+      },
+      {
+        path: "documents",
+        element: <DocumentPage />,
       },
     ],
   },

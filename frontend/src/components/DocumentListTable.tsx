@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Trash2, FileText, FileQuestion } from "lucide-react";
-import { Document } from "@/types/document";
+import type { Document } from "@/types/document";
 import { deleteDocument } from "@/api/document";
 import { StatusBadge } from "./StatusBadge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";

@@ -1,4 +1,4 @@
-import { DocumentStatus } from "@/types/document";
+import type { DocumentStatus } from "@/types/document";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2 } from "lucide-react";

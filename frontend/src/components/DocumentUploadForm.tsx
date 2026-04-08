@@ -13,11 +13,15 @@ import { uploadDocument } from "@/api/document";
 const formSchema = z.object({
   file: z.instanceof(File, {
     message: "Vui lòng chọn một file",
-  }).refine((file) => {
-    return validateDocumentFile(file).valid;
-  }, (file) => ({
-    message: validateDocumentFile(file).error,
-  })),
+  }).superRefine((file, ctx) => {
+    const result = validateDocumentFile(file);
+    if (!result.valid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.error,
+      });
+    }
+  }),
   strategy: z.string().min(1, "Vui lòng chọn strategy"),
 });
 

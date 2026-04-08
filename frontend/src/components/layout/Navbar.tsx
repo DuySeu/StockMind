@@ -7,6 +7,7 @@ export function Navbar() {
     { label: "Chatbot", path: "/c" },
     { label: "Watchlist", path: "/watchlist" },
     { label: "Research", path: "/research" },
+    { label: "Knowledge", path: "/documents" },
     { label: "News", path: "/news" },
   ];
 
