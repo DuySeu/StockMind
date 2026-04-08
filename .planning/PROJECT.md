@@ -2,12 +2,34 @@
 
 StockMind là một trợ lý tài chính AI thông minh cho thị trường chứng khoán Việt Nam, kết hợp dữ liệu thị trường thời gian thực với khả năng truy xuất kiến thức chuyên sâu (RAG).
 
-## Current State: v1.5 Shipped (RAG Knowledge Base)
+## Current Milestone: v2.0 Agent & MCP Refactor
+
+**Goal:** Pivot the core agent engine to be robust, SDK-compliant, and fully capable of orchestrating MCP tools with standard streaming.
+
+**Target features:**
+- **Anthropic SDK Migration**: Official SDK integration across all agent providers.
+- **MCP Tool Orchestration**: Reliable detection and execution of external tools.
+- **Streaming Standardization**: Go-idiomatic streaming of both content and tool blocks.
+- **Zero-Touch Factory**: Implementation must respect the existing `internal/agent/factory.go`.
+- **Bug Remediation**: Hardening against current nil-pointer and serialization errors.
+
+---
+
+## Future Goals (v2.1+)
+
+1. **Citations**: Source attribution in RAG responses.
+2. **User Isolation**: Multi-tenant knowledge isolation.
+3. **Hybrid Search**: Advanced lexical + semantic retrieval.
+
+---
+
+## Shipped Milestones
+
+### v1.5 Shipped (RAG Knowledge Base)
 > Completed: 2026-04-08
 
 Hệ thống RAG đã được triển khai đầy đủ, cho phép chatbot trả lời các câu hỏi về kiến thức tài chính dựa trên tài liệu người dùng cung cấp.
 
-### Key Features Shipped:
 - **Async Processing Pipeline**: Tự động parse (PDF, DOCX, MD, TXT), chunk (recursive/semantic), và embed tài liệu.
 - **Vector Storage**: Tích hợp Qdrant Vector DB để lưu trữ và tìm kiếm vector 2048 chiều.
 - **AI Integration**: MCP tool `retrieve_knowledge` cho phép LLM tự động truy xuất kiến thức khi cần.
@@ -21,15 +43,6 @@ Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm
 
 ---
 
-## Next Milestone Goals (v2.0)
-
-Tập trung vào tính minh bạch (Citation), trải nghiệm người dùng nâng cao và cá nhân hóa:
-1. **Citations**: Trích dẫn nguồn tài liệu trong câu trả lời của AI.
-2. **User Isolation**: Mỗi người dùng có một không gian kiến thức riêng biệt.
-3. **Hybrid Search**: Kết hợp tìm kiếm từ khóa và vector để tăng độ chính xác.
-
----
-
 ## Technical Context
 
 - **Backend**: Go 1.25.1, `chi` (routing), `pgx` (db), `sqlc` (codegen), `goose` (migrations).
@@ -38,4 +51,23 @@ Tập trung vào tính minh bạch (Citation), trải nghiệm người dùng n�
 - **Frontend**: React 19, Vite, TailwindCSS 4, Radix UI.
 
 ---
-*Last Updated: 2026-04-08 (Milestone v1.5 Completion)*
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
+---
+*Last Updated: 2026-04-08 (Milestone v2.0 Inception)*

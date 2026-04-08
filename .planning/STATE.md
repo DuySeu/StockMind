@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.0
-milestone_name: next-features
-status: Milestone v1.5 Complete
-last_updated: "2026-04-08T04:42:00Z"
+milestone_name: agent-refactor
+status: Initializing
+last_updated: "2026-04-08T06:51:00Z"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -11,15 +11,22 @@ progress:
   completed_plans: 0
 ---
 
-# Project State: v2.0 Initialization
+# Project State: v2.0 Agent & MCP Refactor
 
 **Project:** StockMind AI Assistant
-**Milestone:** Next Generation UX (v2.0)
+**Milestone:** Agent & MCP Refactor (v2.0)
 **Updated:** 2026-04-08
 
-## Milestone Status: READY
+## Current Position
 
-**Current Focus:** Initializing next milestone requirements and research.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Initializing next milestone requirements and research.
+Last activity: 2026-04-08 — Milestone v2.0 started
+
+## Milestone Status: INITIALIZING
+
+**Current Focus:** Defining requirements for SDK migration and MCP fix.
 
 ### Shipped v1.5 Accomplishments:
 - [x] Qdrant Integration (Docker/Go)
@@ -30,10 +37,10 @@ progress:
 
 ## Key Artifacts
 
-- `.planning/PROJECT.md` — Project context and shipped state
-- `.planning/REQUIREMENTS.md` — v2.0 goals and link to v1.5 archive
-- `.planning/ROADMAP.md` — Milestone summary table
+- `.planning/PROJECT.md` — Project context and Current Milestone
+- `.planning/REQUIREMENTS.md` — Active v2.0 requirements
+- `.planning/ROADMAP.md` — Multi-phase execution plan
 - `.planning/milestones/v1.5-*` — Detailed v1.5 records
 
 ---
-**Next Action:** Run `/gsd-new-milestone` to start the next design cycle.
+**Next Action:** Define requirements for Agent & MCP hardening.
