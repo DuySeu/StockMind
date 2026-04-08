@@ -1,110 +1,41 @@
-# StockMind — RAG Knowledge Base
+# StockMind — AI Financial Assistant
 
-## What This Is
+StockMind là một trợ lý tài chính AI thông minh cho thị trường chứng khoán Việt Nam, kết hợp dữ liệu thị trường thời gian thực với khả năng truy xuất kiến thức chuyên sâu (RAG).
 
-StockMind là một AI financial assistant cho thị trường chứng khoán Việt Nam. Milestone này tập trung phát triển tính năng **RAG (Retrieval-Augmented Generation)**: cho phép upload tài liệu tài chính (PDF, DOCX, MD, TXT), tự động phân tích và nhúng (embed) vào knowledge base Qdrant, rồi tích hợp retrieval như một MCP tool để chatbot gọi khi cần thiết dựa trên user intent. Người dùng có thể quản lý (xem, xóa) tài liệu đã upload qua giao diện frontend.
+## Current State: v1.5 Shipped (RAG Knowledge Base)
+> Completed: 2026-04-08
+
+Hệ thống RAG đã được triển khai đầy đủ, cho phép chatbot trả lời các câu hỏi về kiến thức tài chính dựa trên tài liệu người dùng cung cấp.
+
+### Key Features Shipped:
+- **Async Processing Pipeline**: Tự động parse (PDF, DOCX, MD, TXT), chunk (recursive/semantic), và embed tài liệu.
+- **Vector Storage**: Tích hợp Qdrant Vector DB để lưu trữ và tìm kiếm vector 2048 chiều.
+- **AI Integration**: MCP tool `retrieve_knowledge` cho phép LLM tự động truy xuất kiến thức khi cần.
+- **Frontend Management**: Giao diện người dùng toàn diện để upload, theo dõi trạng thái và quản lý tài liệu.
+
+---
 
 ## Core Value
 
 Chatbot StockMind trả lời câu hỏi tài chính chính xác hơn nhờ tìm kiếm trong knowledge base nội bộ, đồng thời vẫn giữ khả năng gọi agent tools cho các tác vụ khác — tất cả được điều phối tự động dựa trên intent.
 
-## Requirements
+---
 
-### Validated
+## Next Milestone Goals (v2.0)
 
-<!-- Inferred from existing codebase -->
-
-- ✓ Chat AI với streaming WebSocket — existing
-- ✓ MCP tool calling framework (`/internal/mcp`) — existing
-- ✓ OpenRouter integration qua go-openai SDK — existing
-- ✓ PostgreSQL với sqlc/goose migration — existing
-- ✓ React frontend với file upload support (React Hook Form) — existing
-- ✓ Docker Compose infrastructure — existing
-- ✓ [Phase 1] Qdrant self-hosted via Docker (added to docker-compose)
-- ✓ [Phase 1] Bảng documents trong PostgreSQL + RAG package init
-- ✓ [Phase 5] RAG MCP tool: `retrieve_knowledge` — agent gọi khi intent phù hợp
-- ✓ [Phase 5] Intent-based routing: LLM quyết định dùng RAG tool hay agent tools khác
-
-### Active
-
-<!-- Scope của milestone RAG này -->
-
-- [ ] Upload tài liệu (PDF, DOCX, MD, TXT, tối đa 10MB) từ frontend
-- [ ] Async processing pipeline: parse → chunk → embed → lưu vào Qdrant
-- [ ] Chunking strategies: fixed-size, semantic, paragraph-based — chọn strategy khi upload
-- [ ] Embedding bằng free model trên OpenRouter (qua go-openai SDK, base URL override)
-- [ ] Frontend document management: danh sách tài liệu, trạng thái processing, xóa
-- [ ] Metadata tài liệu lưu trong PostgreSQL (tên, loại, trạng thái, timestamps)
-- [ ] Processing status tracking: pending → processing → ready / failed
-
-### Out of Scope
-
-- Citation/trích dẫn nguồn trong câu trả lời — deferred, sẽ add sau
-- Per-user knowledge base — dùng chung global, phân quyền deferred
-- Admin-only upload — chưa cần phân quyền
-- Re-indexing / update tài liệu đã upload — chỉ hỗ trợ delete + re-upload
-- Hybrid search (keyword + vector) — có thể thêm sau nếu cần
-- OCR cho ảnh trong PDF — không trong scope
-
-## Context
-
-**Codebase hiện tại:**
-- Backend Go 1.25.1 với layered architecture: router → service → agent → mcp → database
-- MCP engine (`/internal/mcp`) dùng `github.com/mark3labs/mcp-go` — đây là nơi add `retrieve_knowledge` tool
-- OpenRouter API key đã có (`OPENROUTER_API_KEY`) — dùng luôn với base URL override để call embedding endpoint
-- Agent layer (`/internal/agent`) hiện quản lý LLM lifecycle + tool orchestration
-- PostgreSQL với goose migrations — sẽ thêm bảng `documents` và `document_chunks`
-- Frontend có React Hook Form, Radix UI, TailwindCSS — build UI document management trên nền này
-
-**Lý do chọn Qdrant:**
-- Native vector database, self-hosted dễ dàng qua Docker
-- Go client library chính thức
-- Hỗ trợ payload filtering, metadata search tốt
-
-**Lý do dùng OpenRouter cho embedding:**
-- API key đã tồn tại trong hệ thống
-- `nvidia/llama-nemotron-embed-vl-1b-v2:free` là model $0 duy nhất trên OpenRouter (xác nhận Apr 2026)
-- Tránh thêm API key mới; dùng go-openai SDK với base URL override
-
-## Constraints
-
-- **Tech Stack**: Go 1.25.1, existing pgx/sqlc/goose — không thêm ORM mới
-- **Compatibility**: Không breaking change REST/WebSocket API contract với frontend hiện tại
-- **Storage**: Qdrant self-hosted Docker (không dùng Qdrant Cloud) — thêm vào docker-compose.yml
-- **Async Processing**: Upload endpoint trả về ngay sau khi nhận file, processing chạy background goroutine với proper lifecycle management
-- **File Size**: Tối đa 10MB per file, tối đa 50 tài liệu total
-- **Embedding**: Dùng free model trên OpenRouter — cần chọn model có `/v1/embeddings` endpoint tương thích
-
-## Key Decisions
-
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| RAG as MCP Tool (`retrieve_knowledge`) | Tận dụng MCP framework hiện có, LLM tự quyết định khi nào dùng | ✓ Validated (Phase 5) |
-| Qdrant self-hosted via Docker | Không cần cloud account, phù hợp dev setup hiện tại | ✓ Validated (Phase 1) |
-| `nvidia/llama-nemotron-embed-vl-1b-v2:free` cho embedding | Model $0 duy nhất trên OpenRouter (xác nhận Apr 2026), 2048-dim, 131K context, multimodal | — Pending |
-| Async processing với background goroutine | Upload UX không bị block, cần graceful shutdown | — Pending |
-| Metadata trong PostgreSQL, vectors trong Qdrant | Tách biệt relational metadata và vector storage | — Pending |
-| Intent routing qua LLM (không classifier riêng) | Đơn giản hơn, LLM đã hiểu context của conversation | ✓ Validated (Phase 5) |
-| Chunking strategy chọn per-document khi upload | Linh hoạt theo loại tài liệu, nhưng không over-engineer | — Pending |
+Tập trung vào tính minh bạch (Citation), trải nghiệm người dùng nâng cao và cá nhân hóa:
+1. **Citations**: Trích dẫn nguồn tài liệu trong câu trả lời của AI.
+2. **User Isolation**: Mỗi người dùng có một không gian kiến thức riêng biệt.
+3. **Hybrid Search**: Kết hợp tìm kiếm từ khóa và vector để tăng độ chính xác.
 
 ---
 
-## Evolution
+## Technical Context
 
-This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd-complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
+- **Backend**: Go 1.25.1, `chi` (routing), `pgx` (db), `sqlc` (codegen), `goose` (migrations).
+- **AI/LLM**: OpenRouter API (`nvidia/llama-nemotron-embed-vl-1b-v2:free`), MCP Framework.
+- **Vector DB**: Qdrant (Self-hosted via Docker).
+- **Frontend**: React 19, Vite, TailwindCSS 4, Radix UI.
 
 ---
-*Last updated: 2026-04-01 after Phase 1*
+*Last Updated: 2026-04-08 (Milestone v1.5 Completion)*
