@@ -70,6 +70,10 @@ func openaiToDbStopReason(reason openai.FinishReason) database.StopReason {
 	}
 }
 
+// Completion reads the upstream OpenAI-compatible stream one SSE chunk at a time
+// and invokes callback for each text / reasoning / tool delta. Live UI streaming
+// also requires the HTTP layer to connect the SSE client before this runs (see
+// chatHandler: flush JSON session_id, then start the agent goroutine).
 func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.MessageUnion, callback ChatCallBack) (database.MessageUnion, database.StopReason, error) {
 	// Prepare messages for OpenAI
 	body := p.newOpenAIMessage()
@@ -80,9 +84,8 @@ func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.Me
 	}
 	result := database.MessageUnion{
 		OfOpenAI: &openai.ChatCompletionMessage{
-			Role:         openai.ChatMessageRoleAssistant,
-			MultiContent: []openai.ChatMessagePart{},
-			ToolCalls:    []openai.ToolCall{},
+			Role:      openai.ChatMessageRoleAssistant,
+			ToolCalls: []openai.ToolCall{},
 		},
 	}
 	var stopReason database.StopReason
@@ -120,50 +123,57 @@ func (p *OpenAIProvider) Completion(ctx context.Context, messages []*database.Me
 		}
 
 		for _, chunk := range response.Choices {
-			// Handle the chunk
 			delta := chunk.Delta
 			if chunk.FinishReason != "" {
 				stopReason = openaiToDbStopReason(chunk.FinishReason)
 			}
-			switch {
-			case delta.Content != "":
-				contentItem.Content += delta.Content
-				if len(contentItem.MultiContent) > 0 && contentItem.MultiContent[len(contentItem.MultiContent)-1].Type == openai.ChatMessagePartTypeText {
-					contentItem.MultiContent[len(contentItem.MultiContent)-1].Text += delta.Content
-				} else {
-					contentItem.MultiContent = append(contentItem.MultiContent, openai.ChatMessagePart{Type: openai.ChatMessagePartTypeText, Text: delta.Content})
-				}
+			// Use separate ifs (not switch): one SSE chunk may carry reasoning, text,
+			// and tool deltas together; switch would only run the first branch.
+			if delta.ReasoningContent != "" {
+				contentItem.ReasoningContent += delta.ReasoningContent
 				if callback != nil {
-					callback(ChatEvent{Type: EventTypeText, Content: delta.Content, IsEnd: false})
+					_ = callback(ChatEvent{
+						Type:    EventTypeThinking,
+						Content: delta.ReasoningContent,
+						IsEnd:   false,
+					})
 				}
-			case len(delta.ToolCalls) > 0:
+			}
+			if delta.Content != "" {
+				// Use only string Content for assistant text — do not set MultiContent
+				// or go-openai MarshalJSON fails (jsonb history insert).
+				contentItem.Content += delta.Content
+				if callback != nil {
+					_ = callback(ChatEvent{Type: EventTypeText, Content: delta.Content, IsEnd: false})
+				}
+			}
+			if len(delta.ToolCalls) > 0 {
 				for _, tc := range delta.ToolCalls {
+					// OpenRouter and some models omit index on the first tool delta; default to 0.
+					index := 0
 					if tc.Index != nil {
-						index := *tc.Index
-						if index >= len(contentItem.ToolCalls) {
-							// Expand slice
-							for i := len(contentItem.ToolCalls); i <= index; i++ {
-								contentItem.ToolCalls = append(contentItem.ToolCalls, openai.ToolCall{})
-							}
-						}
-						if tc.ID != "" {
-							contentItem.ToolCalls[index].ID = tc.ID
-							contentItem.ToolCalls[index].Type = tc.Type
-						}
-						if tc.Function.Name != "" {
-							if contentItem.ToolCalls[index].Function.Name == "" {
-								contentItem.ToolCalls[index].Function.Name = tc.Function.Name
-							} else {
-								contentItem.ToolCalls[index].Function.Name += tc.Function.Name
-							}
-						}
-						if tc.Function.Arguments != "" {
-							contentItem.ToolCalls[index].Function.Arguments += tc.Function.Arguments
+						index = *tc.Index
+					}
+					if index >= len(contentItem.ToolCalls) {
+						for i := len(contentItem.ToolCalls); i <= index; i++ {
+							contentItem.ToolCalls = append(contentItem.ToolCalls, openai.ToolCall{})
 						}
 					}
+					if tc.ID != "" {
+						contentItem.ToolCalls[index].ID = tc.ID
+						contentItem.ToolCalls[index].Type = tc.Type
+					}
+					if tc.Function.Name != "" {
+						if contentItem.ToolCalls[index].Function.Name == "" {
+							contentItem.ToolCalls[index].Function.Name = tc.Function.Name
+						} else {
+							contentItem.ToolCalls[index].Function.Name += tc.Function.Name
+						}
+					}
+					if tc.Function.Arguments != "" {
+						contentItem.ToolCalls[index].Function.Arguments += tc.Function.Arguments
+					}
 				}
-			default:
-				continue
 			}
 		}
 	}

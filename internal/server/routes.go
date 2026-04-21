@@ -202,7 +202,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a4"))
+	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
 	var sessionIdPtr *uuid.UUID
 	if sessionID != uuid.Nil {
 		sessionIdPtr = &sessionID
@@ -224,6 +224,22 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stream := s.streamManager.CreateStream(session.GetSessionID())
+
+	// Return session_id and flush before starting the agent goroutine. Otherwise
+	// the client may open SSE after many tokens are already buffered, so deltas
+	// replay in one burst instead of streaming (openai_provider callbacks still
+	// fire per chunk, but nothing consumes them until Subscribe runs).
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		"session_id": session.GetSessionID().String(),
+	}); err != nil {
+		fmt.Printf("chatHandler encode error: %v\n", err)
+		return
+	}
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 
 	go func() {
 		defer func() {
@@ -259,11 +275,6 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Printf("Agent execution loop completed after %d iterations\n", nLoop)
 	}()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"session_id": session.GetSessionID().String(),
-	})
 }
 
 func (s *Server) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
@@ -283,6 +294,7 @@ func (s *Server) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	if !exists {
 		// Stream might be completed or never existed. Send a complete event to be safe.

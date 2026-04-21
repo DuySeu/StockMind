@@ -91,7 +91,6 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 	if p.agent == nil {
 		return database.MessageUnion{}, database.StopReasonUnknown, fmt.Errorf("agent is not initialized in AnthropicProvider")
 	}
-	a := p.agent
 
 	// Prepare messages for Anthropic
 	body := p.newAnthropicMessage()
@@ -112,95 +111,131 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 	stream := p.client.Messages.NewStreaming(ctx, body)
 	defer stream.Close()
 
-	var currentContentItem *anthropic.ContentBlockParamUnion
-	var toolUseInput strings.Builder
+	if err := stream.Err(); err != nil {
+		return result, stopReason, err
+	}
+
+	var (
+		contentBlockType string
+		contentItem      anthropic.ContentBlockParamUnion
+		toolUseInput     strings.Builder
+		blockStarted     bool
+		endEmitted       bool
+	)
 
 	for stream.Next() {
 		chunk := stream.Current()
 
-		switch string(chunk.Type) {
+		switch chunk.Type {
 		case "message_start":
-			ev := chunk.AsMessageStart()
-			fmt.Printf("Message Start: ID=%s, SessionID=%s\n", ev.Message.ID, a.session.ID)
+			_ = chunk.AsMessageStart()
 
 		case "content_block_start":
 			ev := chunk.AsContentBlockStart()
-			currentContentItem = &anthropic.ContentBlockParamUnion{}
+			contentBlockType = ev.ContentBlock.Type
+			contentItem = anthropic.ContentBlockParamUnion{}
+			blockStarted = false
 
-			switch string(ev.ContentBlock.Type) {
+			switch ev.ContentBlock.Type {
 			case "text":
 				block := ev.ContentBlock.AsText()
-				currentContentItem.OfText = &anthropic.TextBlockParam{
-					Text: block.Text,
-				}
+				blockStarted = true
+				contentItem.OfText = &anthropic.TextBlockParam{Text: block.Text}
 			case "thinking":
 				block := ev.ContentBlock.AsThinking()
-				currentContentItem.OfThinking = &anthropic.ThinkingBlockParam{
+				blockStarted = true
+				contentItem.OfThinking = &anthropic.ThinkingBlockParam{
 					Thinking:  block.Thinking,
 					Signature: block.Signature,
 				}
 				if callback != nil {
-					_ = callback(ChatEvent{Type: EventTypeThinking, Content: block.Thinking})
+					_ = callback(ChatEvent{
+						Type:    EventTypeThinking,
+						Content: block.Thinking,
+					})
 				}
 			case "tool_use":
-				block := ev.ContentBlock.AsToolUse()
-				currentContentItem.OfToolUse = &anthropic.ToolUseBlockParam{
-					ID:   block.ID,
-					Name: block.Name,
-				}
+				toolUse := ev.ContentBlock.AsToolUse()
+				blockStarted = true
 				toolUseInput.Reset()
+				if len(toolUse.Input) > 0 {
+					_, _ = toolUseInput.Write(toolUse.Input)
+				}
+				param := toolUse.ToParam()
+				contentItem.OfToolUse = &anthropic.ToolUseBlockParam{
+					ID:           toolUse.ID,
+					Name:         toolUse.Name,
+					CacheControl: param.CacheControl,
+					Input:        map[string]any{},
+					Type:         param.Type,
+				}
 			}
 
 		case "content_block_delta":
-			ev := chunk.AsContentBlockDelta()
-			if currentContentItem == nil {
+			if !blockStarted {
 				continue
 			}
+			ev := chunk.AsContentBlockDelta()
 
-			switch string(ev.Delta.Type) {
+			switch ev.Delta.Type {
 			case "text_delta":
 				delta := ev.Delta.AsTextDelta()
-				if currentContentItem.OfText != nil {
-					currentContentItem.OfText.Text += delta.Text
+				if contentItem.OfText != nil {
+					contentItem.OfText.Text += delta.Text
 					if callback != nil {
-						_ = callback(ChatEvent{Type: EventTypeText, Content: delta.Text})
+						_ = callback(ChatEvent{
+							Type:    EventTypeText,
+							Content: delta.Text,
+						})
 					}
 				}
 			case "thinking_delta":
 				delta := ev.Delta.AsThinkingDelta()
-				if currentContentItem.OfThinking != nil {
-					currentContentItem.OfThinking.Thinking += delta.Thinking
+				if contentItem.OfThinking != nil {
+					contentItem.OfThinking.Thinking += delta.Thinking
 					if callback != nil {
-						_ = callback(ChatEvent{Type: EventTypeThinking, Content: delta.Thinking})
+						_ = callback(ChatEvent{
+							Type:    EventTypeThinking,
+							Content: delta.Thinking,
+						})
 					}
 				}
 			case "signature_delta":
 				delta := ev.Delta.AsSignatureDelta()
-				if currentContentItem.OfThinking != nil {
-					currentContentItem.OfThinking.Signature += delta.Signature
+				if contentItem.OfThinking != nil {
+					contentItem.OfThinking.Signature += delta.Signature
 				}
 			case "input_json_delta":
-				delta := ev.Delta.AsInputJSONDelta()
-				toolUseInput.WriteString(delta.PartialJSON)
+				if contentBlockType == "tool_use" {
+					delta := ev.Delta.AsInputJSONDelta()
+					toolUseInput.WriteString(delta.PartialJSON)
+				}
 			}
 
 		case "content_block_stop":
-			if currentContentItem == nil {
+			if !blockStarted {
+				contentBlockType = ""
 				continue
 			}
 
-			// Finalize ToolUse if needed
-			if currentContentItem.OfToolUse != nil {
-				var input map[string]any
-				if err := json.Unmarshal([]byte(toolUseInput.String()), &input); err != nil {
-					return result, stopReason, fmt.Errorf("failed to unmarshal tool use input: %w", err)
+			if contentBlockType == "tool_use" && contentItem.OfToolUse != nil {
+				raw := toolUseInput.String()
+				if raw == "" {
+					raw = "{}"
 				}
-				currentContentItem.OfToolUse.Input = input
+				var input map[string]any
+				if err := json.Unmarshal([]byte(raw), &input); err != nil {
+					return result, stopReason, fmt.Errorf(
+						"failed to unmarshal tool use input: %w", err)
+				}
+				contentItem.OfToolUse.Input = input
+				toolUseInput.Reset()
 			}
 
-			// Append completed block to result
-			result.OfAnthropic.Content = append(result.OfAnthropic.Content, *currentContentItem)
-			currentContentItem = nil
+			result.OfAnthropic.Content = append(
+				result.OfAnthropic.Content, contentItem)
+			contentItem = anthropic.ContentBlockParamUnion{}
+			contentBlockType = ""
 
 		case "message_delta":
 			ev := chunk.AsMessageDelta()
@@ -209,12 +244,18 @@ func (p *AnthropicProvider) Completion(ctx context.Context, messages []*database
 		case "message_stop":
 			if callback != nil {
 				_ = callback(ChatEvent{IsEnd: true})
+				endEmitted = true
 			}
 		}
 	}
 
 	if err := stream.Err(); err != nil {
 		return result, stopReason, err
+	}
+
+	// Proxies or OpenRouter may omit message_stop; still close the SSE text block.
+	if callback != nil && !endEmitted {
+		_ = callback(ChatEvent{IsEnd: true})
 	}
 
 	return result, stopReason, nil

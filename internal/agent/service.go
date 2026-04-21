@@ -17,7 +17,6 @@ const (
 	DEFAULT_MAX_TURNS = 100
 )
 
-
 // Wrapper around different LLM clients
 // For easy extension in the future
 type LLMClientWrapper struct {

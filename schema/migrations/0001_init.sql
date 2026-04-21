@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS documents (
     status      VARCHAR(20) NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'processing', 'ready', 'failed')),
     chunk_count INT4 NOT NULL DEFAULT 0,
-    strategy    VARCHAR(20) NOT NULL DEFAULT 'recursive'
+    strategy    VARCHAR(20) NOT NULL DEFAULT 'semantic'
                     CHECK (strategy IN ('recursive', 'fixed', 'paragraph', 'semantic')),
     error_msg   TEXT,
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

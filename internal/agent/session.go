@@ -8,6 +8,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/google/uuid"
+	openai "github.com/sashabaranov/go-openai"
 )
 
 type SessionManager struct {
@@ -223,6 +224,13 @@ func newHumanMessage(message string, provider database.ModelProvider) (database.
 				Content: []anthropic.ContentBlockParamUnion{
 					{OfText: &anthropic.TextBlockParam{Text: message}},
 				},
+			},
+		}, nil
+	case database.ModelProviderOpenAI, database.ModelProviderOpenRouter:
+		return database.MessageUnion{
+			OfOpenAI: &openai.ChatCompletionMessage{
+				Role:    openai.ChatMessageRoleUser,
+				Content: message,
 			},
 		}, nil
 	default:

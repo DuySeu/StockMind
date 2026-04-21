@@ -70,3 +70,9 @@ This single command will:
 Once both servers are running, open your browser and navigate to the frontend URL (typically `http://localhost:5173`) to start using StockMind.
 
 *(To stop the application, terminate the `make run` process and run `docker-compose down` to stop the database container).*
+
+### 4, TODO:
+- Rehandle Streaming workflow, ensure that the agent core working well with both openai and anthropic client using openrouter API key.
+- Modify RAG flow to make it work.
+- Add MinIO for file storage if needed.
+- Add Login for application with best practice authentication.

@@ -2,8 +2,8 @@ import api from ".";
 import type { Document } from "../types/document";
 
 export const getDocuments = async (): Promise<Document[]> => {
-  const response = await api.get('/documents');
-  return response.data;
+  const response = await api.get<{ data: Document[] }>("/documents");
+  return response.data.data;
 };
 
 export const getDocumentById = async (id: string): Promise<Document> => {
