@@ -98,7 +98,28 @@ export const streamChatSession = async (
 
 import type { Message } from "@/types/message";
 
+/**
+ * Normalize a raw message from the backend (openai.ChatCompletionMessage shape)
+ * into the frontend Message type where content is always ContentPart[].
+ */
+function normalizeMessage(raw: any): Message {
+  const role = raw.role as Message["role"];
+
+  // Already in the expected shape (ContentPart[])
+  if (Array.isArray(raw.content)) {
+    return { role, content: raw.content, tool_calls: raw.tool_calls };
+  }
+
+  // Backend returns content as a plain string — wrap it
+  const parts: any[] = [];
+  if (typeof raw.content === "string" && raw.content) {
+    parts.push({ type: "text", text: raw.content });
+  }
+
+  return { role, content: parts, tool_calls: raw.tool_calls };
+}
+
 export const getMessages = async (sessionId: string): Promise<Message[]> => {
   const response = await api.get(`/sessions/${sessionId}`);
-  return response.data;
+  return (response.data as any[]).map(normalizeMessage);
 };

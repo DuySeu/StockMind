@@ -39,7 +39,7 @@ type Session = {
   [key: string]: unknown;
 };
 
-const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string) => void }) => {
+const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; setTitle: (title: string) => void; sessionVersion?: number }) => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -52,9 +52,11 @@ const SideBar = ({ title, setTitle }: { title: string; setTitle: (title: string)
       console.log(error);
     }
   };
+
+  // Fetch on mount and when explicitly signalled via sessionVersion
   useEffect(() => {
     fetchSession();
-  }, [title]);
+  }, [sessionVersion]);
 
   useEffect(() => {
     if (id) {

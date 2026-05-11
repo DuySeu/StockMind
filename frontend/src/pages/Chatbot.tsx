@@ -19,7 +19,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message } from "@/types/message";
 import { ArrowUp, AudioLines, FileText, Image, Paperclip, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -32,6 +32,12 @@ const ChatbotPage = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [sessionVersion, setSessionVersion] = useState(0);
+  // Track the session id that onSubmit is actively streaming so the
+  // useEffect([id]) reconnect logic skips it (avoids double stream).
+  const streamingSessionRef = useRef<string | null>(null);
+
+  const refreshSessions = useCallback(() => setSessionVersion((v) => v + 1), []);
 
   const form = useForm({
     defaultValues: {
@@ -49,40 +55,26 @@ const ChatbotPage = () => {
     }
   }, [messages]);
 
-  // Fetch messages & Handle reconnect when id changes
+  // Fetch messages when navigating to an existing session.
+  // Skip if onSubmit is already streaming this session (streamingSessionRef).
   useEffect(() => {
-    const fetchMessagesAndStream = async () => {
-      if (id) {
-        const loadedMessages = await getMessages(id);
-        
-        const isUserLast = loadedMessages.length > 0 && loadedMessages[loadedMessages.length - 1].role === "user";
-        let targetIndex = loadedMessages.length;
-        if (isUserLast) {
-          loadedMessages.push({ role: "assistant", content: [] });
-        } else {
-          targetIndex = loadedMessages.length - 1;
-        }
-        setMessages(loadedMessages);
+    if (!id) {
+      setMessages([]);
+      return;
+    }
 
-        await streamChatSession(
-          id,
-          (data) => handleStreamEvent(data, targetIndex),
-          (error) => {
-            console.log("Stream check finished or not active", error);
-          }
-        );
-      } else {
-        setMessages([]);
-      }
+    // onSubmit already owns the stream for this session — don't duplicate.
+    if (streamingSessionRef.current === id) return;
+
+    let cancelled = false;
+    const fetchMessages = async () => {
+      const loadedMessages = await getMessages(id);
+      if (cancelled) return;
+      setMessages(loadedMessages);
     };
 
-    fetchMessagesAndStream();
-  }, [id]);
-
-  useEffect(() => {
-    if (id) {
-      setTitle(id);
-    }
+    fetchMessages();
+    return () => { cancelled = true; };
   }, [id]);
 
   const handleFileClick = (accept: string) => {
@@ -235,9 +227,15 @@ const ChatbotPage = () => {
 
     try {
       const activeSessionId = await startChatSession(data.input.trim(), id || undefined, fileToSend);
+
+      // Mark this session as owned by onSubmit so the useEffect([id])
+      // reconnect logic won't open a second SSE stream.
+      streamingSessionRef.current = activeSessionId;
+
       if (!id && activeSessionId) {
         setTitle(data.input.trim());
         navigate(`/c/${activeSessionId}`, { replace: true });
+        refreshSessions();
       }
       
       await streamChatSession(
@@ -255,7 +253,11 @@ const ChatbotPage = () => {
           });
         }
       );
+
+      // Stream finished — release ownership so future navigations can reconnect.
+      streamingSessionRef.current = null;
     } catch(err) {
+      streamingSessionRef.current = null;
       console.error(err);
     }
   };
@@ -268,7 +270,7 @@ const ChatbotPage = () => {
   return (
     <>
       <SidebarProvider className="flex-1 w-full h-screen bg-sidebar overflow-hidden">
-        <SideBar title={title} setTitle={setTitle} />
+        <SideBar title={title} setTitle={setTitle} sessionVersion={sessionVersion} />
         <main className="w-full h-full flex flex-col">
           <div className="mt-4 px-2">
             <Navbar />
