@@ -6,9 +6,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/sashabaranov/go-openai"
 )
 
+// GET /v1/sessions - Get sessions
 func (s *Server) GetSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
 	// Get users from database
@@ -37,15 +37,8 @@ func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	msgs := make([]openai.ChatCompletionMessage, 0, len(messages))
-	for _, msg := range messages {
-		if msg.Content.OfOpenAI != nil {
-			msgs = append(msgs, *msg.Content.OfOpenAI)
-		}
-	}
-
 	// Return messages list
-	common.WriteJSON(w, http.StatusOK, msgs)
+	common.WriteJSON(w, http.StatusOK, messages)
 }
 
 func (s *Server) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {

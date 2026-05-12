@@ -38,25 +38,23 @@ CREATE TABLE IF NOT EXISTS agent_flows (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Session table
-CREATE TABLE IF NOT EXISTS sessions (
+-- Conversations table
+CREATE TABLE IF NOT EXISTS conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
     description TEXT,
-    turn_count INT4 NOT NULL DEFAULT 0,
-    agent_flow_id UUID NOT NULL REFERENCES agent_flows(id) ON DELETE CASCADE,
-    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    metadata JSONB DEFAULT '{}', -- Store summary of the conversation
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Messages table
-CREATE TABLE IF NOT EXISTS session_history (
+CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    node TEXT NOT NULL,
-    content JSONB NOT NULL,
-    stop_reason TEXT NOT NULL,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    metadata JSONB DEFAULT '{}', -- Store addtional information about the message such as tool calls, tool results, etc.
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

@@ -50,11 +50,11 @@ func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Determine fileType by extension for parsing routing
 	parts := strings.Split(header.Filename, ".")
-	fileType := "txt" // fallback default
+	fileType := "txt"
 	if len(parts) > 1 {
 		fileType = strings.ToLower(parts[len(parts)-1])
 	}
-	
+
 	// Optional override from client
 	if ft := r.FormValue("file_type"); ft != "" {
 		fileType = ft

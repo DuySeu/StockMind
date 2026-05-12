@@ -17,6 +17,15 @@ type AgentFlow struct {
 	UpdatedAt pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
 }
 
+type Conversation struct {
+	ID          uuid.UUID          `db:"id" json:"id"`
+	UserID      uuid.UUID          `db:"user_id" json:"user_id"`
+	Title       string             `db:"title" json:"title"`
+	Description pgtype.Text        `db:"description" json:"description"`
+	Metadata    []byte             `db:"metadata" json:"metadata"`
+	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
+}
+
 type Document struct {
 	ID         uuid.UUID          `db:"id" json:"id"`
 	Name       string             `db:"name" json:"name"`
@@ -28,6 +37,15 @@ type Document struct {
 	ErrorMsg   pgtype.Text        `db:"error_msg" json:"error_msg"`
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
+}
+
+type Message struct {
+	ID             uuid.UUID          `db:"id" json:"id"`
+	ConversationID uuid.UUID          `db:"conversation_id" json:"conversation_id"`
+	Role           string             `db:"role" json:"role"`
+	Content        string             `db:"content" json:"content"`
+	Metadata       []Metadata         `db:"metadata" json:"metadata"`
+	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type News struct {
@@ -45,26 +63,6 @@ type Research struct {
 	ReferencePrice string             `db:"reference_price" json:"reference_price"`
 	Report         StockReport        `db:"report" json:"report"`
 	CreatedAt      pgtype.Timestamptz `db:"created_at" json:"created_at"`
-}
-
-type Session struct {
-	ID          uuid.UUID          `db:"id" json:"id"`
-	Title       string             `db:"title" json:"title"`
-	Description pgtype.Text        `db:"description" json:"description"`
-	TurnCount   int32              `db:"turn_count" json:"turn_count"`
-	AgentFlowID uuid.UUID          `db:"agent_flow_id" json:"agent_flow_id"`
-	CreatedBy   uuid.UUID          `db:"created_by" json:"created_by"`
-	CreatedAt   pgtype.Timestamptz `db:"created_at" json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `db:"updated_at" json:"updated_at"`
-}
-
-type SessionHistory struct {
-	ID         uuid.UUID          `db:"id" json:"id"`
-	SessionID  uuid.UUID          `db:"session_id" json:"session_id"`
-	Node       string             `db:"node" json:"node"`
-	Content    MessageUnion       `db:"content" json:"content"`
-	StopReason StopReason         `db:"stop_reason" json:"stop_reason"`
-	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 }
 
 type User struct {

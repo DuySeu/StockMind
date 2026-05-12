@@ -66,6 +66,26 @@ type AgentConfig struct {
 	McpServers    []MCPConfig   `json:"mcpServers"` // MCP servers to use
 }
 
+type Metadata struct {
+	Tool        []Tool       `json:"toolCalls"`
+	Attachments []Attachment `json:"attachments"`
+	Sources     []Source     `json:"sources"`
+}
+
+type Tool struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+	Output    string `json:"output"`
+	IsError   string `json:"is_error"`
+}
+
+type Attachment struct {
+	Name      string `json:"name"`
+	MediaType string `json:"media_type"`
+	Data      []byte `json:"data"`
+}
+
 type MCPConfig struct {
 	Name           string            `json:"name"`
 	Protocol       string            `json:"protocol"` // stdio, streamablehttp

@@ -1,4 +1,5 @@
-import { startChatSession, streamChatSession, getMessages } from "@/api/chat";
+import { sendChatMessage, getMessages } from "@/api/chat";
+import type { ChatEvent } from "@/api/chat";
 import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
@@ -17,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Message } from "@/types/message";
+import type { Message, ToolCall } from "@/types/message";
 import { ArrowUp, AudioLines, FileText, Image, Paperclip, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
@@ -33,8 +34,8 @@ const ChatbotPage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [sessionVersion, setSessionVersion] = useState(0);
-  // Track the session id that onSubmit is actively streaming so the
-  // useEffect([id]) reconnect logic skips it (avoids double stream).
+  const [isStreaming, setIsStreaming] = useState(false);
+
   const streamingSessionRef = useRef<string | null>(null);
 
   const refreshSessions = useCallback(() => setSessionVersion((v) => v + 1), []);
@@ -74,7 +75,9 @@ const ChatbotPage = () => {
     };
 
     fetchMessages();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleFileClick = (accept: string) => {
@@ -99,165 +102,203 @@ const ChatbotPage = () => {
     }
   };
 
-  const handleStreamEvent = (data: any, _ignoredIndex: number, sessionIdToSet?: string) => {
-    switch (data.type) {
-      case "thinking_delta":
-      case "text_delta": {
+  /**
+   * Handle a single SSE event from the backend and update messages state.
+   * Returns the session_id when a "start" event provides one.
+   */
+  const handleStreamEvent = useCallback((event: ChatEvent, callbacks: { onSessionId?: (sid: string) => void }) => {
+    const { type, data } = event;
+
+    switch (type) {
+      case "start": {
+        const sid = (data as { session_id?: string })?.session_id;
+        if (sid) callbacks.onSessionId?.(sid);
+        break;
+      }
+
+      case "text": {
+        const delta = typeof data === "string" ? data : "";
         setMessages((prev) => {
           const updated = [...prev];
-          let lastIndex = updated.length - 1;
-          
-          // Find the last assistant message, or create one if the last message is not assistant
+          const lastIndex = updated.length - 1;
+
           if (lastIndex < 0 || updated[lastIndex].role !== "assistant") {
-            updated.push({ role: "assistant", content: [] });
-            lastIndex = updated.length - 1;
+            updated.push({ role: "assistant", content: delta });
+            return updated;
           }
 
-          const currentMessage = updated[lastIndex];
-          const newContent = [...(currentMessage.content || [])];
-          
-          if (data.type === "thinking_delta") {
-            const delta = data.data?.thinking ?? "";
-            let idx = newContent.findIndex((c: any) => c.type === "thinking");
-            if (idx === -1) {
-              newContent.push({ type: "thinking", thinking: "", is_open: true });
-              idx = newContent.length - 1;
-            }
-            const block = newContent[idx] as any;
-            if (block.type === "thinking") {
-              newContent[idx] = { ...block, thinking: (block.thinking ?? "") + delta };
-            }
-          } else {
-            const delta = data.data?.text ?? "";
-            let idx = newContent.findIndex((c: any) => c.type === "text");
-            if (idx === -1) {
-              newContent.push({ type: "text", text: "" });
-              idx = newContent.length - 1;
-            }
-            const block = newContent[idx] as any;
-            if (block.type === "text") {
-              newContent[idx] = { ...block, text: (block.text ?? "") + delta };
-            }
-          }
-          
-          updated[lastIndex] = { ...currentMessage, content: newContent };
+          const current = updated[lastIndex];
+          updated[lastIndex] = {
+            ...current,
+            content: (current.content ?? "") + delta,
+          };
           return updated;
         });
         break;
       }
-      case "tool_use": {
-        const tool_calls = data.data?.tool_calls;
-        if (tool_calls) {
+
+      case "thinking": {
+        const delta = typeof data === "string" ? data : "";
+        setMessages((prev) => {
+          const updated = [...prev];
+          const lastIndex = updated.length - 1;
+
+          if (lastIndex < 0 || updated[lastIndex].role !== "assistant") {
+            updated.push({
+              role: "assistant",
+              content: "",
+              metadata: [{ type: "thinking", thinking: delta, is_open: true }],
+            });
+            return updated;
+          }
+
+          const current = updated[lastIndex];
+          const existingMeta = current.metadata ?? [];
+          const thinkingIdx = existingMeta.findIndex((m) => "thinking" in m && m.type === "thinking");
+
+          if (thinkingIdx === -1) {
+            updated[lastIndex] = {
+              ...current,
+              metadata: [...existingMeta, { type: "thinking", thinking: delta, is_open: true }],
+            };
+          } else {
+            const newMeta = [...existingMeta];
+            const existing = newMeta[thinkingIdx] as { type: "thinking"; thinking: string; is_open: boolean };
+            newMeta[thinkingIdx] = {
+              ...existing,
+              thinking: existing.thinking + delta,
+            };
+            updated[lastIndex] = { ...current, metadata: newMeta };
+          }
+          return updated;
+        });
+        break;
+      }
+
+      case "tool_call": {
+        if (data && typeof data === "object") {
           setMessages((prev) => {
             const updated = [...prev];
-            let lastIndex = updated.length - 1;
+            const lastIndex = updated.length - 1;
+
             if (lastIndex < 0 || updated[lastIndex].role !== "assistant") {
-              updated.push({ role: "assistant", content: [] });
-              lastIndex = updated.length - 1;
+              updated.push({
+                role: "assistant",
+                content: "",
+                metadata: [data as ToolCall],
+              });
+              return updated;
             }
-            const currentMessage = updated[lastIndex];
-            const existingToolCalls = currentMessage.tool_calls || [];
+
+            const current = updated[lastIndex];
             updated[lastIndex] = {
-              ...currentMessage,
-              tool_calls: [...existingToolCalls, tool_calls],
+              ...current,
+              metadata: [...(current.metadata ?? []), data as ToolCall],
             };
             return updated;
           });
         }
         break;
       }
+
       case "tool_result": {
-        setMessages((prev) => [...prev, data.data?.result as Message]);
+        // Tool results can be appended as metadata or as a separate message
+        // depending on how MessageList renders them.
+        // For now, we skip tool_result display (tool output is usually
+        // digested by the LLM into the next text response).
         break;
       }
-      case "complete": {
-        if (sessionIdToSet) {
-          // Handled outside
-        }
+
+      case "done": {
+        // Close any open thinking blocks
         setMessages((prev) => {
           const updated = [...prev];
-          // Close thinking for ALL assistant messages or just the last one?
-          // LLM Turn completion only affects the last assistant message
           const lastIndex = updated.length - 1;
           if (lastIndex >= 0 && updated[lastIndex].role === "assistant") {
-            const currentMessage = updated[lastIndex];
-            const newContent = [...(currentMessage.content || [])];
-            const idx = newContent.findIndex((c: any) => c.type === "thinking");
-            if (idx !== -1) {
-              const block = newContent[idx] as any;
-              if (block.type === "thinking") {
-                newContent[idx] = { ...block, is_open: false };
-              }
+            const current = updated[lastIndex];
+            if (current.metadata) {
+              const newMeta = current.metadata.map((m) => {
+                if ("thinking" in m && m.type === "thinking") {
+                  return { ...m, is_open: false };
+                }
+                return m;
+              });
+              updated[lastIndex] = { ...current, metadata: newMeta };
             }
-            updated[lastIndex] = { ...currentMessage, content: newContent };
           }
           return updated;
         });
         break;
       }
+
+      case "error": {
+        const message = typeof data === "string" ? data : ((data as { message?: string })?.message ?? "Stream error");
+        toast.error(message);
+        break;
+      }
     }
-  };
+  }, []);
 
   const onSubmit = async (data: FieldValues) => {
+    const userInput = data.input.trim();
+    if (!userInput) return;
+
     const fileToSend = attachment; // Capture attachment before clearing
     form.reset();
     setAttachment(null);
+    setIsStreaming(true);
 
-    const content: any[] = [];
-    if (fileToSend) {
-      content.push({
-        type: "image_url",
-        image_url: {
-          url: URL.createObjectURL(fileToSend),
-        },
-      });
-    }
-    content.push({ type: "text", text: data.input.trim() });
-
+    // Add user message to the list
     setMessages((prev) => [
       ...prev,
       {
         role: "user",
-        content: content,
+        content: userInput,
+        metadata: fileToSend
+          ? [
+              {
+                type: "image_url" as const,
+                image_url: { url: URL.createObjectURL(fileToSend) },
+              },
+            ]
+          : [],
       },
     ]);
 
-    const assistantIndex = messages.length + 1;
-    setMessages((prev) => [...prev, { role: "assistant", content: [] }]);
-
     try {
-      const activeSessionId = await startChatSession(data.input.trim(), id || undefined, fileToSend);
+      await sendChatMessage(
+        userInput,
+        id || undefined,
+        (event) => {
+          handleStreamEvent(event, {
+            onSessionId: (sid) => {
+              streamingSessionRef.current = sid;
 
-      // Mark this session as owned by onSubmit so the useEffect([id])
-      // reconnect logic won't open a second SSE stream.
-      streamingSessionRef.current = activeSessionId;
-
-      if (!id && activeSessionId) {
-        setTitle(data.input.trim());
-        navigate(`/c/${activeSessionId}`, { replace: true });
-        refreshSessions();
-      }
-      
-      await streamChatSession(
-        activeSessionId,
-        (data) => handleStreamEvent(data, assistantIndex, activeSessionId),
-        (error) => {
-          console.error("Error sending message:", error);
-          setMessages((prev) => {
-            const updated = [...prev];
-            updated[assistantIndex] = {
-              role: "assistant",
-              content: [{ type: "text", text: "Error sending message" }],
-            };
-            return updated;
+              // Navigate to the new session URL if this is a fresh chat
+              if (!id && sid) {
+                setTitle(userInput);
+                navigate(`/c/${sid}`, { replace: true });
+                refreshSessions();
+              }
+            },
           });
-        }
+        },
+        (error) => {
+          console.error("Stream error:", error);
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "An error occurred while processing your request." },
+          ]);
+        },
+        fileToSend,
       );
 
       // Stream finished — release ownership so future navigations can reconnect.
       streamingSessionRef.current = null;
-    } catch(err) {
+      setIsStreaming(false);
+    } catch (err) {
       streamingSessionRef.current = null;
+      setIsStreaming(false);
       console.error(err);
     }
   };
@@ -368,6 +409,7 @@ const ChatbotPage = () => {
                                 className="w-full bg-transparent border-none shadow-none focus-visible:ring-0 placeholder:text-slate-400 py-3 min-h-[44px] text-base resize-none"
                                 placeholder="Ask me anything about Vietnam stocks..."
                                 autoComplete="off"
+                                disabled={isStreaming}
                                 {...field}
                               />
                             </FormControl>
@@ -391,7 +433,7 @@ const ChatbotPage = () => {
                         </Tooltip>
                         <button
                           type="submit"
-                          disabled={!form.watch("input")?.trim()}
+                          disabled={isStreaming || !form.watch("input")?.trim()}
                           className="bg-primary hover:bg-primary/90 text-background-dark h-10 w-10 shrink-0 rounded-xl flex items-center justify-center transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
                           <ArrowUp className="h-5 w-5" />

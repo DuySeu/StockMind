@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -14,7 +15,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/google/uuid"
 
-	"stockmind/internal/agent"
+	"stockmind/internal/common"
+	"stockmind/internal/database"
+	core "stockmind/internal/llm"
 )
 
 type Message struct {
@@ -46,7 +49,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// Websocket
 		// r.Get("/ws", s.websocketHandler)
 		r.Post("/chat", s.chatHandler)
-		r.Get("/chat/stream", s.chatStreamHandler)
 
 		// Users
 		r.Route("/users", func(r chi.Router) {
@@ -133,10 +135,10 @@ func spaHandler() http.HandlerFunc {
 	}
 }
 
-func parseChatRequest(r *http.Request) (string, uuid.UUID, []agent.Attachment, error) {
+func parseChatRequest(r *http.Request) (string, uuid.UUID, []database.Attachment, error) {
 	var content string
 	var sessionID uuid.UUID
-	var attachments []agent.Attachment
+	var attachments []database.Attachment
 
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -167,7 +169,7 @@ func parseChatRequest(r *http.Request) (string, uuid.UUID, []agent.Attachment, e
 						fmt.Println("failed to read file:", err)
 						continue
 					}
-					attachments = append(attachments, agent.Attachment{
+					attachments = append(attachments, database.Attachment{
 						Name:      fileHeader.Filename,
 						MediaType: fileHeader.Header.Get("Content-Type"),
 						Data:      data,
@@ -189,201 +191,72 @@ func parseChatRequest(r *http.Request) (string, uuid.UUID, []agent.Attachment, e
 }
 
 func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
-	content, sessionID, attachments, err := parseChatRequest(r)
-	if err != nil {
-		fmt.Printf("chatHandler parsing error: %v\n", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	var req Message
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
 		return
 	}
 
-	if content == "" && len(attachments) == 0 {
-		http.Error(w, "content or attachment is required", http.StatusBadRequest)
-		return
-	}
-
-	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-	agentID := uuid.Must(uuid.Parse("01993ca8-a62e-79e3-995c-a46e25a4a2a2"))
-	var sessionIdPtr *uuid.UUID
-	if sessionID != uuid.Nil {
-		sessionIdPtr = &sessionID
-	}
-
-	session, err := s.agent.GetOrCreateSession(&userID, &agentID, sessionIdPtr, &content)
-	if err != nil {
-		fmt.Printf("Failed to get or create session: %v\n", err)
-		http.Error(w, "Failed to get or create session", http.StatusInternalServerError)
-		return
-	}
-
-	// Initilize session
-	err = session.Initialize()
-	if err != nil {
-		fmt.Printf("Failed to initialize session: %v\n", err)
-		http.Error(w, "Failed to initialize session", http.StatusInternalServerError)
-		return
-	}
-
-	stream := s.streamManager.CreateStream(session.GetSessionID())
-
-	// Return session_id and flush before starting the agent goroutine. Otherwise
-	// the client may open SSE after many tokens are already buffered, so deltas
-	// replay in one burst instead of streaming (openai_provider callbacks still
-	// fire per chunk, but nothing consumes them until Subscribe runs).
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"session_id": session.GetSessionID().String(),
-	}); err != nil {
-		fmt.Printf("chatHandler encode error: %v\n", err)
-		return
-	}
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-
-	go func() {
-		defer func() {
-			stream.Close()
-		}()
-
-		session.AddChatCallback(func(event agent.ChatEvent) error {
-			stream.AddEvent(event)
-			return nil
+	sessionID := req.SessionId
+	if sessionID == uuid.Nil {
+		userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
+		id, err := s.db.CreateSession(r.Context(), database.CreateSessionParams{
+			ID:       uuid.New(),
+			UserID:   userID,
+			Title:    "New conversation",
+			Metadata: []byte("{}"),
 		})
-
-		err = session.HumanInput(content)
 		if err != nil {
-			fmt.Printf("Failed to send human input: %v\n", err)
+			http.Error(w, "failed to create conversation: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		nLoop := 0
-		fmt.Println("Starting agent execution loop")
-		for !session.IsHumanTurn() {
-			fmt.Printf("Loop iteration %d: continuing turn...\n", nLoop+1)
-			err = session.ContinueTurn()
-			if err != nil {
-				fmt.Printf("Failed to continue turn (iteration: %d, error: %v)\n", nLoop+1, err)
-				return
-			}
-			fmt.Printf("Loop iteration %d: completed successfully\n", nLoop+1)
-			nLoop++
-			if nLoop > 10 {
-				fmt.Println("Too many loops (max: 10), something is wrong")
-				return
-			}
-		}
-		fmt.Printf("Agent execution loop completed after %d iterations\n", nLoop)
-	}()
-}
-
-func (s *Server) chatStreamHandler(w http.ResponseWriter, r *http.Request) {
-	sessionIDStr := r.URL.Query().Get("session_id")
-	if sessionIDStr == "" {
-		http.Error(w, "session_id is required", http.StatusBadRequest)
-		return
+		sessionID = id
 	}
-	sessionID, err := uuid.Parse(sessionIDStr)
-	if err != nil {
-		http.Error(w, "invalid session_id format", http.StatusBadRequest)
-		return
-	}
-
-	stream, exists := s.streamManager.GetStream(sessionID)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Accel-Buffering", "no") // prevent nginx/reverse-proxy buffering
 
-	if !exists {
-		// Stream might be completed or never existed. Send a complete event to be safe.
-		writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": sessionID.String()}})
-		return
+	// HTTP/1.1: allow response bytes to flow while the handler still runs.
+	if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
+		// Best-effort; streaming still works on many stacks without this.
+		log.Printf("sse: EnableFullDuplex: %v", err)
 	}
 
-	ch, history, isComplete := stream.Subscribe()
-	if !isComplete {
-		defer stream.Unsubscribe(ch)
-	}
+	w.WriteHeader(http.StatusOK)
+	common.FlushSSE(w)
 
-	// Replay history buffer
-	inThinkingBlock := false
-	for _, event := range history {
-		sendEventToSSE(w, sessionID.String(), event, &inThinkingBlock)
-	}
+	// First SSE frame ASAP so clients see activity before DB + model work.
+	common.WriteSSE(w, common.SSEEvent("start", map[string]any{"session_id": sessionID}))
 
-	if isComplete {
-		return
-	}
-
-	// Listen for new events
 	ctx := r.Context()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event, ok := <-ch:
-			if !ok {
-				return
-			}
-			sendEventToSSE(w, sessionID.String(), event, &inThinkingBlock)
-		}
+	eventCh, err := s.agent.Chat(ctx, sessionID, req.Content)
+	if err != nil {
+		common.WriteSSE(w, common.SSEEvent("error", map[string]any{"message": err.Error()}))
+		return
 	}
-}
 
-func sendEventToSSE(w http.ResponseWriter, sessionID string, event agent.ChatEvent, inThinkingBlock *bool) {
-	switch event.Type {
-	case agent.EventTypeText:
-		if *inThinkingBlock {
-			*inThinkingBlock = false
+	for ev := range eventCh {
+		switch ev.Type {
+		case core.EventThinking:
+			common.WriteSSE(w, common.SSEEvent(core.EventThinking, ev.Data))
+		case core.EventText:
+			common.WriteSSE(w, common.SSEEvent(core.EventText, ev.Content))
+		case core.EventToolCall:
+			common.WriteSSE(w, common.SSEEvent(core.EventToolCall, ev.Data))
+		case core.EventToolResult:
+			common.WriteSSE(w, common.SSEEvent(core.EventToolResult, ev.Data))
+		case core.EventError:
+			common.WriteSSE(w, common.SSEEvent(core.EventError, ev.Data))
+		case core.EventDone:
+			common.WriteSSE(w, common.SSEEvent(core.EventDone, map[string]any{"session_id": sessionID}))
+		default:
+			common.WriteSSE(w, common.SSEEvent(ev.Type, ev.Data))
 		}
-		writeSSE(w, map[string]any{"type": "text_delta", "data": map[string]any{"text": event.Content}})
-	case agent.EventTypeThinking:
-		if !*inThinkingBlock {
-			*inThinkingBlock = true
-		}
-		writeSSE(w, map[string]any{"type": "thinking_delta", "data": map[string]any{"thinking": event.Content}})
-	case agent.EventTypeToolUse:
-		writeSSE(w, map[string]any{"type": "tool_use", "data": map[string]any{"tool_calls": event.ToolUse}})
-	case agent.EventTypeToolResult:
-		// Map backend wrapper to frontend Message object
-		var res map[string]any
-		if event.ToolResult.OpenAI.Role != "" {
-			res = map[string]any{
-				"role": "tool",
-				"content": []any{
-					map[string]any{"type": "text", "text": event.ToolResult.OpenAI.Content},
-				},
-				"tool_call_id": event.ToolResult.OpenAI.ToolCallID,
-			}
-		} else if event.ToolResult.Anthropic.OfToolResult != nil {
-			var content []any
-			for _, part := range event.ToolResult.Anthropic.OfToolResult.Content {
-				if part.OfText != nil {
-					content = append(content, map[string]any{"type": "text", "text": part.OfText.Text})
-				}
-			}
-			res = map[string]any{
-				"role":         "tool",
-				"content":      content,
-				"tool_call_id": event.ToolResult.Anthropic.OfToolResult.ToolUseID,
-			}
-		} else {
-			// Fallback
-			res = map[string]any{"role": "tool", "content": []any{}}
-		}
-		writeSSE(w, map[string]any{"type": "tool_result", "data": map[string]any{"result": res}})
-	}
-	if event.IsEnd {
-		writeSSE(w, map[string]any{"type": "complete", "data": map[string]any{"session_id": sessionID}})
-	}
-}
-
-func writeSSE(w http.ResponseWriter, v any) {
-	data, _ := json.Marshal(v)
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
 	}
 }

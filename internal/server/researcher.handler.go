@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"stockmind/internal/agent/prompts"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/llm/prompts"
 	"stockmind/internal/service/tavily"
 
 	"github.com/go-chi/chi/v5"
@@ -97,7 +97,7 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 
 	req, err := decodeAndValidateRequest(r)
 	if err != nil {
-		writeSSE(w, map[string]any{"type": "error", "data": map[string]any{"message": err.Error()}})
+		common.WriteSSE(w, map[string]any{"type": "error", "data": map[string]any{"message": err.Error()}})
 		return
 	}
 
@@ -109,7 +109,7 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	}()
 
 	for evt := range progressCh {
-		writeSSE(w, map[string]any{"type": "progress", "data": evt})
+		common.WriteSSE(w, map[string]any{"type": "progress", "data": evt})
 
 		// Check if client disconnected between events
 		if r.Context().Err() != nil {
@@ -119,7 +119,7 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 
 	// All progress drained, send the final result
 	response := <-doneCh
-	writeSSE(w, map[string]any{"type": "result", "data": response})
+	common.WriteSSE(w, map[string]any{"type": "result", "data": response})
 
 	// Persist research reports in the background
 	go s.persistReports(response)

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"stockmind/internal/agent"
 	"stockmind/internal/database"
+	core "stockmind/internal/llm"
 	"stockmind/internal/service"
 	"stockmind/internal/service/tavily"
 	"strconv"
@@ -17,16 +17,15 @@ import (
 )
 
 type Server struct {
-	port          int
-	db            *database.Queries
-	dbPool        *pgxpool.Pool
-	agent         *agent.AgentService
-	tavily        *tavily.Client
-	streamManager *StreamManager
+	port            int
+	db              *database.Queries
+	dbPool          *pgxpool.Pool
+	agent           *core.LLMService
+	tavily          *tavily.Client
 	documentService *service.DocumentService
 }
 
-func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, streamManager *StreamManager, documentService *service.DocumentService, port string) *http.Server {
+func NewServer(dbPool *pgxpool.Pool, agent *core.LLMService, documentService *service.DocumentService, port string) *http.Server {
 	portInt, err := strconv.Atoi(port)
 	if err != nil {
 		portInt = 8080
@@ -37,7 +36,6 @@ func NewServer(dbPool *pgxpool.Pool, agent *agent.AgentService, streamManager *S
 		dbPool:          dbPool,
 		agent:           agent,
 		tavily:          tavily.NewClient(),
-		streamManager:   streamManager,
 		documentService: documentService,
 	}
 

@@ -1,26 +1,22 @@
-package agent
+package core
 
 import (
+	"net/http"
 	"os"
+	"time"
+
+	"stockmind/internal/database"
 )
 
-type Config struct {
-	Database Database          `json:"database" yaml:"database"`
-	LLM      LLMProviderConfig `json:"llmProvider" yaml:"llmProvider"`
-}
-
-type Database struct {
-	Host     string `json:"host" yaml:"host"`
-	Port     int    `json:"port" yaml:"port"`
-	User     string `json:"user" yaml:"user"`
-	Password string `json:"password" yaml:"password"`
-	Dbname   string `json:"dbname" yaml:"dbname"`
-}
-
 type LLMProviderConfig struct {
-	AuthType  string          `json:"authType" yaml:"authType"` // "api_key" or "aws"
-	OpenAI    OpenAIConfig    `json:"openai" yaml:"openai,omitempty"`
-	Anthropic AnthropicConfig `json:"anthropic" yaml:"anthropic,omitempty"`
+	OpenAI     OpenAIConfig     `json:"openai" yaml:"openai,omitempty"`
+	Anthropic  AnthropicConfig  `json:"anthropic" yaml:"anthropic,omitempty"`
+	OpenRouter OpenRouterConfig `json:"openrouter" yaml:"openrouter,omitempty"`
+}
+
+type OpenRouterConfig struct {
+	APIKey  string `json:"api_key" yaml:"api_key"`
+	BaseURL string `json:"baseURL" yaml:"baseURL"`
 }
 
 type OpenAIConfig struct {
@@ -44,7 +40,6 @@ type AWSCredentialConfig struct {
 
 func LoadLLMConfig() LLMProviderConfig {
 	return LLMProviderConfig{
-		AuthType: "api_key",
 		OpenAI: OpenAIConfig{
 			APIKey:  os.Getenv("OPENROUTER_API_KEY"),
 			BaseURL: "https://openrouter.ai/api/v1",
@@ -52,6 +47,10 @@ func LoadLLMConfig() LLMProviderConfig {
 		Anthropic: AnthropicConfig{
 			BaseURL: "https://openrouter.ai/api",
 			APIKey:  os.Getenv("OPENROUTER_API_KEY"),
+		},
+		OpenRouter: OpenRouterConfig{
+			APIKey:  os.Getenv("OPENROUTER_API_KEY"),
+			BaseURL: "https://openrouter.ai/api/v1",
 		},
 		// Anthropic: AnthropicConfig{
 		// 	AuthType: "aws",
@@ -66,26 +65,26 @@ func LoadLLMConfig() LLMProviderConfig {
 	}
 }
 
-// func LoadConfig(filePath string) (*Config, error) {
-// 	config := &Config{}
-// 	data, err := os.ReadFile(filePath)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	expandedData, err := shell.Expand(string(data), func(env string) string {
-// 		return os.Getenv(env)
-// 	})
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	data = []byte(expandedData) // Replace environment variables in the config file
+// GetModelName returns the model name from the LLM_MODEL environment variable.
+// Example: "openai/gpt-4o", "anthropic/claude-3-5-sonnet"
+func GetModelName() string {
+	return os.Getenv("LLM_MODEL")
+}
 
-// 	if err := yaml.UnmarshalStrict(data, config); err != nil {
-// 		return nil, err
-// 	}
+// GetProviderName returns the provider name from the LLM_PROVIDER environment variable.
+// Supported values: "openai", "anthropic"
+func GetProviderName() database.ModelProvider {
+	return database.ModelProvider(os.Getenv("LLM_PROVIDER"))
+}
 
-// 	// Here you can add logic to replace environment variables in the config if needed
-// 	// For example, using os.Getenv() to replace placeholders in the config struct
-
-// 	return config, nil
-// }
+// sharedHTTPClient is a process-wide HTTP client with a tuned connection pool.
+// All non-Bedrock LLM SDKs reuse it so TLS handshakes and TCP connections are
+// amortized across requests, reducing time-to-first-token.
+var sharedHTTPClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+		ForceAttemptHTTP2:   true,
+	},
+}

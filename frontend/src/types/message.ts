@@ -1,8 +1,3 @@
-export type TextContent = {
-  type: "text";
-  text: string;
-};
-
 export type ImageContent = {
   type: "image_url";
   image_url: {
@@ -16,10 +11,18 @@ export type ThinkingContent = {
   is_open: boolean;
 };
 
-export type ContentPart = TextContent | ImageContent | ThinkingContent;
+export type ToolCall = {
+  id: string;
+  name: string;
+  arguments: string;
+  output: string;
+  is_error: string;
+};
+
+export type Metadata = ImageContent | ThinkingContent | ToolCall;
 
 export type Message = {
-  role: "user" | "assistant" | "tool";
-  content?: ContentPart[];
-  tool_calls?: Record<string, unknown>[];
+  role: "user" | "assistant";
+  content?: string;
+  metadata?: Metadata[];
 };

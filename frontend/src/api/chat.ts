@@ -1,68 +1,79 @@
 import api from "./index";
+import type { Message } from "@/types/message";
 
 export interface ChatMessage {
   content: string;
   session_id?: string;
 }
 
-export interface ChatResponse {
-  type: "thinking_delta" | "text_delta" | "tool_use" | "tool_result" | "complete";
-  data?: {
-    thinking?: string;
-    text?: string;
-    session_id?: string;
-    tool_calls?: Record<string, any>;
-    result?: Record<string, any>;
-  };
+export type ChatEventType = "start" | "thinking" | "text" | "tool_call" | "tool_result" | "done" | "error";
+
+export interface ChatEvent {
+  type: ChatEventType;
+  data?: unknown;
 }
 
-export const startChatSession = async (
+/* -------------------------------------------------------------------------- */
+/*  SSE parsing helpers                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Parse a single SSE frame (possibly containing multiple `data:` lines)
+ * and emit the parsed event via `onEvent`.
+ */
+function parseFrame(frame: string, onEvent: (event: ChatEvent) => void) {
+  const dataLines = frame
+    .split("\n")
+    .filter((l) => l.startsWith("data:"))
+    .map((l) => l.slice(5).replace(/^ /, ""));
+
+  if (dataLines.length === 0) return;
+
+  const payload = dataLines.join("\n");
+  try {
+    const raw = JSON.parse(payload) as ChatEvent;
+    onEvent(raw);
+  } catch (err) {
+    console.error("Failed to parse SSE frame:", err, payload);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  POST /chat — single endpoint: sends message & returns SSE stream          */
+/* -------------------------------------------------------------------------- */
+export const sendChatMessage = async (
   content: string,
   sessionId: string | undefined,
-  file?: File | null
-): Promise<string> => {
-  let body;
-  const headers: Record<string, string> = {};
-
-  if (file) {
-    const formData = new FormData();
-    formData.append("content", content);
-    if (sessionId) formData.append("session_id", sessionId);
-    formData.append("file", file);
-    body = formData;
-  } else {
-    headers["Content-Type"] = "application/json";
-    body = JSON.stringify({ content, session_id: sessionId });
-  }
-
-  const response = await fetch(`${api.defaults.baseURL}/chat`, {
-    method: "POST",
-    headers,
-    body,
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.session_id;
-};
-
-export const streamChatSession = async (
-  sessionId: string,
-  onMessage: (data: ChatResponse) => void,
-  onError: (error: any) => void
-) => {
+  onEvent: (event: ChatEvent) => void,
+  onError: (error: unknown) => void,
+  file?: File | null,
+  signal?: AbortSignal,
+): Promise<void> => {
   try {
-    const response = await fetch(`${api.defaults.baseURL}/chat/stream?session_id=${sessionId}`, {
-      method: "GET",
+    let body: BodyInit;
+    const headers: Record<string, string> = {};
+
+    if (file) {
+      const formData = new FormData();
+      formData.append("content", content);
+      if (sessionId) formData.append("session_id", sessionId);
+      formData.append("file", file);
+      body = formData;
+    } else {
+      headers["Content-Type"] = "application/json";
+      body = JSON.stringify({ content, session_id: sessionId });
+    }
+
+    const response = await fetch(`${api.defaults.baseURL}/chat`, {
+      method: "POST",
+      headers,
+      body,
+      signal,
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Chat request failed: ${response.status}`);
     }
-
     if (!response.body) {
       throw new Error("Response body is null");
     }
@@ -71,52 +82,44 @@ export const streamChatSession = async (
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
 
+    // Frames are separated by a blank line. Handle both `\n\n` and `\r\n\r\n`.
+    const FRAME_DELIM = /\r?\n\r?\n/;
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n\n");
-      buffer = lines.pop() || "";
 
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          try {
-            const parsed = JSON.parse(data) as ChatResponse;
-            onMessage(parsed);
-          } catch (e) {
-            console.error("Error parsing SSE data:", e);
-          }
-        }
+      // Drain all complete frames from the buffer.
+      let match = buffer.match(FRAME_DELIM);
+      while (match && match.index !== undefined) {
+        const frame = buffer.slice(0, match.index);
+        buffer = buffer.slice(match.index + match[0].length);
+        if (frame.trim()) parseFrame(frame, onEvent);
+        match = buffer.match(FRAME_DELIM);
       }
     }
+
+    // Flush any trailing frame (some servers don't send a final blank line).
+    if (buffer.trim()) parseFrame(buffer, onEvent);
   } catch (error) {
+    // Swallow intentional aborts so consumers don't treat them as failures.
+    if ((error as { name?: string })?.name === "AbortError") return;
     onError(error);
   }
 };
 
-import type { Message } from "@/types/message";
+/* -------------------------------------------------------------------------- */
+/*  GET /sessions/:id — fetch persisted messages for a session                */
+/* -------------------------------------------------------------------------- */
 
 /**
- * Normalize a raw message from the backend (openai.ChatCompletionMessage shape)
- * into the frontend Message type where content is always ContentPart[].
+ * Normalize a raw message from the backend into the frontend Message type.
  */
 function normalizeMessage(raw: any): Message {
   const role = raw.role as Message["role"];
-
-  // Already in the expected shape (ContentPart[])
-  if (Array.isArray(raw.content)) {
-    return { role, content: raw.content, tool_calls: raw.tool_calls };
-  }
-
-  // Backend returns content as a plain string — wrap it
-  const parts: any[] = [];
-  if (typeof raw.content === "string" && raw.content) {
-    parts.push({ type: "text", text: raw.content });
-  }
-
-  return { role, content: parts, tool_calls: raw.tool_calls };
+  return { role, content: raw.content, metadata: raw.tool_calls };
 }
 
 export const getMessages = async (sessionId: string): Promise<Message[]> => {
