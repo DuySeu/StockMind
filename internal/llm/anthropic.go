@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"stockmind/internal/common"
 	"stockmind/internal/database"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -19,7 +20,7 @@ import (
 )
 
 // NewAnthropicClient builds an Anthropic client (direct API or AWS Bedrock) from the given config.
-func NewAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*anthropic.Client, error) {
+func NewAnthropicClient(ctx context.Context, cfg common.Anthropic) (*anthropic.Client, error) {
 	var ac anthropic.Client
 	if strings.Contains(cfg.BaseURL, "openrouter.ai") {
 		if cfg.APIKey == "" {
@@ -28,7 +29,7 @@ func NewAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*anthropic.Cl
 		ac = anthropic.NewClient(
 			option.WithAPIKey(cfg.APIKey),
 			option.WithBaseURL(cfg.BaseURL),
-			option.WithHTTPClient(sharedHTTPClient),
+			option.WithHTTPClient(common.SharedHTTPClient),
 		)
 	} else {
 		defaultAWSCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(cfg.AWS.Region))
@@ -66,8 +67,8 @@ func NewAnthropicClient(ctx context.Context, cfg AnthropicConfig) (*anthropic.Cl
 
 // AnthropicCompletion sends messages to the Anthropic API and returns a streaming event channel.
 // It supports text streaming and tool use via the official anthropic-sdk-go streaming API.
-func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 256)
+func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent, 256)
 
 	// -- Map messages --
 	anthropicMsgs, err := mapToAnthropicMessages(messages)
@@ -118,8 +119,8 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 				switch delta := ev.Delta.AsAny().(type) {
 				case anthropic.TextDelta:
 					if delta.Text != "" {
-						ch <- StreamEvent{
-							Type:    EventText,
+						ch <- common.StreamEvent{
+							Type:    common.EventText,
 							Content: delta.Text,
 						}
 					}
@@ -139,8 +140,8 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 			case anthropic.ContentBlockStopEvent:
 				// Emit tool call when a tool_use block finishes
 				if currentToolID != "" {
-					ch <- StreamEvent{
-						Type: EventToolCall,
+					ch <- common.StreamEvent{
+						Type: common.EventToolCall,
 						Data: database.Tool{
 							ID:        currentToolID,
 							Name:      currentToolName,
@@ -154,18 +155,18 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 
 			case anthropic.MessageStopEvent:
 				_ = ev
-				ch <- StreamEvent{Type: EventDone}
+				ch <- common.StreamEvent{Type: common.EventDone}
 				return
 			}
 		}
 
 		if err := stream.Err(); err != nil {
-			ch <- StreamEvent{Type: EventError, Data: err.Error()}
+			ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 			return
 		}
 
 		// Fallback done signal if MessageStopEvent was not received
-		ch <- StreamEvent{Type: EventDone}
+		ch <- common.StreamEvent{Type: common.EventDone}
 	}()
 
 	return ch, nil

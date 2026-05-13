@@ -1,4 +1,4 @@
-package rag
+package worker
 
 import (
 	"context"
@@ -7,9 +7,13 @@ import (
 	"os"
 	"sync"
 
+	"stockmind/internal/database"
+	"stockmind/internal/llm/rag"
+	"stockmind/internal/qdrant"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"stockmind/internal/database"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Job represents a background processing task for an uploaded document.
@@ -17,26 +21,26 @@ type Job struct {
 	DocID    uuid.UUID
 	Name     string
 	FileType string
-	Strategy Strategy
+	Strategy rag.Strategy
 	TempFile string
 }
 
-// Worker orchestrates the background processing pipeline.
+// Worker orchestrates the background document processing pipeline.
 type Worker struct {
 	db       *database.Queries
-	store    Store
-	embedder Embedder
+	store    qdrant.Store
+	embedder rag.Embedder
 	jobs     chan *Job
 	wg       sync.WaitGroup
 }
 
 // NewWorker creates a new worker pool.
-func NewWorker(db *database.Queries, store Store, embedder Embedder) *Worker {
+func NewWorker(dbPool *pgxpool.Pool, store qdrant.Store, embedder rag.Embedder) *Worker {
 	return &Worker{
-		db:       db,
+		db:       database.New(dbPool),
 		store:    store,
 		embedder: embedder,
-		jobs:     make(chan *Job, 10), // Configured with buffered cap=10
+		jobs:     make(chan *Job, 10),
 	}
 }
 
@@ -45,22 +49,20 @@ func (w *Worker) Enqueue(job *Job) {
 	w.jobs <- job
 }
 
-// Start launches the background goroutine pool for processing documents.
-// It will gracefully stop and finish pending jobs when ctx is cancelled.
+// Start launches the background goroutine pool.
 func (w *Worker) Start(ctx context.Context) {
 	numWorkers := 2
-
 	for i := 0; i < numWorkers; i++ {
 		w.wg.Add(1)
-		go func(workerID int) {
+		go func(id int) {
 			defer w.wg.Done()
 			for {
 				select {
 				case <-ctx.Done():
-					log.Printf("Worker %d: shutting down gracefully", workerID)
+					log.Printf("Worker %d: shutting down gracefully", id)
 					return
 				case job := <-w.jobs:
-					log.Printf("Worker %d: processing job %s", workerID, job.DocID)
+					log.Printf("Worker %d: processing job %s", id, job.DocID)
 					w.process(ctx, job)
 				}
 			}
@@ -68,32 +70,29 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-// Wait blocks until all active jobs finish, useful for graceful shutdown
-// after ctx is cancelled.
+// Wait blocks until all active jobs finish.
 func (w *Worker) Wait() {
 	w.wg.Wait()
 }
 
-// process handles the full pipeline: Parse -> Chunk -> Embed -> Store.
 func (w *Worker) process(ctx context.Context, job *Job) {
-	defer os.Remove(job.TempFile) // Always cleanup temp file
+	defer os.Remove(job.TempFile)
 
 	updateStatus := func(status string, count int, errMsg string) {
 		msg := pgtype.Text{String: errMsg, Valid: errMsg != ""}
-		err := w.db.UpdateDocumentStatus(ctx, database.UpdateDocumentStatusParams{
+		if err := w.db.UpdateDocumentStatus(ctx, database.UpdateDocumentStatusParams{
 			ID:         job.DocID,
 			Status:     status,
 			ChunkCount: int32(count),
 			ErrorMsg:   msg,
-		})
-		if err != nil {
+		}); err != nil {
 			log.Printf("Failed to update status to %s for doc %s: %v", status, job.DocID, err)
 		}
 	}
 
 	updateStatus("processing", 0, "")
 
-	parser, err := getParser(job.FileType)
+	parser, err := rag.GetParser(job.FileType)
 	if err != nil {
 		updateStatus("failed", 0, fmt.Sprintf("parser init: %v", err))
 		return
@@ -101,7 +100,7 @@ func (w *Worker) process(ctx context.Context, job *Job) {
 
 	file, err := os.Open(job.TempFile)
 	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("failed to open file %s: %v", job.TempFile, err))
+		updateStatus("failed", 0, fmt.Sprintf("failed to open file: %v", err))
 		return
 	}
 	defer file.Close()
@@ -112,14 +111,13 @@ func (w *Worker) process(ctx context.Context, job *Job) {
 		return
 	}
 
-	// Validate text
-	validator := NewValidator()
+	validator := rag.NewValidator()
 	if err := validator.Validate(text); err != nil {
 		updateStatus("failed", 0, fmt.Sprintf("validation failed: %v", err))
 		return
 	}
 
-	chunker, err := getChunker(job.Strategy, w.embedder)
+	chunker, err := rag.GetChunker(job.Strategy, w.embedder)
 	if err != nil {
 		updateStatus("failed", 0, fmt.Sprintf("chunker init: %v", err))
 		return
@@ -147,42 +145,11 @@ func (w *Worker) process(ctx context.Context, job *Job) {
 		return
 	}
 
-	err = w.store.Upsert(ctx, job.DocID.String(), chunks, vectors, job.Strategy)
+	err = w.store.Upsert(ctx, job.DocID.String(), chunks, vectors, string(job.Strategy))
 	if err != nil {
 		updateStatus("failed", 0, fmt.Sprintf("upsert to vector store failed: %v", err))
 		return
 	}
 
 	updateStatus("ready", len(chunks), "")
-}
-
-func getParser(fileType string) (Parser, error) {
-	switch fileType {
-	case "pdf":
-		return NewPDFParser(), nil
-	case "docx":
-		return NewDOCXParser(), nil
-	case "md", "markdown":
-		return NewMDParser(), nil
-	case "txt", "text":
-		return NewTXTParser(), nil
-	default:
-		return nil, fmt.Errorf("unsupported file type: %s", fileType)
-	}
-}
-
-func getChunker(strategy Strategy, embedder Embedder) (Chunker, error) {
-	switch strategy {
-	case StrategyRecursive:
-		return NewRecursiveChunker(512, 51), nil
-	case StrategyFixed:
-		return NewFixedChunker(512, 51), nil
-	case StrategyParagraph:
-		return NewParagraphChunker(), nil
-	case StrategySemantic:
-		return NewSemanticChunker(embedder, 0.70), nil
-	default:
-		// Default to recursive if strategy is empty or invalid
-		return NewRecursiveChunker(512, 51), nil
-	}
 }

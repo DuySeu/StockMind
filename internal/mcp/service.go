@@ -6,31 +6,21 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"stockmind/internal/rag"
 )
 
-func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.Embedder) (func(), error) {
-	// Create MCP server
+func Start(ctx context.Context, protocol string) (func(), error) {
 	s := server.NewMCPServer(
 		"StockMind 🚀",
 		"1.0.0",
 		server.WithToolCapabilities(false),
 	)
 
-	// Register tools
 	s.AddTool(
 		mcp.NewTool("get_stock_price",
 			mcp.WithDescription("Get latest stock price from VCI with symbol, time frame and look back period"),
-			mcp.WithString("symbol",
-				mcp.Required(),
-				mcp.Description("Stock symbol, e.g., HPG"),
-			),
-			mcp.WithString("time_frame",
-				mcp.Description("Time frame, e.g., ONE_DAY, ONE_MINUTE, ONE_HOUR. Default is ONE_DAY"),
-			),
-			mcp.WithNumber("count_back",
-				mcp.Description("Number of data points to look back. Default is 10"),
-			),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
+			mcp.WithString("time_frame", mcp.Description("Time frame, e.g., ONE_DAY, ONE_MINUTE, ONE_HOUR. Default is ONE_DAY")),
+			mcp.WithNumber("count_back", mcp.Description("Number of data points to look back. Default is 10")),
 		),
 		GetStockPrice,
 	)
@@ -38,10 +28,7 @@ func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.E
 	s.AddTool(
 		mcp.NewTool("piotroski_evaluation",
 			mcp.WithDescription("Get Piotroski evaluation for a stock"),
-			mcp.WithString("symbol",
-				mcp.Required(),
-				mcp.Description("Stock symbol, e.g., HPG"),
-			),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
 		),
 		GetPiotroskiEvaluation,
 	)
@@ -49,10 +36,7 @@ func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.E
 	s.AddTool(
 		mcp.NewTool("altman_z_score",
 			mcp.WithDescription("Get Altman Z-Score for a stock"),
-			mcp.WithString("symbol",
-				mcp.Required(),
-				mcp.Description("Stock symbol, e.g., HPG"),
-			),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
 		),
 		GetAltmanZScore,
 	)
@@ -60,13 +44,8 @@ func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.E
 	s.AddTool(
 		mcp.NewTool("get_report",
 			mcp.WithDescription("Get report for a stock"),
-			mcp.WithString("symbol",
-				mcp.Required(),
-				mcp.Description("Stock symbol, e.g., HPG"),
-			),
-			mcp.WithString("period",
-				mcp.Description("Financial report period, e.g., Q(Quarter), Y(Year). Default is Q"),
-			),
+			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
+			mcp.WithString("period", mcp.Description("Financial report period, e.g., Q(Quarter), Y(Year). Default is Q")),
 		),
 		GetReport,
 	)
@@ -74,10 +53,7 @@ func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.E
 	s.AddTool(
 		mcp.NewTool("get_news",
 			mcp.WithDescription("Get stock news for a query"),
-			mcp.WithString("query",
-				mcp.Required(),
-				mcp.Description("Query related to stock news"),
-			),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Query related to stock news")),
 		),
 		GetNews,
 	)
@@ -85,20 +61,15 @@ func Start(ctx context.Context, protocol string, store rag.Store, embedder rag.E
 	s.AddTool(
 		mcp.NewTool("retrieve_knowledge",
 			mcp.WithDescription("Retrieve detailed financial knowledge, concepts, definitions, or internal document information from the knowledge base. Use this for general queries, not for real-time stock prices or latest news."),
-			mcp.WithString("query",
-				mcp.Required(),
-				mcp.Description("Query related to financial knowledge or concepts"),
-			),
+			mcp.WithString("query", mcp.Required(), mcp.Description("Query related to financial knowledge or concepts")),
 		),
-		NewRetrieveKnowledgeHandler(store, embedder),
+		NewRetrieveKnowledgeHandler,
 	)
 
-	// Start server based on protocol
 	switch protocol {
 	case "stdio":
 		return func() {}, server.ServeStdio(s)
 	case "http", "streamablehttp":
-		// Handle both http and streamablehttp as HTTP server
 		h := server.NewStreamableHTTPServer(s)
 		go func() {
 			if err := h.Start("0.0.0.0:8081"); err != nil {

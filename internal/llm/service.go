@@ -7,23 +7,24 @@ import (
 	"strings"
 	"time"
 
+	"stockmind/internal/common"
 	"stockmind/internal/database"
-	"stockmind/internal/llm/tool"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-type completionFunc func(context.Context, []database.Message, []mcp.Tool) (<-chan StreamEvent, error)
+type completionFunc func(context.Context, []database.Message, []mcp.Tool) (<-chan common.StreamEvent, error)
 
 type LLMService struct {
 	queries    *database.Queries
-	tools      *tool.ToolManager
+	tools      *ToolManager
 	completion completionFunc
 }
 
-func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg LLMProviderConfig, q *database.Queries, t *tool.ToolManager) (*LLMService, error) {
+func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, t *ToolManager) (*LLMService, error) {
 	var completion completionFunc
 	switch providerName {
 	case database.ModelProviderOpenAI:
@@ -31,7 +32,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
 			return OpenAICompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderAnthropic:
@@ -39,7 +40,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
 			return AnthropicCompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderOpenRouter:
@@ -47,7 +48,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
 			return OpenRouterCompletion(client, model, ctx, history, tools)
 		}
 	default:
@@ -55,7 +56,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 	}
 
 	return &LLMService{
-		queries:    q,
+		queries:    database.New(pool),
 		tools:      t,
 		completion: completion,
 	}, nil
@@ -63,7 +64,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 
 // runToolRound runs each tool in order, streams ToolResult events, and appends
 // one assistant history row containing every tool call/output pair.
-func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- StreamEvent, history []database.Message, pending []database.Tool) []database.Message {
+func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- common.StreamEvent, history []database.Message, pending []database.Tool) []database.Message {
 	assembled := make([]database.Tool, 0, len(pending))
 	for _, tc := range pending {
 		result, execErr := s.tools.Execute(ctx, tc.Name, tc.Arguments)
@@ -73,7 +74,7 @@ func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- StreamEve
 			isError = "true"
 		}
 		tr := database.Tool{ID: tc.ID, Output: result, IsError: isError}
-		outputCh <- StreamEvent{Type: EventToolResult, Data: tr}
+		outputCh <- common.StreamEvent{Type: common.EventToolResult, Data: tr}
 		assembled = append(assembled, database.Tool{
 			ID:        tc.ID,
 			Name:      tc.Name,
@@ -86,9 +87,9 @@ func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- StreamEve
 	return append(history, database.Message{Role: "assistant", Metadata: meta})
 }
 
-func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt string) (<-chan StreamEvent, error) {
+func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt string) (<-chan common.StreamEvent, error) {
 	// Unbuffered: mỗi event LLM chỉ rời relay khi HTTP handler đã nhận (ít gom trong RAM).
-	outputCh := make(chan StreamEvent)
+	outputCh := make(chan common.StreamEvent)
 
 	go func() {
 		defer close(outputCh)
@@ -99,7 +100,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 			var err error
 			history, err = s.queries.GetSessionHistoryBySessionID(ctx, sessionID)
 			if err != nil {
-				outputCh <- StreamEvent{Type: EventError, Data: err.Error()}
+				outputCh <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 				return
 			}
 		}
@@ -136,18 +137,18 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 		// 4. Call CallLLM to handle the provider interactions and tool loop.
 		streamCh, err := s.CallLLM(ctx, history)
 		if err != nil {
-			outputCh <- StreamEvent{Type: EventError, Data: err.Error()}
+			outputCh <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 			return
 		}
 
 		// 5. Relay events, collect text, and intercept tool metadata for database saving.
 		for event := range streamCh {
 			switch event.Type {
-			case EventText:
+			case common.EventText:
 				turnText.WriteString(event.Content)
 				outputCh <- event // forward to SSE immediately
 
-			case EventToolCall:
+			case common.EventToolCall:
 				tc := event.Data.(database.Tool)
 				if _, ok := toolsMap[tc.ID]; !ok {
 					toolsMap[tc.ID] = &database.Tool{ID: tc.ID}
@@ -156,7 +157,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 				toolsMap[tc.ID].Arguments = tc.Arguments
 				outputCh <- event
 
-			case EventToolResult:
+			case common.EventToolResult:
 				tr := event.Data.(database.Tool)
 				if _, ok := toolsMap[tr.ID]; !ok {
 					toolsMap[tr.ID] = &database.Tool{ID: tr.ID}
@@ -165,7 +166,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 				toolsMap[tr.ID].IsError = tr.IsError
 				outputCh <- event
 
-			case EventDone:
+			case common.EventDone:
 				outputCh <- event
 
 				var tools []database.Tool
@@ -194,7 +195,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 				}
 				return
 
-			case EventError:
+			case common.EventError:
 				outputCh <- event
 				return
 			}
@@ -205,9 +206,9 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 }
 
 // CallLLM provides a direct chat interface without any database interactions or session management.
-func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<-chan StreamEvent, error) {
+func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<-chan common.StreamEvent, error) {
 	// Buffer nhỏ: provider vẫn có chút chỗ thở; relay Chat → SSE là unbuffered.
-	outputCh := make(chan StreamEvent, 4)
+	outputCh := make(chan common.StreamEvent, 4)
 
 	go func() {
 		defer close(outputCh)
@@ -218,7 +219,7 @@ func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<
 		for {
 			streamCh, err := s.completion(ctx, history, toolDefs)
 			if err != nil {
-				outputCh <- StreamEvent{Type: EventError, Data: err.Error()}
+				outputCh <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 				return
 			}
 
@@ -226,15 +227,15 @@ func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<
 
 			for event := range streamCh {
 				switch event.Type {
-				case EventText:
+				case common.EventText:
 					outputCh <- event
 
-				case EventToolCall:
+				case common.EventToolCall:
 					tc := event.Data.(database.Tool)
 					outputCh <- event
 					pendingTools = append(pendingTools, tc)
 
-				case EventDone:
+				case common.EventDone:
 					if len(pendingTools) > 0 {
 						history = s.runToolRound(ctx, outputCh, history, pendingTools)
 						pendingTools = pendingTools[:0]
@@ -243,7 +244,7 @@ func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<
 					outputCh <- event
 					return
 
-				case EventError:
+				case common.EventError:
 					outputCh <- event
 					return
 				}

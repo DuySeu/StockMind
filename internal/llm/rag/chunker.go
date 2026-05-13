@@ -37,6 +37,22 @@ type Chunker interface {
 	Strategy() Strategy
 }
 
+func GetChunker(strategy Strategy, embedder Embedder) (Chunker, error) {
+	switch strategy {
+	case StrategyRecursive:
+		return NewRecursiveChunker(512, 51), nil
+	case StrategyFixed:
+		return NewFixedChunker(512, 51), nil
+	case StrategyParagraph:
+		return NewParagraphChunker(), nil
+	case StrategySemantic:
+		return NewSemanticChunker(embedder, 0.70), nil
+	default:
+		// Default to recursive if strategy is empty or invalid
+		return NewRecursiveChunker(512, 51), nil
+	}
+}
+
 // ---- Recursive Chunker ----
 
 // separators defines the ordered list of delimiters the recursive splitter

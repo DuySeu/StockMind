@@ -5,29 +5,31 @@ import (
 	"fmt"
 	"strings"
 
+	"stockmind/internal/common"
 	"stockmind/internal/database"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
+	"github.com/OpenRouterTeam/go-sdk/models/operations"
 	"github.com/OpenRouterTeam/go-sdk/optionalnullable"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // NewOpenRouterClient builds an OpenRouter client from the given config.
-func NewOpenRouterClient(config OpenRouterConfig) (*openrouter.OpenRouter, error) {
+func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("OPENROUTER_API_KEY is not found")
 	}
 	client := openrouter.New(
 		openrouter.WithSecurity(config.APIKey),
-		openrouter.WithClient(sharedHTTPClient),
+		openrouter.WithClient(common.SharedHTTPClient),
 	)
 	return client, nil
 }
 
 // OpenRouterCompletion calls the OpenRouter API using the official SDK.
-func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 256)
+func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent, 256)
 
 	mapped := mapToOpenRouterChat(messages, tools)
 
@@ -69,12 +71,12 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 			// ── Text delta ───────────────────────────────────────────────────
 			// OptionalNullable is map[bool]*T keyed by true (see go-sdk/optionalnullable).
 			if ptr, set := choice.Delta.Content.Get(); set && ptr != nil && *ptr != "" {
-				ch <- StreamEvent{Type: EventText, Content: *ptr}
+				ch <- common.StreamEvent{Type: common.EventText, Content: *ptr}
 			}
 			// Reasoning (a.k.a. "thinking") deltas are streamed separately so
 			// clients can render them as a distinct thought stream.
 			if ptr, set := choice.Delta.Reasoning.Get(); set && ptr != nil && *ptr != "" {
-				ch <- StreamEvent{Type: EventThinking, Content: *ptr}
+				ch <- common.StreamEvent{Type: common.EventThinking, Content: *ptr}
 			}
 
 			// ── Tool call deltas (accumulate by index) ───────────────────────
@@ -111,8 +113,8 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 					// Emit each fully-assembled tool call
 					for i := 0; i < len(pendingToolCalls); i++ {
 						if tc, ok := pendingToolCalls[i]; ok {
-							ch <- StreamEvent{
-								Type: EventToolCall,
+							ch <- common.StreamEvent{
+								Type: common.EventToolCall,
 								Data: *tc,
 							}
 						}
@@ -121,17 +123,17 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 					pendingToolCalls = map[int]*database.Tool{}
 
 				case "stop":
-					ch <- StreamEvent{Type: EventDone}
+					ch <- common.StreamEvent{Type: common.EventDone}
 					return
 				}
 			}
 		}
 
 		if err := res.EventStream.Err(); err != nil {
-			ch <- StreamEvent{Type: EventError, Data: err.Error()}
+			ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 			return
 		}
-		ch <- StreamEvent{Type: EventDone}
+		ch <- common.StreamEvent{Type: common.EventDone}
 	}()
 
 	return ch, nil
@@ -229,6 +231,37 @@ func mapToOpenRouterChat(messages []database.Message, tools []mcp.Tool) openRout
 		}
 	}
 	return out
+}
+
+// OpenRouterEmbedding calls the OpenRouter embeddings endpoint using the shared SDK client.
+// It accepts a batch of strings and returns float32 vectors.
+func OpenRouterEmbedding(ctx context.Context, client *openrouter.OpenRouter, model string, inputs []string) ([][]float32, error) {
+	req := operations.CreateEmbeddingsRequest{
+		Model: model,
+		Input: operations.CreateInputUnionArrayOfStr(inputs),
+	}
+
+	resp, err := client.Embeddings.Generate(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("openrouter embedding: %w", err)
+	}
+	if resp == nil || resp.CreateEmbeddingsResponseBody == nil {
+		return nil, fmt.Errorf("openrouter embedding: empty response")
+	}
+
+	data := resp.CreateEmbeddingsResponseBody.Data
+	vecs := make([][]float32, len(data))
+	for i, d := range data {
+		if d.Embedding.ArrayOfNumber == nil {
+			return nil, fmt.Errorf("openrouter embedding: unexpected format at index %d", i)
+		}
+		v := make([]float32, len(d.Embedding.ArrayOfNumber))
+		for j, f := range d.Embedding.ArrayOfNumber {
+			v[j] = float32(f)
+		}
+		vecs[i] = v
+	}
+	return vecs, nil
 }
 
 // schemaToMap converts an MCP input schema into the generic map shape expected

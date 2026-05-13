@@ -32,7 +32,7 @@ func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user in database
-	if _, err := s.db.CreateUser(r.Context(), *user); err != nil {
+	if _, err := s.queries.CreateUser(r.Context(), *user); err != nil {
 		http.Error(w, "Failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -50,7 +50,7 @@ func (s *Server) CreateUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) GetUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// Get users from database
-	users, err := s.db.GetUsers(r.Context())
+	users, err := s.queries.GetUsers(r.Context())
 	if err != nil {
 		http.Error(w, "Failed to get users: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -71,7 +71,7 @@ func (s *Server) GetUserByIDHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Get user from database
-	user, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
+	user, err := s.queries.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -100,7 +100,7 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if user exists
-	existingUser, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
+	existingUser, err := s.queries.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -123,7 +123,7 @@ func (s *Server) UpdateUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update user in database
-	if err := s.db.UpdateUser(r.Context(), *user); err != nil {
+	if err := s.queries.UpdateUser(r.Context(), *user); err != nil {
 		http.Error(w, "Failed to update user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -143,14 +143,14 @@ func (s *Server) DeleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	// Check if user exists
-	_, err := s.db.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
+	_, err := s.queries.GetUserByID(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		http.Error(w, "User not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
 
 	// Delete user from database
-	if err := s.db.DeleteUser(r.Context(), uuid.Must(uuid.Parse(id))); err != nil {
+	if err := s.queries.DeleteUser(r.Context(), uuid.Must(uuid.Parse(id))); err != nil {
 		http.Error(w, "Failed to delete user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

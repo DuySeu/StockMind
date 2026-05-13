@@ -1,15 +1,20 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	"stockmind/internal/rag"
+	"stockmind/internal/database"
+	"stockmind/internal/llm/rag"
+	"stockmind/internal/service/worker"
 )
 
 // UploadDocumentHandler receives multipart form uploads with up to a 10MB limit.
@@ -60,7 +65,7 @@ func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		fileType = ft
 	}
 
-	doc, err := s.documentService.Upload(r.Context(), name, fileType, header.Size, file, strategy)
+	doc, err := s.Upload(r.Context(), name, fileType, header.Size, file, strategy)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to upload: %v", err), http.StatusInternalServerError)
 		return
@@ -73,7 +78,7 @@ func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 
 // ListDocumentsHandler returns all indexed documents.
 func (s *Server) ListDocumentsHandler(w http.ResponseWriter, r *http.Request) {
-	docs, err := s.documentService.List(r.Context())
+	docs, err := s.queries.ListDocuments(r.Context())
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to list documents: %v", err), http.StatusInternalServerError)
 		return
@@ -92,7 +97,7 @@ func (s *Server) GetDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := s.documentService.GetByID(r.Context(), id)
+	doc, err := s.queries.GetDocumentByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("document not found: %v", err), http.StatusNotFound)
 		return
@@ -111,11 +116,58 @@ func (s *Server) DeleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.documentService.Delete(r.Context(), id)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete document: %v", err), http.StatusInternalServerError)
+	if err := s.vectorStore.Delete(r.Context(), id.String()); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete related vectors from qdrant: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := s.queries.DeleteDocument(r.Context(), id); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete document metadata: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent) // 204
+}
+
+func (s *Server) Upload(ctx context.Context, name, fileType string, size int64, file io.Reader, strategy rag.Strategy) (database.Document, error) {
+	tempFile, err := os.CreateTemp("", fmt.Sprintf("upload-*-%s.%s", uuid.New().String(), fileType))
+	if err != nil {
+		return database.Document{}, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer tempFile.Close()
+
+	cleanupOnFail := true
+	defer func() {
+		if cleanupOnFail {
+			os.Remove(tempFile.Name())
+		}
+	}()
+
+	if _, err = io.Copy(tempFile, file); err != nil {
+		return database.Document{}, fmt.Errorf("failed to save uploaded file: %w", err)
+	}
+
+	docID := uuid.New()
+	doc, err := s.queries.CreateDocument(ctx, database.CreateDocumentParams{
+		ID:        docID,
+		Name:      name,
+		FileType:  fileType,
+		SizeBytes: size,
+		Strategy:  string(strategy),
+	})
+	if err != nil {
+		return database.Document{}, fmt.Errorf("failed to save document metadata: %w", err)
+	}
+
+	job := &worker.Job{
+		DocID:    docID,
+		Name:     name,
+		FileType: fileType,
+		Strategy: strategy,
+		TempFile: tempFile.Name(),
+	}
+
+	cleanupOnFail = false
+	s.service.Worker.Enqueue(job)
+
+	return doc, nil
 }

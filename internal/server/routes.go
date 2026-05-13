@@ -17,7 +17,6 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	core "stockmind/internal/llm"
 )
 
 type Message struct {
@@ -204,7 +203,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := req.SessionId
 	if sessionID == uuid.Nil {
 		userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-		id, err := s.db.CreateSession(r.Context(), database.CreateSessionParams{
+		id, err := s.queries.CreateSession(r.Context(), database.CreateSessionParams{
 			ID:       uuid.New(),
 			UserID:   userID,
 			Title:    "New conversation",
@@ -237,24 +236,24 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	eventCh, err := s.agent.Chat(ctx, sessionID, req.Content)
 	if err != nil {
-		common.WriteSSE(w, common.SSEEvent("error", map[string]any{"message": err.Error()}))
+		common.WriteSSE(w, common.SSEEvent(common.EventError, map[string]any{"message": err.Error()}))
 		return
 	}
 
 	for ev := range eventCh {
 		switch ev.Type {
-		case core.EventThinking:
-			common.WriteSSE(w, common.SSEEvent(core.EventThinking, ev.Data))
-		case core.EventText:
-			common.WriteSSE(w, common.SSEEvent(core.EventText, ev.Content))
-		case core.EventToolCall:
-			common.WriteSSE(w, common.SSEEvent(core.EventToolCall, ev.Data))
-		case core.EventToolResult:
-			common.WriteSSE(w, common.SSEEvent(core.EventToolResult, ev.Data))
-		case core.EventError:
-			common.WriteSSE(w, common.SSEEvent(core.EventError, ev.Data))
-		case core.EventDone:
-			common.WriteSSE(w, common.SSEEvent(core.EventDone, map[string]any{"session_id": sessionID}))
+		case common.EventThinking:
+			common.WriteSSE(w, common.SSEEvent(common.EventThinking, ev.Data))
+		case common.EventText:
+			common.WriteSSE(w, common.SSEEvent(common.EventText, ev.Content))
+		case common.EventToolCall:
+			common.WriteSSE(w, common.SSEEvent(common.EventToolCall, ev.Data))
+		case common.EventToolResult:
+			common.WriteSSE(w, common.SSEEvent(common.EventToolResult, ev.Data))
+		case common.EventError:
+			common.WriteSSE(w, common.SSEEvent(common.EventError, ev.Data))
+		case common.EventDone:
+			common.WriteSSE(w, common.SSEEvent(common.EventDone, map[string]any{"session_id": sessionID}))
 		default:
 			common.WriteSSE(w, common.SSEEvent(ev.Type, ev.Data))
 		}

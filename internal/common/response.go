@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-
-	core "stockmind/internal/llm"
 )
 
 // writeJSON writes a JSON response with the given status code and data
@@ -34,7 +32,7 @@ func FlushSSE(w http.ResponseWriter) {
 }
 
 // SSEEvent builds the standard `{type, data}` envelope shared across streaming handlers.
-func SSEEvent(eventType core.StreamEventType, data any) map[string]any {
+func SSEEvent(eventType StreamEventType, data any) map[string]any {
 	return map[string]any{"type": eventType, "data": data}
 }
 

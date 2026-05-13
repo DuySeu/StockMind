@@ -6,7 +6,7 @@ import (
 )
 
 func (s *Server) ListAgentFlowsHandler(w http.ResponseWriter, r *http.Request) {
-	flows, err := s.db.ListAgentFlows(r.Context())
+	flows, err := s.queries.ListAgentFlows(r.Context())
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get agent flows: "+err.Error())
 		return

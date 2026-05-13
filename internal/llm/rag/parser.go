@@ -59,7 +59,7 @@ func (p *PDFParser) Parse(r io.Reader) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to extract text from PDF: %w", err)
 	}
-	
+
 	_, err = buf.ReadFrom(b)
 	if err != nil {
 		return "", fmt.Errorf("failed to read text buffer: %w", err)
@@ -156,27 +156,43 @@ func (p *MDParser) walk(n ast.Node, source []byte, buf *strings.Builder) {
 		t := n.(*ast.Text)
 		buf.Write(t.Segment.Value(source))
 	case ast.KindParagraph:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n\n")
 	case ast.KindHeading:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n")
 	case ast.KindLink:
 		l := n.(*ast.Link)
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
-		if l.Destination != nil { buf.WriteString(fmt.Sprintf(" (%s)", l.Destination)) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
+		if l.Destination != nil {
+			buf.WriteString(fmt.Sprintf(" (%s)", l.Destination))
+		}
 	case ast.KindList:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n")
 	case ast.KindListItem:
 		buf.WriteString("- ")
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n")
 	case extast.KindTable:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n")
 	case extast.KindTableRow:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 		buf.WriteString("\n")
 	case extast.KindTableCell:
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
@@ -185,7 +201,9 @@ func (p *MDParser) walk(n ast.Node, source []byte, buf *strings.Builder) {
 		}
 	case ast.KindBlockquote:
 		buf.WriteString("> ")
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 	case ast.KindCodeBlock, ast.KindFencedCodeBlock:
 		for i := 0; i < n.Lines().Len(); i++ {
 			line := n.Lines().At(i)
@@ -193,7 +211,9 @@ func (p *MDParser) walk(n ast.Node, source []byte, buf *strings.Builder) {
 		}
 		buf.WriteString("\n")
 	default:
-		for c := n.FirstChild(); c != nil; c = c.NextSibling() { p.walk(c, source, buf) }
+		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			p.walk(c, source, buf)
+		}
 	}
 }
 
@@ -259,11 +279,26 @@ func (v *Validator) Validate(text string) error {
 	if len(trimmed) < sampleLen {
 		sampleLen = len(trimmed)
 	}
-	
+
 	info := whatlanggo.Detect(trimmed[:sampleLen])
 	if info.Lang != whatlanggo.Eng && info.Lang != whatlanggo.Vie {
 		return fmt.Errorf("%w: detected %s", ErrInvalidLang, info.Lang.String())
 	}
 
 	return nil
+}
+
+func GetParser(fileType string) (Parser, error) {
+	switch fileType {
+	case "pdf":
+		return NewPDFParser(), nil
+	case "docx":
+		return NewDOCXParser(), nil
+	case "md", "markdown":
+		return NewMDParser(), nil
+	case "txt", "text":
+		return NewTXTParser(), nil
+	default:
+		return nil, fmt.Errorf("unsupported file type: %s", fileType)
+	}
 }

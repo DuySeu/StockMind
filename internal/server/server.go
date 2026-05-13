@@ -2,14 +2,13 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
+	"stockmind/internal/common"
 	"stockmind/internal/database"
 	core "stockmind/internal/llm"
+	"stockmind/internal/qdrant"
 	"stockmind/internal/service"
-	"stockmind/internal/service/tavily"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,26 +16,29 @@ import (
 )
 
 type Server struct {
-	port            int
-	db              *database.Queries
-	dbPool          *pgxpool.Pool
-	agent           *core.LLMService
-	tavily          *tavily.Client
-	documentService *service.DocumentService
+	queries     *database.Queries
+	dbPool      *pgxpool.Pool
+	agent       *core.LLMService
+	vectorStore *qdrant.QdrantStore
+	service     *service.Service
 }
 
-func NewServer(dbPool *pgxpool.Pool, agent *core.LLMService, documentService *service.DocumentService, port string) *http.Server {
-	portInt, err := strconv.Atoi(port)
+func NewServer(ctx context.Context, config *common.Config, dbPool *pgxpool.Pool, vectorStore *qdrant.QdrantStore, service *service.Service, port string) *http.Server {
+	// Create LLM Config
+	toolMgr := core.NewToolManager()
+
+	// Create an agent service
+	agent, err := core.NewLLMService(ctx, common.GetProviderName(), common.GetModelName(), config.LLMConfig, dbPool, toolMgr)
 	if err != nil {
-		portInt = 8080
+		log.Fatalf("failed to initialize LLM service: %v", err)
 	}
+
 	srv := &Server{
-		port:            portInt,
-		db:              database.New(dbPool),
-		dbPool:          dbPool,
-		agent:           agent,
-		tavily:          tavily.NewClient(),
-		documentService: documentService,
+		queries:     database.New(dbPool),
+		dbPool:      dbPool,
+		agent:       agent,
+		vectorStore: vectorStore,
+		service:     service,
 	}
 
 	// Ensure default user exists
@@ -46,7 +48,7 @@ func NewServer(dbPool *pgxpool.Pool, agent *core.LLMService, documentService *se
 
 	// Declare Server config
 	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", srv.port),
+		Addr:         ":" + port,
 		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,

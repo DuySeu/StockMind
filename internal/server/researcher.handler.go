@@ -135,7 +135,7 @@ func (s *Server) persistReports(report database.ResearchReport) {
 		if err != nil {
 			slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
 		}
-		_, err = s.db.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
+		_, err = s.queries.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
 			Ticker:         ticker.Ticker,
 			Recommendation: firstWord(ticker.Recommendation),
 			ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
@@ -217,7 +217,7 @@ func (s *Server) researchTicker(ctx context.Context, ticker, model string, progr
 
 	// 2. Submit async research job
 	emit("submitting", "Submitting research request...", 25)
-	requestID, err := s.tavily.SubmitResearch(ctx, tavily.ResearchRequest{
+	requestID, err := s.service.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
 		Input:        prompt,
 		Model:        model,
 		Stream:       false,
@@ -231,7 +231,7 @@ func (s *Server) researchTicker(ctx context.Context, ticker, model string, progr
 
 	// 3. Poll until completed
 	emit("polling", "Gathering and analyzing data...", 40)
-	pollResp, err := s.tavily.PollResearch(ctx, requestID)
+	pollResp, err := s.service.Tavily.PollResearch(ctx, requestID)
 	if err != nil {
 		emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
 		return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
@@ -300,7 +300,7 @@ type ResearchReport struct {
 
 func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Request) {
 	var reports []ResearchReport
-	reportFromDB, err := s.db.GetResearchReports(r.Context())
+	reportFromDB, err := s.queries.GetResearchReports(r.Context())
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -321,7 +321,7 @@ func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Reques
 
 func (s *Server) GetResearchReportByIDHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	report, err := s.db.GetResearchReportById(r.Context(), uuid.Must(uuid.Parse(id)))
+	report, err := s.queries.GetResearchReportById(r.Context(), uuid.Must(uuid.Parse(id)))
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
 		return

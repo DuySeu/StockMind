@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"stockmind/internal/common"
 	"stockmind/internal/database"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -16,13 +17,13 @@ import (
 
 // NewOpenAIClient builds an OpenAI-compatible client from the given config.
 // Both branches reuse sharedHTTPClient so connections are pooled across calls.
-func NewOpenAIClient(config OpenAIConfig) (*openai.Client, error) {
+func NewOpenAIClient(config common.OpenAI) (*openai.Client, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("OpenAI API key is not found")
 	}
 
 	defaultConfig := openai.DefaultConfig(config.APIKey)
-	defaultConfig.HTTPClient = sharedHTTPClient
+	defaultConfig.HTTPClient = common.SharedHTTPClient
 
 	if strings.Contains(config.BaseURL, "openrouter.ai") {
 		defaultConfig.BaseURL = config.BaseURL
@@ -36,21 +37,21 @@ func NewOpenAIClient(config OpenAIConfig) (*openai.Client, error) {
 // emitTextDeltas forwards visible assistant text from a stream delta directly
 // onto ch. Some providers put tokens in reasoning_content (e.g. DeepSeek-R1)
 // or refusal. Pushing directly avoids allocating a slice per delta.
-func emitTextDeltas(ch chan<- StreamEvent, delta openai.ChatCompletionStreamChoiceDelta) {
+func emitTextDeltas(ch chan<- common.StreamEvent, delta openai.ChatCompletionStreamChoiceDelta) {
 	if delta.Content != "" {
-		ch <- StreamEvent{Type: EventText, Content: delta.Content}
+		ch <- common.StreamEvent{Type: common.EventText, Content: delta.Content}
 	}
 	if delta.ReasoningContent != "" {
-		ch <- StreamEvent{Type: EventText, Content: delta.ReasoningContent}
+		ch <- common.StreamEvent{Type: common.EventText, Content: delta.ReasoningContent}
 	}
 	if delta.Refusal != "" {
-		ch <- StreamEvent{Type: EventText, Content: delta.Refusal}
+		ch <- common.StreamEvent{Type: common.EventText, Content: delta.Refusal}
 	}
 }
 
 // OpenAICompletion sends messages to an OpenAI-compatible endpoint and returns a streaming event channel.
-func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan StreamEvent, error) {
-	ch := make(chan StreamEvent, 256)
+func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
+	ch := make(chan common.StreamEvent, 256)
 
 	openaiMsgs := mapToOpenAIMessages(messages)
 
@@ -90,11 +91,11 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 		for {
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				ch <- StreamEvent{Type: EventDone}
+				ch <- common.StreamEvent{Type: common.EventDone}
 				return
 			}
 			if err != nil {
-				ch <- StreamEvent{Type: EventError, Data: err.Error()}
+				ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
 				return
 			}
 
@@ -138,8 +139,8 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 					if full == nil || full.Function.Name == "" {
 						continue
 					}
-					ch <- StreamEvent{
-						Type: EventToolCall,
+					ch <- common.StreamEvent{
+						Type: common.EventToolCall,
 						Data: database.Tool{
 							ID:        full.ID,
 							Name:      full.Function.Name,
