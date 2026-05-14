@@ -5,24 +5,24 @@ import * as z from "zod";
 import { Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { validateDocumentFile } from "@/lib/validation";
 import { uploadDocument } from "@/api/document";
 
 const formSchema = z.object({
-  file: z.instanceof(File, {
-    message: "Vui lòng chọn một file",
-  }).superRefine((file, ctx) => {
-    const result = validateDocumentFile(file);
-    if (!result.valid) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: result.error,
-      });
-    }
-  }),
-  strategy: z.string().min(1, "Vui lòng chọn strategy"),
+  file: z
+    .instanceof(File, {
+      message: "Vui lòng chọn một file",
+    })
+    .superRefine((file, ctx) => {
+      const result = validateDocumentFile(file);
+      if (!result.valid) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: result.error,
+        });
+      }
+    }),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -33,16 +33,13 @@ export function DocumentUploadForm({ onSuccess }: { onSuccess?: () => void }) {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      strategy: "recursive",
-    },
   });
 
   const onSubmit = async (data: FormValues) => {
     setIsUploading(true);
     setServerError(null);
     try {
-      await uploadDocument(data.file, data.strategy);
+      await uploadDocument(data.file);
       form.reset();
       onSuccess?.();
     } catch (err: any) {
@@ -55,12 +52,8 @@ export function DocumentUploadForm({ onSuccess }: { onSuccess?: () => void }) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {serverError && (
-          <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-md">
-            {serverError}
-          </div>
-        )}
-        
+        {serverError && <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-md">{serverError}</div>}
+
         <FormField
           control={form.control}
           name="file"
@@ -69,8 +62,8 @@ export function DocumentUploadForm({ onSuccess }: { onSuccess?: () => void }) {
               <FormLabel>Tài liệu</FormLabel>
               <FormControl>
                 <div className="flex items-center gap-4">
-                  <Input 
-                    type="file" 
+                  <Input
+                    type="file"
                     accept=".pdf,.docx,.md,.txt"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
@@ -86,31 +79,7 @@ export function DocumentUploadForm({ onSuccess }: { onSuccess?: () => void }) {
             </FormItem>
           )}
         />
-        
-        <FormField
-          control={form.control}
-          name="strategy"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Chiến lược chia nhỏ (Chunking Strategy)</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn chiến lược" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="recursive">Smart Split (Recursive) - Recommended</SelectItem>
-                  <SelectItem value="fixed">Fixed Size</SelectItem>
-                  <SelectItem value="paragraph">By Paragraph</SelectItem>
-                  <SelectItem value="semantic">By Topic (Semantic)</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
+
         <Button type="submit" disabled={isUploading} className="w-full">
           {isUploading ? (
             <>

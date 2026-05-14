@@ -6,21 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	"stockmind/internal/database"
-	"stockmind/internal/llm/rag"
 	"stockmind/internal/service/worker"
 )
 
 // UploadDocumentHandler receives multipart form uploads with up to a 10MB limit.
-// Expected fields: "file" (the document), "name" (optional), "strategy" (optional).
 func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
-	// Limit request body to 10MB
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
@@ -40,39 +36,27 @@ func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		name = header.Filename
 	}
 
-	strategyStr := r.FormValue("strategy")
-	var strategy rag.Strategy
-	switch strings.ToLower(strategyStr) {
-	case "fixed":
-		strategy = rag.StrategyFixed
-	case "paragraph":
-		strategy = rag.StrategyParagraph
-	case "semantic":
-		strategy = rag.StrategySemantic
-	default:
-		strategy = rag.StrategyRecursive
-	}
-
-	// Determine fileType by extension for parsing routing
 	parts := strings.Split(header.Filename, ".")
-	fileType := "txt"
+	fileType := database.FileType("txt")
 	if len(parts) > 1 {
-		fileType = strings.ToLower(parts[len(parts)-1])
+		fileType = database.FileType(strings.ToLower(parts[len(parts)-1]))
 	}
-
-	// Optional override from client
 	if ft := r.FormValue("file_type"); ft != "" {
-		fileType = ft
+		fileType = database.FileType(ft)
 	}
 
-	doc, err := s.Upload(r.Context(), name, fileType, header.Size, file, strategy)
+	doc, err := s.Upload(r.Context(), name, fileType, header.Size, file, database.ChunkingStrategySemantic)
 	if err != nil {
+		if err == worker.ErrQueueFull {
+			http.Error(w, "server busy, try again later", http.StatusServiceUnavailable)
+			return
+		}
 		http.Error(w, fmt.Sprintf("failed to upload: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted) // 202 Accepted because processing will happen async
+	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(doc)
 }
 
@@ -107,7 +91,7 @@ func (s *Server) GetDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(doc)
 }
 
-// DeleteDocumentHandler deletes a document and its embeddings from Postgres and Qdrant.
+// DeleteDocumentHandler deletes a document and its embeddings.
 func (s *Server) DeleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
@@ -116,8 +100,12 @@ func (s *Server) DeleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.vectorStore.Delete(r.Context(), id.String()); err != nil {
-		http.Error(w, fmt.Sprintf("failed to delete related vectors from qdrant: %v", err), http.StatusInternalServerError)
+	if err := s.knowledgeStore.Delete(r.Context(), id); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete related vectors: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := s.objectStore.Delete(r.Context(), fmt.Sprintf("documents/%s/", id.String())); err != nil {
+		http.Error(w, fmt.Sprintf("failed to delete file from storage: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if err := s.queries.DeleteDocument(r.Context(), id); err != nil {
@@ -125,49 +113,44 @@ func (s *Server) DeleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent) // 204
+	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) Upload(ctx context.Context, name, fileType string, size int64, file io.Reader, strategy rag.Strategy) (database.Document, error) {
-	tempFile, err := os.CreateTemp("", fmt.Sprintf("upload-*-%s.%s", uuid.New().String(), fileType))
-	if err != nil {
-		return database.Document{}, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer tempFile.Close()
-
-	cleanupOnFail := true
-	defer func() {
-		if cleanupOnFail {
-			os.Remove(tempFile.Name())
-		}
-	}()
-
-	if _, err = io.Copy(tempFile, file); err != nil {
-		return database.Document{}, fmt.Errorf("failed to save uploaded file: %w", err)
-	}
-
+func (s *Server) Upload(ctx context.Context, name string, fileType database.FileType, size int64, file io.Reader, strategy database.ChunkingStrategy) (database.Document, error) {
 	docID := uuid.New()
+	objectKey := fmt.Sprintf("documents/%s/%s", docID.String(), name)
+
 	doc, err := s.queries.CreateDocument(ctx, database.CreateDocumentParams{
 		ID:        docID,
 		Name:      name,
 		FileType:  fileType,
 		SizeBytes: size,
-		Strategy:  string(strategy),
+		Strategy:  strategy,
 	})
 	if err != nil {
 		return database.Document{}, fmt.Errorf("failed to save document metadata: %w", err)
 	}
 
-	job := &worker.Job{
-		DocID:    docID,
-		Name:     name,
-		FileType: fileType,
-		Strategy: strategy,
-		TempFile: tempFile.Name(),
+	if err := s.objectStore.Put(ctx, objectKey, file, size); err != nil {
+		// Mark as failed since DB record exists but file upload failed
+		s.queries.UpdateDocumentStatus(ctx, database.UpdateDocumentStatusParams{
+			ID:     docID,
+			Status: "failed",
+		})
+		return database.Document{}, fmt.Errorf("failed to upload file to storage: %w", err)
 	}
 
-	cleanupOnFail = false
-	s.service.Worker.Enqueue(job)
+	job := &worker.Job{
+		DocID:     docID,
+		Name:      name,
+		FileType:  fileType,
+		Strategy:  strategy,
+		ObjectKey: objectKey,
+	}
+
+	if err := s.service.Worker.Enqueue(job); err != nil {
+		return database.Document{}, err
+	}
 
 	return doc, nil
 }

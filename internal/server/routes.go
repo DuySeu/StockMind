@@ -236,24 +236,24 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	eventCh, err := s.agent.Chat(ctx, sessionID, req.Content)
 	if err != nil {
-		common.WriteSSE(w, common.SSEEvent(common.EventError, map[string]any{"message": err.Error()}))
+		common.WriteSSE(w, common.SSEEvent(database.EventError, map[string]any{"message": err.Error()}))
 		return
 	}
 
 	for ev := range eventCh {
 		switch ev.Type {
-		case common.EventThinking:
-			common.WriteSSE(w, common.SSEEvent(common.EventThinking, ev.Data))
-		case common.EventText:
-			common.WriteSSE(w, common.SSEEvent(common.EventText, ev.Content))
-		case common.EventToolCall:
-			common.WriteSSE(w, common.SSEEvent(common.EventToolCall, ev.Data))
-		case common.EventToolResult:
-			common.WriteSSE(w, common.SSEEvent(common.EventToolResult, ev.Data))
-		case common.EventError:
-			common.WriteSSE(w, common.SSEEvent(common.EventError, ev.Data))
-		case common.EventDone:
-			common.WriteSSE(w, common.SSEEvent(common.EventDone, map[string]any{"session_id": sessionID}))
+		case database.EventThinking:
+			common.WriteSSE(w, common.SSEEvent(database.EventThinking, ev.Data))
+		case database.EventText:
+			common.WriteSSE(w, common.SSEEvent(database.EventText, ev.Content))
+		case database.EventToolCall:
+			common.WriteSSE(w, common.SSEEvent(database.EventToolCall, ev.Data))
+		case database.EventToolResult:
+			common.WriteSSE(w, common.SSEEvent(database.EventToolResult, ev.Data))
+		case database.EventError:
+			common.WriteSSE(w, common.SSEEvent(database.EventError, ev.Data))
+		case database.EventDone:
+			common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
 		default:
 			common.WriteSSE(w, common.SSEEvent(ev.Type, ev.Data))
 		}

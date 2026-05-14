@@ -3,53 +3,29 @@ package database
 import (
 	"encoding/json"
 
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/mark3labs/mcp-go/mcp"
-	openai "github.com/sashabaranov/go-openai"
 )
 
-type StopReason string
-
-const (
-	StopReasonMaxTokens  StopReason = "max_tokens"
-	StopReasonUserInput  StopReason = "user_input"
-	StopReasonToolCall   StopReason = "tool_call"
-	StopReasonToolResult StopReason = "tool_result"
-	StopReasonAgentDone  StopReason = "agent_done"
-	StopReasonUnknown    StopReason = "unknown"
-	StopReasonNil        StopReason = ""
-)
-
-type Node struct {
-	ID        string      `json:"id"`
-	Type      NodeType    `json:"type"` // start, agent
-	AgentName *string     `json:"agentName,omitempty"`
-	Next      *string     `json:"next,omitempty"`
-	Output    *NodeOutput `json:"output,omitempty"`
-}
-
-type NodeType string
-type NodeOutputType string
-type NodeContentRole string
+type StreamEventType string
 type ModelProvider string
 
 const (
-	NodeTypeStart            NodeType        = "start"
-	NodeTypeAgent            NodeType        = "agent"
-	NodeOutputTypeText       NodeOutputType  = "text"
-	NodeOutputTypeStructured NodeOutputType  = "structured"
-	NodeContentRoleUser      NodeContentRole = "user"
-	NodeContentRoleSystem    NodeContentRole = "system"
-	ModelProviderAnthropic   ModelProvider   = "anthropic"
-	ModelProviderAWS         ModelProvider   = "aws"
-	ModelProviderOpenAI      ModelProvider   = "openai"
-	ModelProviderOpenRouter  ModelProvider   = "openrouter"
+	EventThinking           StreamEventType = "thinking"
+	EventText               StreamEventType = "text"
+	EventToolCall           StreamEventType = "tool_call"
+	EventToolResult         StreamEventType = "tool_result"
+	EventError              StreamEventType = "error"
+	EventDone               StreamEventType = "done"
+	ModelProviderAnthropic  ModelProvider   = "anthropic"
+	ModelProviderAWS        ModelProvider   = "aws"
+	ModelProviderOpenAI     ModelProvider   = "openai"
+	ModelProviderOpenRouter ModelProvider   = "openrouter"
 )
 
-type NodeOutput struct {
-	Type          NodeOutputType  `json:"type"` // text or structured (JSON)
-	ContentFormat string          `json:"contentFormat"`
-	ContentRole   NodeContentRole `json:"contentRole"` // user, system, assistant
+type StreamEvent struct {
+	Type    StreamEventType `json:"type"`
+	Content string          `json:"content,omitempty"` // For text delta
+	Data    any             `json:"data,omitempty"`    // For Error or ToolCall/Result details
 }
 
 type AgentConfig struct {
@@ -67,17 +43,17 @@ type AgentConfig struct {
 }
 
 type Metadata struct {
-	Tool        []Tool       `json:"toolCalls"`
-	Attachments []Attachment `json:"attachments"`
-	Sources     []Source     `json:"sources"`
+	Tool        []Tool       `json:"tools,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	Sources     []Source     `json:"sources,omitempty"`
 }
 
 type Tool struct {
 	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Arguments string `json:"arguments"`
-	Output    string `json:"output"`
-	IsError   string `json:"is_error"`
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
+	Result    string `json:"result,omitempty"`
+	IsError   string `json:"is_error,omitempty"`
 }
 
 type Attachment struct {
@@ -98,12 +74,6 @@ type MCPConfig struct {
 
 type AgentFlowConfig struct {
 	Agents map[string]AgentConfig `json:"agents"`
-	Nodes  []Node                 `json:"nodes"`
-}
-
-type MessageUnion struct {
-	OfOpenAI    *openai.ChatCompletionMessage `json:"of_openai,omitempty"`
-	OfAnthropic *anthropic.MessageParam       `json:"of_anthropic,omitempty"`
 }
 
 // ResearchReport is the outbound payload for the research endpoint.

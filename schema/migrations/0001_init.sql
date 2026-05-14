@@ -16,6 +16,15 @@ $$ LANGUAGE plpgsql;
 -- +goose statementend
 
 -- =============================================
+-- ENUM TYPES
+-- =============================================
+-- +goose StatementBegin
+CREATE TYPE document_status AS ENUM('pending', 'processing', 'ready', 'failed');
+CREATE TYPE chunking_strategy AS ENUM('recursive', 'fixed', 'paragraph', 'semantic');
+CREATE TYPE file_type AS ENUM('pdf', 'docx', 'md', 'txt');
+-- +goose StatementEnd
+
+-- =============================================
 -- TABLE CREATION
 -- =============================================
 
@@ -85,15 +94,13 @@ CREATE TABLE IF NOT EXISTS news (
 
 CREATE TABLE IF NOT EXISTS documents (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name        VARCHAR(500) NOT NULL,
-    file_type   VARCHAR(10) NOT NULL CHECK (file_type IN ('pdf', 'docx', 'md', 'txt')),
+    name        VARCHAR(255) NOT NULL,
+    file_type   file_type NOT NULL,
     size_bytes  BIGINT NOT NULL,
-    status      VARCHAR(20) NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'processing', 'ready', 'failed')),
+    status      document_status NOT NULL DEFAULT 'pending',
     chunk_count INT4 NOT NULL DEFAULT 0,
-    strategy    VARCHAR(20) NOT NULL DEFAULT 'semantic'
-                    CHECK (strategy IN ('recursive', 'fixed', 'paragraph', 'semantic')),
-    error_msg   TEXT,
+    strategy    chunking_strategy NOT NULL DEFAULT 'semantic',
+    error_msg   VARCHAR(255),
     created_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at  TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

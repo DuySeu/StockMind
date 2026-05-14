@@ -28,8 +28,8 @@ func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, erro
 }
 
 // OpenRouterCompletion calls the OpenRouter API using the official SDK.
-func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
-	ch := make(chan common.StreamEvent, 256)
+func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+	ch := make(chan database.StreamEvent, 256)
 
 	mapped := mapToOpenRouterChat(messages, tools)
 
@@ -71,12 +71,12 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 			// ── Text delta ───────────────────────────────────────────────────
 			// OptionalNullable is map[bool]*T keyed by true (see go-sdk/optionalnullable).
 			if ptr, set := choice.Delta.Content.Get(); set && ptr != nil && *ptr != "" {
-				ch <- common.StreamEvent{Type: common.EventText, Content: *ptr}
+				ch <- database.StreamEvent{Type: database.EventText, Content: *ptr}
 			}
 			// Reasoning (a.k.a. "thinking") deltas are streamed separately so
 			// clients can render them as a distinct thought stream.
 			if ptr, set := choice.Delta.Reasoning.Get(); set && ptr != nil && *ptr != "" {
-				ch <- common.StreamEvent{Type: common.EventThinking, Content: *ptr}
+				ch <- database.StreamEvent{Type: database.EventThinking, Content: *ptr}
 			}
 
 			// ── Tool call deltas (accumulate by index) ───────────────────────
@@ -113,8 +113,8 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 					// Emit each fully-assembled tool call
 					for i := 0; i < len(pendingToolCalls); i++ {
 						if tc, ok := pendingToolCalls[i]; ok {
-							ch <- common.StreamEvent{
-								Type: common.EventToolCall,
+							ch <- database.StreamEvent{
+								Type: database.EventToolCall,
 								Data: *tc,
 							}
 						}
@@ -123,17 +123,17 @@ func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx conte
 					pendingToolCalls = map[int]*database.Tool{}
 
 				case "stop":
-					ch <- common.StreamEvent{Type: common.EventDone}
+					ch <- database.StreamEvent{Type: database.EventDone}
 					return
 				}
 			}
 		}
 
 		if err := res.EventStream.Err(); err != nil {
-			ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
+			ch <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 			return
 		}
-		ch <- common.StreamEvent{Type: common.EventDone}
+		ch <- database.StreamEvent{Type: database.EventDone}
 	}()
 
 	return ch, nil
@@ -162,7 +162,7 @@ func mapToOpenRouterChat(messages []database.Message, tools []mcp.Tool) openRout
 			out.Messages = append(out.Messages, components.CreateChatMessagesTool(components.ChatToolMessage{
 				Role:       components.ChatToolMessageRoleTool,
 				ToolCallID: t.ID,
-				Content:    components.CreateChatToolMessageContentStr(t.Output),
+				Content:    components.CreateChatToolMessageContentStr(t.Result),
 			}))
 		}
 	}

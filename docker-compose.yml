@@ -9,26 +9,35 @@ services:
   #   ports:
   #     - ${PORT}:${PORT}
   #   environment:
-  #     APP_ENV: ${APP_ENV}
-  #     PORT: ${PORT}
-  #     DB_HOST: ${DB_HOST}
+  #     DB_HOST: db
   #     DB_PORT: ${DB_PORT}
   #     DB_DATABASE: ${DB_DATABASE}
   #     DB_USERNAME: ${DB_USERNAME}
   #     DB_PASSWORD: ${DB_PASSWORD}
+  #     DB_SSLMODE: ${DB_SSLMODE}
   #     OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
   #     TAVILY_API_KEY: ${TAVILY_API_KEY}
-  #     QDRANT_HOST: stockmind_qdrant
-  #     QDRANT_PORT: "6334"
+  #     LLM_PROVIDER: ${LLM_PROVIDER}
+  #     LLM_MODEL: ${LLM_MODEL}
+  #     EMBED_MODEL: ${EMBED_MODEL}
+  #     QDRANT_HOST: qdrant
+  #     QDRANT_PORT: ${QDRANT_PORT}
+  #     MINIO_ENDPOINT: minio:9000
+  #     MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+  #     MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+  #     MINIO_BUCKET: ${MINIO_BUCKET}
+  #     MINIO_SSLMODE: ${MINIO_SSLMODE}
   #   depends_on:
-  #     stockmind_db:
+  #     db:
   #       condition: service_healthy
-  #     stockmind_qdrant:
+  #     qdrant:
+  #       condition: service_healthy
+  #     minio:
   #       condition: service_healthy
   #   networks:
   #     - stockmind
 
-  stockmind_db:
+  db:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
@@ -38,7 +47,7 @@ services:
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - stockmind_db_volume:/var/lib/postgresql/data
+      - db_volume:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "sh -c 'pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}'"]
       interval: 5s
@@ -48,14 +57,14 @@ services:
     networks:
       - stockmind
 
-  stockmind_qdrant:
+  qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - stockmind_qdrant_volume:/qdrant/storage
+      - qdrant_volume:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && printf \"GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3 && grep -q \"200 OK\" <&3'"]
       interval: 10s
@@ -65,8 +74,27 @@ services:
     networks:
       - stockmind
 
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_volume:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - stockmind
+
 volumes:
-  stockmind_db_volume:
-  stockmind_qdrant_volume:
+  db_volume:
+  qdrant_volume:
+  minio_volume:
 networks:
   stockmind:

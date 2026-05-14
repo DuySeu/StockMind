@@ -5,9 +5,144 @@
 package database
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type ChunkingStrategy string
+
+const (
+	ChunkingStrategyRecursive ChunkingStrategy = "recursive"
+	ChunkingStrategyFixed     ChunkingStrategy = "fixed"
+	ChunkingStrategyParagraph ChunkingStrategy = "paragraph"
+	ChunkingStrategySemantic  ChunkingStrategy = "semantic"
+)
+
+func (e *ChunkingStrategy) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ChunkingStrategy(s)
+	case string:
+		*e = ChunkingStrategy(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ChunkingStrategy: %T", src)
+	}
+	return nil
+}
+
+type NullChunkingStrategy struct {
+	ChunkingStrategy ChunkingStrategy `json:"chunking_strategy"`
+	Valid            bool             `json:"valid"` // Valid is true if ChunkingStrategy is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullChunkingStrategy) Scan(value interface{}) error {
+	if value == nil {
+		ns.ChunkingStrategy, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ChunkingStrategy.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullChunkingStrategy) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ChunkingStrategy), nil
+}
+
+type DocumentStatus string
+
+const (
+	DocumentStatusPending    DocumentStatus = "pending"
+	DocumentStatusProcessing DocumentStatus = "processing"
+	DocumentStatusReady      DocumentStatus = "ready"
+	DocumentStatusFailed     DocumentStatus = "failed"
+)
+
+func (e *DocumentStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DocumentStatus(s)
+	case string:
+		*e = DocumentStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DocumentStatus: %T", src)
+	}
+	return nil
+}
+
+type NullDocumentStatus struct {
+	DocumentStatus DocumentStatus `json:"document_status"`
+	Valid          bool           `json:"valid"` // Valid is true if DocumentStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDocumentStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.DocumentStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DocumentStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDocumentStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DocumentStatus), nil
+}
+
+type FileType string
+
+const (
+	FileTypePdf  FileType = "pdf"
+	FileTypeDocx FileType = "docx"
+	FileTypeMd   FileType = "md"
+	FileTypeTxt  FileType = "txt"
+)
+
+func (e *FileType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = FileType(s)
+	case string:
+		*e = FileType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for FileType: %T", src)
+	}
+	return nil
+}
+
+type NullFileType struct {
+	FileType FileType `json:"file_type"`
+	Valid    bool     `json:"valid"` // Valid is true if FileType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullFileType) Scan(value interface{}) error {
+	if value == nil {
+		ns.FileType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.FileType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullFileType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.FileType), nil
+}
 
 type AgentFlow struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
@@ -29,11 +164,11 @@ type Conversation struct {
 type Document struct {
 	ID         uuid.UUID          `db:"id" json:"id"`
 	Name       string             `db:"name" json:"name"`
-	FileType   string             `db:"file_type" json:"file_type"`
+	FileType   FileType           `db:"file_type" json:"file_type"`
 	SizeBytes  int64              `db:"size_bytes" json:"size_bytes"`
-	Status     string             `db:"status" json:"status"`
+	Status     DocumentStatus     `db:"status" json:"status"`
 	ChunkCount int32              `db:"chunk_count" json:"chunk_count"`
-	Strategy   string             `db:"strategy" json:"strategy"`
+	Strategy   ChunkingStrategy   `db:"strategy" json:"strategy"`
 	ErrorMsg   pgtype.Text        `db:"error_msg" json:"error_msg"`
 	CreatedAt  pgtype.Timestamptz `db:"created_at" json:"created_at"`
 	UpdatedAt  pgtype.Timestamptz `db:"updated_at" json:"updated_at"`

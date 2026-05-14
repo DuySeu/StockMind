@@ -58,14 +58,6 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 		GetNews,
 	)
 
-	s.AddTool(
-		mcp.NewTool("retrieve_knowledge",
-			mcp.WithDescription("Retrieve detailed financial knowledge, concepts, definitions, or internal document information from the knowledge base. Use this for general queries, not for real-time stock prices or latest news."),
-			mcp.WithString("query", mcp.Required(), mcp.Description("Query related to financial knowledge or concepts")),
-		),
-		NewRetrieveKnowledgeHandler,
-	)
-
 	switch protocol {
 	case "stdio":
 		return func() {}, server.ServeStdio(s)

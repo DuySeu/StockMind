@@ -37,21 +37,21 @@ func NewOpenAIClient(config common.OpenAI) (*openai.Client, error) {
 // emitTextDeltas forwards visible assistant text from a stream delta directly
 // onto ch. Some providers put tokens in reasoning_content (e.g. DeepSeek-R1)
 // or refusal. Pushing directly avoids allocating a slice per delta.
-func emitTextDeltas(ch chan<- common.StreamEvent, delta openai.ChatCompletionStreamChoiceDelta) {
+func emitTextDeltas(ch chan<- database.StreamEvent, delta openai.ChatCompletionStreamChoiceDelta) {
 	if delta.Content != "" {
-		ch <- common.StreamEvent{Type: common.EventText, Content: delta.Content}
+		ch <- database.StreamEvent{Type: database.EventText, Content: delta.Content}
 	}
 	if delta.ReasoningContent != "" {
-		ch <- common.StreamEvent{Type: common.EventText, Content: delta.ReasoningContent}
+		ch <- database.StreamEvent{Type: database.EventText, Content: delta.ReasoningContent}
 	}
 	if delta.Refusal != "" {
-		ch <- common.StreamEvent{Type: common.EventText, Content: delta.Refusal}
+		ch <- database.StreamEvent{Type: database.EventText, Content: delta.Refusal}
 	}
 }
 
 // OpenAICompletion sends messages to an OpenAI-compatible endpoint and returns a streaming event channel.
-func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
-	ch := make(chan common.StreamEvent, 256)
+func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+	ch := make(chan database.StreamEvent, 256)
 
 	openaiMsgs := mapToOpenAIMessages(messages)
 
@@ -91,11 +91,11 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 		for {
 			response, err := stream.Recv()
 			if errors.Is(err, io.EOF) {
-				ch <- common.StreamEvent{Type: common.EventDone}
+				ch <- database.StreamEvent{Type: database.EventDone}
 				return
 			}
 			if err != nil {
-				ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
+				ch <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 				return
 			}
 
@@ -139,8 +139,8 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 					if full == nil || full.Function.Name == "" {
 						continue
 					}
-					ch <- common.StreamEvent{
-						Type: common.EventToolCall,
+					ch <- database.StreamEvent{
+						Type: database.EventToolCall,
 						Data: database.Tool{
 							ID:        full.ID,
 							Name:      full.Function.Name,
@@ -184,7 +184,7 @@ func mapToOpenAIMessages(messages []database.Message) []openai.ChatCompletionMes
 					toolResults = append(toolResults, openai.ChatCompletionMessage{
 						Role:       string(openai.ChatMessageRoleTool),
 						ToolCallID: t.ID,
-						Content:    t.Output,
+						Content:    t.Result,
 					})
 				}
 			}

@@ -19,11 +19,11 @@ RETURNING id, name, file_type, size_bytes, status, chunk_count, strategy, error_
 `
 
 type CreateDocumentParams struct {
-	ID        uuid.UUID `db:"id" json:"id"`
-	Name      string    `db:"name" json:"name"`
-	FileType  string    `db:"file_type" json:"file_type"`
-	SizeBytes int64     `db:"size_bytes" json:"size_bytes"`
-	Strategy  string    `db:"strategy" json:"strategy"`
+	ID        uuid.UUID        `db:"id" json:"id"`
+	Name      string           `db:"name" json:"name"`
+	FileType  FileType         `db:"file_type" json:"file_type"`
+	SizeBytes int64            `db:"size_bytes" json:"size_bytes"`
+	Strategy  ChunkingStrategy `db:"strategy" json:"strategy"`
 }
 
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
@@ -123,10 +123,10 @@ WHERE id = $1
 `
 
 type UpdateDocumentStatusParams struct {
-	ID         uuid.UUID   `db:"id" json:"id"`
-	Status     string      `db:"status" json:"status"`
-	ChunkCount int32       `db:"chunk_count" json:"chunk_count"`
-	ErrorMsg   pgtype.Text `db:"error_msg" json:"error_msg"`
+	ID         uuid.UUID      `db:"id" json:"id"`
+	Status     DocumentStatus `db:"status" json:"status"`
+	ChunkCount int32          `db:"chunk_count" json:"chunk_count"`
+	ErrorMsg   pgtype.Text    `db:"error_msg" json:"error_msg"`
 }
 
 func (q *Queries) UpdateDocumentStatus(ctx context.Context, arg UpdateDocumentStatusParams) error {

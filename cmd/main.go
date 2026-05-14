@@ -12,10 +12,11 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	kb "stockmind/internal/knowledge_base"
 	"stockmind/internal/mcp"
-	"stockmind/internal/qdrant"
 	"stockmind/internal/server"
 	"stockmind/internal/service"
+	"stockmind/internal/storage"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -23,7 +24,6 @@ import (
 )
 
 func main() {
-	// Load .env file first
 	if err := godotenv.Load(); err != nil {
 		fmt.Printf("Warning: Failed to load .env file: %v\n", err)
 	}
@@ -85,8 +85,7 @@ func main() {
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					protocol := cmd.String("protocol")
-					err := runMCP(ctx, protocol)
-					return err
+					return runMCP(ctx, protocol)
 				},
 			},
 		},
@@ -96,19 +95,17 @@ func main() {
 	}
 }
 
-func runMCP(ctx context.Context, protocol string) error {
+func runMCP(_ context.Context, protocol string) error {
 	log.Printf("Running MCP server with protocol: %s", protocol)
-	_, err := mcp.Start(ctx, protocol)
+	_, err := mcp.Start(context.Background(), protocol)
 	return err
 }
 
 func runServer(ctx context.Context, port string, mcpProtocol string) (context.Context, func(), error) {
 	log.Printf("Running server on port: %s", port)
 
-	// Load Config
 	config := common.LoadConfig()
 
-	// Create a database connection pool
 	poolConfig, err := pgxpool.ParseConfig(config.GetDBURL())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to parse database URL: %v", err)
@@ -120,76 +117,70 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		return nil, nil, fmt.Errorf("failed to create database pool: %v", err)
 	}
 
-	// Test the database connection
 	if err := dbPool.Ping(ctx); err != nil {
 		return nil, nil, fmt.Errorf("database ping failed: %w", err)
 	}
 
-	// Run Migration
 	if err := database.MigrateDB(dbPool); err != nil {
 		return nil, nil, fmt.Errorf("database migration failed: %w", err)
 	}
 	log.Println("Database connection established")
 
-	// Initialize Qdrant Client
-	qdrantConn, err := qdrant.InitQdrant(ctx, config.Qdrant.Host, config.Qdrant.Port)
+	// Initialize MinIO object store
+	objectStore, err := storage.NewMinIOStore(ctx, config.MinIO)
 	if err != nil {
-		log.Fatalf("Failed to initialize Qdrant: %v", err)
+		return nil, nil, fmt.Errorf("failed to init object store: %w", err)
 	}
-	qdrantStore := qdrant.NewQdrantStore(qdrantConn, "nvidia/llama-nemotron-embed-vl-1b-v2:free")
+	log.Println("MinIO object store ready")
 
+	// Initialize Knowledge Base (Qdrant + Embedder + BM25)
+	knowledgeBase, err := kb.New(ctx, &config, dbPool)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to init knowledge base: %w", err)
+	}
+
+	// Initialize MCP server (no longer needs retriever)
 	var mcpShutdown func()
 	if mcpProtocol == "http" {
-		// Create MCP service and HTTP server
 		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
 		shutdown, err := mcp.Start(ctx, mcpProtocol)
 		if err != nil {
-			log.Printf("Failed to start MCP: %v", err)
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("failed to start MCP: %w", err)
 		}
 		mcpShutdown = shutdown
 	}
 
-	// Initialize Worker
-	services, err := service.NewService(ctx, &config, qdrantStore, dbPool)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to init service: %w", err)
-	}
+	// Initialize Services
+	services := service.NewService(knowledgeBase.Pipeline, dbPool, objectStore)
 
-	// Create a server for the application
-	server := server.NewServer(ctx, &config, dbPool, qdrantStore, services, port)
+	// Create HTTP server
+	srv := server.NewServer(ctx, &config, dbPool, knowledgeBase, objectStore, services, port)
 	runContext, cancel := context.WithCancel(ctx)
 
-	// Create a done channel to signal when the shutdown is complete
 	stopCh := make(chan struct{})
 
 	go func() {
 		defer close(stopCh)
-
 		log.Printf("Server starting on port: %s", port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("unexpected server closure: %v", err)
 			cancel()
 		}
 	}()
 
 	return runContext, func() {
-		// Create shutdown context with timeout
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 
-		// Shutdown MCP server first if it was started
 		if mcpShutdown != nil {
 			log.Printf("Shutting down MCP server...")
 			mcpShutdown()
 		}
 
-		// Shutdown HTTP server
-		if err := server.Shutdown(shutdownCtx); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("stopping server: %v", err)
 		}
 
-		// Wait for worker pool to finish in-flight jobs gracefully
 		log.Printf("Shutting down async worker pool...")
 		services.Shutdown()
 

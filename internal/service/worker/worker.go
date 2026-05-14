@@ -2,83 +2,117 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"os"
 	"sync"
+	"time"
 
 	"stockmind/internal/database"
-	"stockmind/internal/llm/rag"
-	"stockmind/internal/qdrant"
+	kb "stockmind/internal/knowledge_base"
+	"stockmind/internal/storage"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	maxWorkers        = 2
+	workerIdleTimeout = 10 * time.Second
+	queueSize         = 20
+)
+
+var ErrQueueFull = errors.New("worker: job queue is full")
+
 // Job represents a background processing task for an uploaded document.
 type Job struct {
-	DocID    uuid.UUID
-	Name     string
-	FileType string
-	Strategy rag.Strategy
-	TempFile string
+	DocID     uuid.UUID
+	Name      string
+	FileType  database.FileType
+	Strategy  database.ChunkingStrategy
+	ObjectKey string
 }
 
-// Worker orchestrates the background document processing pipeline.
+// Worker orchestrates the elastic background document processing pool.
 type Worker struct {
-	db       *database.Queries
-	store    qdrant.Store
-	embedder rag.Embedder
-	jobs     chan *Job
-	wg       sync.WaitGroup
+	db            *database.Queries
+	pipeline      *kb.IngestPipeline
+	store         storage.ObjectStore
+	jobs          chan *Job
+	mu            sync.Mutex
+	activeWorkers int
+	wg            sync.WaitGroup
 }
 
-// NewWorker creates a new worker pool.
-func NewWorker(dbPool *pgxpool.Pool, store qdrant.Store, embedder rag.Embedder) *Worker {
+// NewWorker creates a new elastic worker pool.
+func NewWorker(dbPool *pgxpool.Pool, pipeline *kb.IngestPipeline, store storage.ObjectStore) *Worker {
 	return &Worker{
 		db:       database.New(dbPool),
+		pipeline: pipeline,
 		store:    store,
-		embedder: embedder,
-		jobs:     make(chan *Job, 10),
+		jobs:     make(chan *Job, queueSize),
 	}
 }
 
-// Enqueue adds a job to the worker queue.
-func (w *Worker) Enqueue(job *Job) {
-	w.jobs <- job
-}
-
-// Start launches the background goroutine pool.
-func (w *Worker) Start(ctx context.Context) {
-	numWorkers := 2
-	for i := 0; i < numWorkers; i++ {
-		w.wg.Add(1)
-		go func(id int) {
-			defer w.wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					log.Printf("Worker %d: shutting down gracefully", id)
-					return
-				case job := <-w.jobs:
-					log.Printf("Worker %d: processing job %s", id, job.DocID)
-					w.process(ctx, job)
-				}
-			}
-		}(i)
+// Enqueue adds a job to the worker queue and spawns a worker if needed.
+func (w *Worker) Enqueue(job *Job) error {
+	select {
+	case w.jobs <- job:
+		w.trySpawn()
+		return nil
+	default:
+		return ErrQueueFull
 	}
 }
 
-// Wait blocks until all active jobs finish.
-func (w *Worker) Wait() {
+// Shutdown closes the job channel and waits for in-flight jobs to complete.
+func (w *Worker) Shutdown() {
+	close(w.jobs)
 	w.wg.Wait()
 }
 
-func (w *Worker) process(ctx context.Context, job *Job) {
-	defer os.Remove(job.TempFile)
+func (w *Worker) trySpawn() {
+	w.mu.Lock()
+	if w.activeWorkers >= maxWorkers {
+		w.mu.Unlock()
+		return
+	}
+	w.activeWorkers++
+	w.mu.Unlock()
 
-	updateStatus := func(status string, count int, errMsg string) {
+	w.wg.Add(1)
+	go w.run()
+}
+
+func (w *Worker) run() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("worker: recovered from panic: %v", r)
+		}
+		w.mu.Lock()
+		w.activeWorkers--
+		w.mu.Unlock()
+		w.wg.Done()
+	}()
+
+	for {
+		select {
+		case job, ok := <-w.jobs:
+			if !ok {
+				return
+			}
+			w.process(job)
+		case <-time.After(workerIdleTimeout):
+			return
+		}
+	}
+}
+
+func (w *Worker) process(job *Job) {
+	ctx := context.Background()
+
+	updateStatus := func(status database.DocumentStatus, count int, errMsg string) {
 		msg := pgtype.Text{String: errMsg, Valid: errMsg != ""}
 		if err := w.db.UpdateDocumentStatus(ctx, database.UpdateDocumentStatusParams{
 			ID:         job.DocID,
@@ -86,70 +120,24 @@ func (w *Worker) process(ctx context.Context, job *Job) {
 			ChunkCount: int32(count),
 			ErrorMsg:   msg,
 		}); err != nil {
-			log.Printf("Failed to update status to %s for doc %s: %v", status, job.DocID, err)
+			log.Printf("worker: failed to update status to %s for doc %s: %v", status, job.DocID, err)
 		}
 	}
 
 	updateStatus("processing", 0, "")
 
-	parser, err := rag.GetParser(job.FileType)
+	reader, err := w.store.Get(ctx, job.ObjectKey)
 	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("parser init: %v", err))
+		updateStatus("failed", 0, fmt.Sprintf("download from storage: %v", err))
 		return
 	}
+	defer reader.Close()
 
-	file, err := os.Open(job.TempFile)
+	chunkCount, err := w.pipeline.Process(ctx, job.DocID, reader, job.FileType, job.Strategy)
 	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("failed to open file: %v", err))
-		return
-	}
-	defer file.Close()
-
-	text, err := parser.Parse(file)
-	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("parsing failed: %v", err))
+		updateStatus("failed", 0, err.Error())
 		return
 	}
 
-	validator := rag.NewValidator()
-	if err := validator.Validate(text); err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("validation failed: %v", err))
-		return
-	}
-
-	chunker, err := rag.GetChunker(job.Strategy, w.embedder)
-	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("chunker init: %v", err))
-		return
-	}
-
-	chunks, err := chunker.Chunk(ctx, text)
-	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("chunking failed: %v", err))
-		return
-	}
-
-	if len(chunks) == 0 {
-		updateStatus("failed", 0, "No chunks generated from document")
-		return
-	}
-
-	vectors, err := w.embedder.Embed(ctx, chunks)
-	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("embedding failed: %v", err))
-		return
-	}
-
-	if len(vectors) != len(chunks) {
-		updateStatus("failed", 0, "Generated vector count does not match chunk count")
-		return
-	}
-
-	err = w.store.Upsert(ctx, job.DocID.String(), chunks, vectors, string(job.Strategy))
-	if err != nil {
-		updateStatus("failed", 0, fmt.Sprintf("upsert to vector store failed: %v", err))
-		return
-	}
-
-	updateStatus("ready", len(chunks), "")
+	updateStatus("ready", chunkCount, "")
 }

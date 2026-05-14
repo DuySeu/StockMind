@@ -67,8 +67,8 @@ func NewAnthropicClient(ctx context.Context, cfg common.Anthropic) (*anthropic.C
 
 // AnthropicCompletion sends messages to the Anthropic API and returns a streaming event channel.
 // It supports text streaming and tool use via the official anthropic-sdk-go streaming API.
-func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan common.StreamEvent, error) {
-	ch := make(chan common.StreamEvent, 256)
+func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+	ch := make(chan database.StreamEvent, 256)
 
 	// -- Map messages --
 	anthropicMsgs, err := mapToAnthropicMessages(messages)
@@ -119,8 +119,8 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 				switch delta := ev.Delta.AsAny().(type) {
 				case anthropic.TextDelta:
 					if delta.Text != "" {
-						ch <- common.StreamEvent{
-							Type:    common.EventText,
+						ch <- database.StreamEvent{
+							Type:    database.EventText,
 							Content: delta.Text,
 						}
 					}
@@ -140,8 +140,8 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 			case anthropic.ContentBlockStopEvent:
 				// Emit tool call when a tool_use block finishes
 				if currentToolID != "" {
-					ch <- common.StreamEvent{
-						Type: common.EventToolCall,
+					ch <- database.StreamEvent{
+						Type: database.EventToolCall,
 						Data: database.Tool{
 							ID:        currentToolID,
 							Name:      currentToolName,
@@ -155,18 +155,18 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 
 			case anthropic.MessageStopEvent:
 				_ = ev
-				ch <- common.StreamEvent{Type: common.EventDone}
+				ch <- database.StreamEvent{Type: database.EventDone}
 				return
 			}
 		}
 
 		if err := stream.Err(); err != nil {
-			ch <- common.StreamEvent{Type: common.EventError, Data: err.Error()}
+			ch <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 			return
 		}
 
 		// Fallback done signal if MessageStopEvent was not received
-		ch <- common.StreamEvent{Type: common.EventDone}
+		ch <- database.StreamEvent{Type: database.EventDone}
 	}()
 
 	return ch, nil
@@ -202,13 +202,13 @@ func mapToAnthropicMessages(messages []database.Message) ([]anthropic.MessagePar
 						},
 					})
 
-					if t.Output != "" || t.IsError != "" {
+					if t.Result != "" || t.IsError != "" {
 						isError := t.IsError == "true"
 						toolResultBlocks = append(toolResultBlocks, anthropic.ContentBlockParamUnion{
 							OfToolResult: &anthropic.ToolResultBlockParam{
 								ToolUseID: t.ID,
 								Content: []anthropic.ToolResultBlockParamContentUnion{
-									{OfText: &anthropic.TextBlockParam{Text: t.Output}},
+									{OfText: &anthropic.TextBlockParam{Text: t.Result}},
 								},
 								IsError: anthropic.Bool(isError),
 							},

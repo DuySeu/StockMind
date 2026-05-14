@@ -12,7 +12,16 @@ import (
 type Config struct {
 	Database  Database    `json:"database" yaml:"database"`
 	Qdrant    Qdrant      `json:"qdrant" yaml:"qdrant"`
+	MinIO     MinIO       `json:"minio" yaml:"minio"`
 	LLMConfig LLMProvider `json:"llmProvider" yaml:"llmProvider"`
+}
+
+type MinIO struct {
+	Endpoint  string `json:"endpoint" yaml:"endpoint"`
+	AccessKey string `json:"accessKey" yaml:"accessKey"`
+	SecretKey string `json:"secretKey" yaml:"secretKey"`
+	Bucket    string `json:"bucket" yaml:"bucket"`
+	SSLMode   bool   `json:"useSSL" yaml:"useSSL"`
 }
 
 type Database struct {
@@ -79,6 +88,13 @@ func LoadConfig() Config {
 			Collection: os.Getenv("QDRANT_COLLECTION"),
 			UseHTTPS:   os.Getenv("QDRANT_USE_HTTPS") == "true",
 		},
+		MinIO: MinIO{
+			Endpoint:  os.Getenv("MINIO_ENDPOINT"),
+			AccessKey: os.Getenv("MINIO_ACCESS_KEY"),
+			SecretKey: os.Getenv("MINIO_SECRET_KEY"),
+			Bucket:    os.Getenv("MINIO_BUCKET"),
+			SSLMode:   os.Getenv("MINIO_SSLMODE") == "true",
+		},
 		LLMConfig: LLMProvider{
 			OpenAI: OpenAI{
 				APIKey:  os.Getenv("OPENROUTER_API_KEY"),
@@ -125,10 +141,16 @@ func (c *Config) GetDBURL() string {
 	return "postgres://" + c.Database.User + ":" + url.QueryEscape(c.Database.Password) + "@" + c.Database.Host + ":" + strconv.Itoa(c.Database.Port) + "/" + c.Database.Dbname + "?sslmode=" + c.Database.SSLMode
 }
 
-// GetModelName returns the model name from the LLM_MODEL environment variable.
+// GetLLMModelName returns the model name from the LLM_MODEL environment variable.
 // Example: "openai/gpt-4o", "anthropic/claude-3-5-sonnet"
-func GetModelName() string {
+func GetLLMModelName() string {
 	return os.Getenv("LLM_MODEL")
+}
+
+// GetEmbedModelName returns the model name from the EMBED_MODEL environment variable.
+// Example: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+func GetEmbedModelName() string {
+	return os.Getenv("EMBED_MODEL")
 }
 
 // GetProviderName returns the provider name from the LLM_PROVIDER environment variable.

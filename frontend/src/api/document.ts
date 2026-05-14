@@ -11,14 +11,13 @@ export const getDocumentById = async (id: string): Promise<Document> => {
   return response.data;
 };
 
-export const uploadDocument = async (file: File, strategy: string): Promise<Document> => {
+export const uploadDocument = async (file: File): Promise<Document> => {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("strategy", strategy);
 
-  const response = await api.post('/documents', formData, {
+  const response = await api.post("/documents", formData, {
     headers: {
-      'Content-Type': 'multipart/form-data',
+      "Content-Type": "multipart/form-data",
     },
   });
   return response.data;
