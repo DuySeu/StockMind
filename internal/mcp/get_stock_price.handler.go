@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"stockmind/internal/common"
 	"strconv"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"stockmind/internal/common"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type VCITimeFrame string
@@ -30,14 +31,13 @@ type VCIStockRequest struct {
 }
 
 type vciPriceDataResponse struct {
-	Symbol string    `json:"symbol"`
-	Open   []float64 `json:"o"`
-	High   []float64 `json:"h"`
-	Low    []float64 `json:"l"`
-	Close  []float64 `json:"c"`
-	Volume []int64   `json:"v"`
-	Time   []string  `json:"t"`
-	// AccumulatedVolume and AccumulatedValue are optional fields
+	Symbol            string    `json:"symbol"`
+	Open              []float64 `json:"o"`
+	High              []float64 `json:"h"`
+	Low               []float64 `json:"l"`
+	Close             []float64 `json:"c"`
+	Volume            []int64   `json:"v"`
+	Time              []string  `json:"t"`
 	AccumulatedVolume []int64   `json:"accumulatedVolume,omitempty"`
 	AccumulatedValue  []float64 `json:"accumulatedValue,omitempty"`
 	MinBatchTruncTime string    `json:"minBatchTruncTime"`
@@ -57,14 +57,25 @@ type StockPrice struct {
 	Prices []StockPriceItem `json:"prices"`
 }
 
-func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	symbol, err := request.RequireString("symbol")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+type GetStockPriceInput struct {
+	Symbol    string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
+	TimeFrame string `json:"time_frame" jsonschema:"Time frame, e.g., ONE_DAY, ONE_MINUTE, ONE_HOUR. Default is ONE_DAY"`
+	CountBack int    `json:"count_back" jsonschema:"Number of data points to look back. Default is 10"`
+}
+
+func GetStockPrice(ctx context.Context, req *mcp.CallToolRequest, input GetStockPriceInput) (*mcp.CallToolResult, StockPrice, error) {
+	symbol := input.Symbol
+	if symbol == "" {
+		return nil, StockPrice{}, fmt.Errorf("symbol is required")
 	}
-	timeFrameStr := request.GetString("time_frame", string(ONE_DAY))
-	timeFrame := VCITimeFrame(timeFrameStr)
-	countBack := request.GetInt("count_back", 10)
+	timeFrame := VCITimeFrame(input.TimeFrame)
+	if timeFrame == "" {
+		timeFrame = ONE_DAY
+	}
+	countBack := input.CountBack
+	if countBack == 0 {
+		countBack = 10
+	}
 
 	stockRequest := VCIStockRequest{
 		TimeFrame: timeFrame,
@@ -72,71 +83,60 @@ func GetStockPrice(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		To:        time.Now().Unix(),
 		CountBack: int32(countBack),
 	}
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
+	client := &http.Client{Timeout: 10 * time.Second}
 	body, err := json.Marshal(stockRequest)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return nil, StockPrice{}, err
 	}
-	http_req, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", common.TRADING_URL, common.CHART_URL), bytes.NewBuffer(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", fmt.Sprintf("%s%s", common.TRADING_URL, common.CHART_URL), bytes.NewBuffer(body))
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return nil, StockPrice{}, err
 	}
-	// Write headers from VCI_HEADERS
 	for k, v := range common.VCI_HEADERS {
-		http_req.Header.Set(k, v)
+		httpReq.Header.Set(k, v)
 	}
-	// Fetch stock price from VCI
-	resp, err := client.Do(http_req)
+	resp, err := client.Do(httpReq)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return nil, StockPrice{}, err
 	}
 	defer resp.Body.Close()
-	var resp_bytes []byte
 
-	// Decompress if needed
 	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
 	if err != nil {
-		return mcp.NewToolResultError("failed to create reader: " + err.Error()), nil
+		return nil, StockPrice{}, fmt.Errorf("failed to create reader: %w", err)
 	}
 	defer reader.Close()
 
-	resp_bytes, err = io.ReadAll(reader)
+	respBytes, err := io.ReadAll(reader)
 	if err != nil {
-		return mcp.NewToolResultError("failed to read response body: " + err.Error()), nil
+		return nil, StockPrice{}, fmt.Errorf("failed to read response body: %w", err)
 	}
 	var priceData []vciPriceDataResponse
-	if err := json.Unmarshal(resp_bytes, &priceData); err != nil {
-		return mcp.NewToolResultError(fmt.Errorf("failed to unmarshal response: %w, rawresponse: %s", err, string(resp_bytes)).Error()), nil
+	if err := json.Unmarshal(respBytes, &priceData); err != nil {
+		return nil, StockPrice{}, fmt.Errorf("failed to unmarshal response: %w, rawresponse: %s", err, string(respBytes))
 	}
 	if len(priceData) == 0 {
-		return mcp.NewToolResultError("no price data found"), nil
+		return nil, StockPrice{}, fmt.Errorf("no price data found")
 	}
 	data := priceData[0]
 	prices := make([]StockPriceItem, 0, len(data.Time))
 	for i := range data.Time {
 		unixTime, err := strconv.ParseInt(data.Time[i], 10, 64)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("invalid time format: %v", err)), nil
+			return nil, StockPrice{}, fmt.Errorf("invalid time format: %w", err)
 		}
 		if timeFrame != ONE_DAY {
-			// Adjust time zone for vietnamese time (UTC+7)
 			unixTime += 7 * 3600
 		}
-		priceItem := StockPriceItem{
+		prices = append(prices, StockPriceItem{
 			Time:   time.Unix(unixTime, 0),
 			Open:   data.Open[i],
 			High:   data.High[i],
 			Low:    data.Low[i],
 			Close:  data.Close[i],
 			Volume: data.Volume[i],
-		}
-		prices = append(prices, priceItem)
+		})
 	}
-	stockPrice := StockPrice{
-		Symbol: data.Symbol,
-		Prices: prices,
-	}
-	return mcp.NewToolResultStructuredOnly(stockPrice), nil
+	result := StockPrice{Symbol: data.Symbol, Prices: prices}
+	return nil, result, nil
 }

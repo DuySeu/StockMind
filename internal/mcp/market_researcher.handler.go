@@ -3,21 +3,25 @@ package mcp
 import (
 	"context"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type StockReport struct {
-	CompanyName        string
-	Summary            string
-	CurrentPerformance string
-	KeyInsight         []string
-	Recommendation     string
-	RiskAssessment     string
-	PriceOutlook       string
-	MarketCap          string
-	PERatio            string
+type MarketResearchInput struct {
+	Symbol string `json:"symbol" jsonschema:"Stock symbol to research"`
 }
 
-func MarketResearch(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	return mcp.NewToolResultStructuredOnly(request), nil
+type MarketResearchOutput struct {
+	CompanyName        string   `json:"company_name"`
+	Summary            string   `json:"summary"`
+	CurrentPerformance string   `json:"current_performance"`
+	KeyInsight         []string `json:"key_insight"`
+	Recommendation     string   `json:"recommendation"`
+	RiskAssessment     string   `json:"risk_assessment"`
+	PriceOutlook       string   `json:"price_outlook"`
+	MarketCap          string   `json:"market_cap"`
+	PERatio            string   `json:"pe_ratio"`
+}
+
+func MarketResearch(ctx context.Context, req *mcp.CallToolRequest, input MarketResearchInput) (*mcp.CallToolResult, MarketResearchOutput, error) {
+	return nil, MarketResearchOutput{}, nil
 }

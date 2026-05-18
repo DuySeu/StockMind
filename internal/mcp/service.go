@@ -3,68 +3,51 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"net/http"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func Start(ctx context.Context, protocol string) (func(), error) {
-	s := server.NewMCPServer(
-		"StockMind 🚀",
-		"1.0.0",
-		server.WithToolCapabilities(false),
-	)
+	server := mcp.NewServer(&mcp.Implementation{
+		Name:    "StockMind",
+		Version: "1.0.0",
+	}, nil)
 
-	s.AddTool(
-		mcp.NewTool("get_stock_price",
-			mcp.WithDescription("Get latest stock price from VCI with symbol, time frame and look back period"),
-			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
-			mcp.WithString("time_frame", mcp.Description("Time frame, e.g., ONE_DAY, ONE_MINUTE, ONE_HOUR. Default is ONE_DAY")),
-			mcp.WithNumber("count_back", mcp.Description("Number of data points to look back. Default is 10")),
-		),
-		GetStockPrice,
-	)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_stock_price",
+		Description: "Get latest stock price from VCI with symbol, time frame and look back period",
+	}, GetStockPrice)
 
-	s.AddTool(
-		mcp.NewTool("piotroski_evaluation",
-			mcp.WithDescription("Get Piotroski evaluation for a stock"),
-			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
-		),
-		GetPiotroskiEvaluation,
-	)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "piotroski_evaluation",
+		Description: "Get Piotroski evaluation for a stock",
+	}, GetPiotroskiEvaluation)
 
-	s.AddTool(
-		mcp.NewTool("altman_z_score",
-			mcp.WithDescription("Get Altman Z-Score for a stock"),
-			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
-		),
-		GetAltmanZScore,
-	)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "altman_z_score",
+		Description: "Get Altman Z-Score for a stock",
+	}, GetAltmanZScore)
 
-	s.AddTool(
-		mcp.NewTool("get_report",
-			mcp.WithDescription("Get report for a stock"),
-			mcp.WithString("symbol", mcp.Required(), mcp.Description("Stock symbol, e.g., HPG")),
-			mcp.WithString("period", mcp.Description("Financial report period, e.g., Q(Quarter), Y(Year). Default is Q")),
-		),
-		GetReport,
-	)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_report",
+		Description: "Get report for a stock",
+	}, GetReport)
 
-	s.AddTool(
-		mcp.NewTool("get_news",
-			mcp.WithDescription("Get stock news for a query"),
-			mcp.WithString("query", mcp.Required(), mcp.Description("Query related to stock news")),
-		),
-		GetNews,
-	)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_news",
+		Description: "Get stock news for a query",
+	}, GetNews)
 
 	switch protocol {
 	case "stdio":
-		return func() {}, server.ServeStdio(s)
+		return func() {}, server.Run(ctx, &mcp.StdioTransport{})
 	case "http", "streamablehttp":
-		h := server.NewStreamableHTTPServer(s)
+		handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+			return server
+		}, nil)
 		go func() {
-			if err := h.Start("0.0.0.0:8081"); err != nil {
+			if err := http.ListenAndServe("0.0.0.0:8081", handler); err != nil {
 				fmt.Printf("MCP HTTP server error: %v\n", err)
 			}
 		}()

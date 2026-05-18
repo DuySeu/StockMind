@@ -7,22 +7,23 @@ import (
 	"stockmind/internal/common"
 	"stockmind/internal/service/tavily"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func GetNews(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	query, err := request.RequireString("query")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+type GetNewsInput struct {
+	Query string `json:"query" jsonschema:"Query related to stock news"`
+}
+
+func GetNews(ctx context.Context, req *mcp.CallToolRequest, input GetNewsInput) (*mcp.CallToolResult, any, error) {
+	if input.Query == "" {
+		return nil, nil, fmt.Errorf("query is required")
 	}
 
 	client := tavily.NewClient()
-
-	result, err := client.SearchWeb(ctx, query, common.NEWS_DOMAINS)
+	result, err := client.SearchWeb(ctx, input.Query, common.NEWS_DOMAINS)
 	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
+		return nil, nil, err
 	}
 
-	fmt.Println(result)
-	return mcp.NewToolResultStructuredOnly(result), nil
+	return nil, result, nil
 }

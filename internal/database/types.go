@@ -1,10 +1,6 @@
 package database
 
-import (
-	"encoding/json"
-
-	"github.com/mark3labs/mcp-go/mcp"
-)
+import "encoding/json"
 
 type StreamEventType string
 type ModelProvider string
@@ -28,6 +24,13 @@ type StreamEvent struct {
 	Data    any             `json:"data,omitempty"`    // For Error or ToolCall/Result details
 }
 
+// ToolConfig represents a tool definition stored in agent flow JSONB configs.
+type ToolConfig struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	InputSchema map[string]any `json:"inputSchema,omitempty"`
+}
+
 type AgentConfig struct {
 	Description   string        `json:"description"`
 	SystemPrompt  string        `json:"systemPrompt"`
@@ -38,7 +41,7 @@ type AgentConfig struct {
 	TopP          float64       `json:"topP"`
 	TopK          int64         `json:"topK"`
 	ThinkingToken int64         `json:"thinkingToken"`
-	Tools         []mcp.Tool    `json:"tools"`
+	Tools         []ToolConfig  `json:"tools"`
 	McpServers    []MCPConfig   `json:"mcpServers"` // MCP servers to use
 }
 

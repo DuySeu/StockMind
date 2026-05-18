@@ -3,42 +3,27 @@ package mcp
 import (
 	"context"
 
-	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func GetAltmanZScore(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	symbol, err := request.RequireString("symbol")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
+type AltmanZScoreInput struct {
+	Symbol string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
+}
 
-	a, err := workingCapital()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	b, err := retainedEarnings()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	c, err := earningBeforeInterestAndTaxes()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	d, err := marketValueOfEquity()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	e, err := sales()
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
+type AltmanZScoreOutput struct {
+	Symbol string  `json:"symbol"`
+	Score  float64 `json:"score"`
+}
+
+func GetAltmanZScore(ctx context.Context, req *mcp.CallToolRequest, input AltmanZScoreInput) (*mcp.CallToolResult, AltmanZScoreOutput, error) {
+	a, _ := workingCapital()
+	b, _ := retainedEarnings()
+	c, _ := earningBeforeInterestAndTaxes()
+	d, _ := marketValueOfEquity()
+	e, _ := sales()
 
 	zScore := 1.2*a + 1.4*b + 3.3*c + 0.6*d + 1.0*e
-	evaluation := map[string]interface{}{
-		"symbol": symbol,
-		"score":  zScore,
-	}
-	return mcp.NewToolResultStructuredOnly(evaluation), nil
+	return nil, AltmanZScoreOutput{Symbol: input.Symbol, Score: zScore}, nil
 }
 
 func workingCapital() (float64, error) {
