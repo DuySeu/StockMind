@@ -12,11 +12,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createSession = `-- name: CreateSession :one
+const createConversation = `-- name: CreateConversation :one
 INSERT INTO conversations (id, user_id, title, description, metadata) VALUES ($1, $2, $3, $4, $5) RETURNING id
 `
 
-type CreateSessionParams struct {
+type CreateConversationParams struct {
 	ID          uuid.UUID   `db:"id" json:"id"`
 	UserID      uuid.UUID   `db:"user_id" json:"user_id"`
 	Title       string      `db:"title" json:"title"`
@@ -24,8 +24,8 @@ type CreateSessionParams struct {
 	Metadata    []byte      `db:"metadata" json:"metadata"`
 }
 
-func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, createSession,
+func (q *Queries) CreateConversation(ctx context.Context, arg CreateConversationParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createConversation,
 		arg.ID,
 		arg.UserID,
 		arg.Title,
@@ -37,52 +37,44 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (u
 	return id, err
 }
 
-const deleteSessionByID = `-- name: DeleteSessionByID :exec
-DELETE FROM conversations WHERE id = $1
+const createMessage = `-- name: CreateMessage :exec
+INSERT INTO messages (id, conversation_id, content, role, metadata) VALUES ($1, $2, $3, $4, $5)
 `
 
-func (q *Queries) DeleteSessionByID(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSessionByID, id)
+type CreateMessageParams struct {
+	ID             uuid.UUID  `db:"id" json:"id"`
+	ConversationID uuid.UUID  `db:"conversation_id" json:"conversation_id"`
+	Content        string     `db:"content" json:"content"`
+	Role           string     `db:"role" json:"role"`
+	Metadata       []Metadata `db:"metadata" json:"metadata"`
+}
+
+func (q *Queries) CreateMessage(ctx context.Context, arg CreateMessageParams) error {
+	_, err := q.db.Exec(ctx, createMessage,
+		arg.ID,
+		arg.ConversationID,
+		arg.Content,
+		arg.Role,
+		arg.Metadata,
+	)
 	return err
 }
 
-const getSessionHistoryBySessionID = `-- name: GetSessionHistoryBySessionID :many
-SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC
+const deleteConversationByID = `-- name: DeleteConversationByID :exec
+DELETE FROM conversations WHERE id = $1
 `
 
-func (q *Queries) GetSessionHistoryBySessionID(ctx context.Context, conversationID uuid.UUID) ([]Message, error) {
-	rows, err := q.db.Query(ctx, getSessionHistoryBySessionID, conversationID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Message{}
-	for rows.Next() {
-		var i Message
-		if err := rows.Scan(
-			&i.ID,
-			&i.ConversationID,
-			&i.Role,
-			&i.Content,
-			&i.Metadata,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) DeleteConversationByID(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteConversationByID, id)
+	return err
 }
 
-const getSessionsByUserID = `-- name: GetSessionsByUserID :many
+const getConversationsByUserID = `-- name: GetConversationsByUserID :many
 SELECT id, user_id, title, description, metadata, created_at FROM conversations WHERE user_id = $1 ORDER BY created_at DESC
 `
 
-func (q *Queries) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]Conversation, error) {
-	rows, err := q.db.Query(ctx, getSessionsByUserID, userID)
+func (q *Queries) GetConversationsByUserID(ctx context.Context, userID uuid.UUID) ([]Conversation, error) {
+	rows, err := q.db.Query(ctx, getConversationsByUserID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -108,39 +100,47 @@ func (q *Queries) GetSessionsByUserID(ctx context.Context, userID uuid.UUID) ([]
 	return items, nil
 }
 
-const sessionAddChatHistory = `-- name: SessionAddChatHistory :exec
-INSERT INTO messages (id, conversation_id, content, role, metadata) VALUES ($1, $2, $3, $4, $5)
+const getMessagesByConversationID = `-- name: GetMessagesByConversationID :many
+SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC
 `
 
-type SessionAddChatHistoryParams struct {
-	ID             uuid.UUID  `db:"id" json:"id"`
-	ConversationID uuid.UUID  `db:"conversation_id" json:"conversation_id"`
-	Content        string     `db:"content" json:"content"`
-	Role           string     `db:"role" json:"role"`
-	Metadata       []Metadata `db:"metadata" json:"metadata"`
+func (q *Queries) GetMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getMessagesByConversationID, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Message{}
+	for rows.Next() {
+		var i Message
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConversationID,
+			&i.Role,
+			&i.Content,
+			&i.Metadata,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) SessionAddChatHistory(ctx context.Context, arg SessionAddChatHistoryParams) error {
-	_, err := q.db.Exec(ctx, sessionAddChatHistory,
-		arg.ID,
-		arg.ConversationID,
-		arg.Content,
-		arg.Role,
-		arg.Metadata,
-	)
-	return err
-}
-
-const updateSessionName = `-- name: UpdateSessionName :exec
+const updateConversationName = `-- name: UpdateConversationName :exec
 UPDATE conversations SET title = $2 WHERE id = $1
 `
 
-type UpdateSessionNameParams struct {
+type UpdateConversationNameParams struct {
 	ID    uuid.UUID `db:"id" json:"id"`
 	Title string    `db:"title" json:"title"`
 }
 
-func (q *Queries) UpdateSessionName(ctx context.Context, arg UpdateSessionNameParams) error {
-	_, err := q.db.Exec(ctx, updateSessionName, arg.ID, arg.Title)
+func (q *Queries) UpdateConversationName(ctx context.Context, arg UpdateConversationNameParams) error {
+	_, err := q.db.Exec(ctx, updateConversationName, arg.ID, arg.Title)
 	return err
 }

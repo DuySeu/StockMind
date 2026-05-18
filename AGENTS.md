@@ -1,41 +1,47 @@
 # AGENTS.md — StockMind
 
-> AI-powered financial assistant for the Vietnamese stock market. Go backend + React frontend + MCP tool server + RAG pipeline.
-
-## Table of Contents
-<!-- tags: navigation -->
-
-- [Directory Map](#directory-map) — where to find things
-- [Architecture Overview](#architecture-overview) — how components connect
-- [Key Patterns](#key-patterns) — non-obvious design decisions
-- [MCP Tools](#mcp-tools) — financial analysis tools available to agents
-- [Data Flow](#data-flow) — how chat, research, and RAG work
-- [Configuration](#configuration) — env vars and agent flow configs
-- [Known Gaps](#known-gaps) — what's missing or incomplete
-- [Detailed Documentation](#detailed-documentation) — deep-dive reference files
-- [Custom Instructions](#custom-instructions) — human-maintained conventions
+> AI-powered financial assistant for the Vietnamese stock market. Go backend + React frontend + MCP tool server + hybrid RAG pipeline.
 
 ## Directory Map
-<!-- tags: navigation, structure -->
 
 ```
-cmd/main.go                     → CLI entry: `server` (HTTP + MCP) or `mcp` (standalone)
+cmd/main.go                     → CLI entry (urfave/cli/v3): `server` or `mcp` subcommands
 internal/
-  agent/                        → LLM orchestration: dual-provider (OpenAI/Anthropic via OpenRouter),
-                                  session turn loop, MCP client integration, config-driven agent flows
-  server/                       → HTTP layer: chi router, REST handlers, SSE streaming (pub/sub)
-    routes.go                   → All route definitions + chat handler + SSE handler
+  llm/                          → LLM orchestration: multi-provider (OpenRouter/OpenAI/Anthropic),
+                                  session-aware chat loop, tool execution via ToolManager
+    service.go                  → LLMService: Chat() (session-aware) + CallLLM() (stateless agentic loop)
+    tool_manager.go             → Thread-safe tool registry + dispatch
+    openrouter.go               → OpenRouter SDK streaming + embeddings
+    openai.go                   → OpenAI provider
+    anthropic.go                → Anthropic provider (supports AWS Bedrock)
+  server/                       → HTTP layer: chi router, REST handlers, direct SSE streaming
+    server.go                   → Server struct, NewServer(), registers retrieve_knowledge tool
+    routes.go                   → All route definitions + chatHandler (SSE) + SPA serving
     researcher.handler.go       → Market research: Tavily + LLM digest → persisted reports
-    stream.go                   → StreamManager for SSE event buffering
-  mcp/                          → MCP tool server: stock prices, Piotroski, Altman Z, reports, news, RAG
-  rag/                          → RAG pipeline: parse (PDF/DOCX/MD/TXT) → chunk → embed → Qdrant
-  database/                     → sqlc-generated queries + custom types (AgentFlowConfig, MessageUnion)
-  service/                      → DocumentService, Tavily client (web search + async research)
-  common/                       → VietCap API constants, response helpers
+    document.handler.go         → Document upload/list/get/delete
+    stock.handler.go            → Price board, watchlist, research reports
+    session.handler.go          → Session list/get/delete
+    news.handler.go             → News endpoint
+    user.handler.go             → User CRUD
+    agent_flow.handler.go       → Agent flow list/create
+  mcp/                          → MCP tool server (standalone): 5 financial analysis tools
+  knowledge_base/               → Hybrid RAG: parse → chunk → embed → Qdrant (dense + sparse + RRF)
+    ingest.go                   → IngestPipeline: parse → chunk → embed → BM25 → upsert
+    store.go                    → QdrantStore: dense (2048-dim cosine) + sparse (BM25) vectors
+    retriever.go                → Hybrid retriever: dense + sparse + RRF fusion
+    bm25.go                     → BM25 tokenizer (30K vocab)
+    chunker.go                  → 4 strategies: semantic, fixed, sentence, paragraph
+    parser.go                   → PDF, DOCX, MD, TXT parsers
+    embedder.go                 → OpenRouter embeddings
+  database/                     → sqlc-generated queries + custom types (StreamEvent, AgentConfig, etc.)
+  service/                      → Worker pool (elastic, max 2, queue 20) + Tavily client
+  storage/                      → MinIO object store (document files before processing)
+  common/                       → Config loading, VietCap API constants, JSON/SSE response helpers
 frontend/src/
-  pages/                        → Chatbot, WatchList, MarketResearcher, Documents, Settings, Home, Login
-  api/                          → Axios clients: chat, stock, documents, sessions, news, agent_flows
-  components/ui/                → shadcn/ui (Radix primitives)
+  pages/                        → Chatbot, HomePage, WatchList, MarketResearcherPage, DocumentPage,
+                                  ResearchResultPage, SettingPage, LoginPage
+  api/                          → Axios + fetch clients: chat (SSE), stock, documents, sessions, news
+  components/                   → MessageList, SideBar, ResearchReport + shadcn/ui primitives
 schema/
   migrations/                   → Goose SQL migrations (single 0001_init.sql)
   queries/                      → sqlc SQL definitions
@@ -43,87 +49,94 @@ schema/
 ```
 
 ## Architecture Overview
-<!-- tags: architecture -->
 
-Layered monolith: React SPA → chi HTTP server → agent orchestration → LLM providers (via OpenRouter) + MCP tools → PostgreSQL + Qdrant.
+Layered monolith: React SPA → chi HTTP server → LLM service → providers (OpenRouter/OpenAI/Anthropic) + MCP tools → PostgreSQL + Qdrant + MinIO.
 
-The backend serves the frontend from `frontend/dist/` in production. Docker Compose runs PostgreSQL 17 + Qdrant alongside the app container.
+```
+Browser (React SPA)
+    ↓ REST + SSE (direct streaming)
+Chi HTTP Server (Go)
+    ↓
+LLM Service (agentic tool loop)
+    ├── Internal tools (retrieve_knowledge)
+    ├── MCP Client → MCP Tool Server (financial tools)
+    └── LLM Providers (via OpenRouter)
+    ↓
+PostgreSQL (sessions, reports, documents, users, watchlist)
+Qdrant (dense + sparse vectors for RAG)
+MinIO (document file storage)
+```
 
-See [.agents/summary/architecture.md](.agents/summary/architecture.md) for full diagrams.
+Docker Compose runs PostgreSQL 17, Qdrant, and MinIO. The backend serves `frontend/dist/` in production.
 
 ## Key Patterns
-<!-- tags: patterns, conventions -->
 
-**Dual LLM via OpenRouter**: Both `AnthropicProvider` and `OpenAIProvider` use OpenRouter as base URL. Model switching happens in agent flow JSON config, not code. Free-tier models defined in `internal/agent/core.go`.
+**LLM Provider Selection**: Provider is configured via `LLM_PROVIDER` env var (openrouter/openai/anthropic). All providers can use OpenRouter as base URL. Model set via `LLM_MODEL` env var.
 
-**Config-driven agent flows**: Multi-agent pipelines stored as JSONB in `agent_flows` table. Each flow defines named agents (with provider, model, system prompt, MCP servers) and a node graph (start → agent → agent → end). No code changes needed to add new flows.
+**Direct SSE Streaming**: `chatHandler` (POST `/v1/chat`) sets SSE headers, sends a "start" event with session_id, then streams events directly from the LLM channel to the HTTP response. No intermediate pub/sub or StreamManager.
 
-**SSE streaming with history replay**: `chatHandler` (POST) returns `session_id` immediately, processes in a goroutine. `chatStreamHandler` (GET) subscribes to a `StreamManager` that buffers events so late-connecting clients get full history.
+**Agentic Tool Loop**: `LLMService.CallLLM()` runs a stateless loop — call LLM → if tool calls → execute via ToolManager → append results → call LLM again. Continues until done or error.
 
-**MCP tool namespacing**: Tool names are prefixed with MCP server name (e.g., `stocks-mcp--get_stock_price`) to avoid collisions across multiple MCP servers.
+**Internal vs MCP Tools**: `retrieve_knowledge` is registered directly in `server.go` as a ToolManager handler (not in the MCP server). The 5 financial tools live in the MCP server.
 
-**sqlc code generation**: All database queries are SQL-first in `schema/queries/`, generated to Go with `sqlc generate`. Custom types in `internal/database/types.go` handle JSONB columns.
+**Hybrid RAG**: Documents are embedded with both dense vectors (2048-dim via OpenRouter) and sparse vectors (BM25). Retrieval uses Reciprocal Rank Fusion (RRF) to combine results from both.
 
-**RAG async worker**: Document uploads are enqueued to a goroutine pool. Processing: parse → chunk (4 strategies) → embed (OpenRouter) → upsert to Qdrant. Status tracked in `documents` table.
+**Document Processing Pipeline**: Upload → MinIO storage → worker pool job → parse → chunk → embed → Qdrant upsert. Worker pool is elastic (max 2 workers, queue 20, 10s idle timeout).
+
+**sqlc Code Generation**: All database queries are SQL-first in `schema/queries/`, generated to Go with `sqlc generate`. Custom types in `internal/database/types.go` handle JSONB columns.
+
+**Agent Flow Configs**: Multi-agent pipeline configs stored as JSONB in `agent_flows` table. Currently seeded in migration but not actively used in the chat path — the chat uses the single configured provider/model.
 
 ## MCP Tools
-<!-- tags: mcp, tools -->
+
+5 tools registered in the standalone MCP server (`internal/mcp/service.go`):
 
 | Tool | What it does |
 |------|-------------|
-| `get_stock_price` | OHLC data from VietCap (configurable time frame + lookback) |
+| `get_stock_price` | OHLC data from VietCap (symbol, time_frame, count_back) |
 | `piotroski_evaluation` | 9-point Piotroski F-Score from financial statements |
 | `altman_z_score` | Altman Z-Score bankruptcy predictor |
-| `get_report` | Quarterly/yearly financial reports |
-| `get_news` | Stock news via Tavily search |
-| `retrieve_knowledge` | RAG retrieval from Qdrant vector store |
+| `get_report` | Quarterly/yearly financial reports (symbol, period) |
+| `get_news` | Stock news via Tavily search (query) |
 
-MCP server runs on port 8081 (HTTP) or stdio. See [.agents/summary/interfaces.md](.agents/summary/interfaces.md) for parameters.
+Plus 1 internal tool registered in `server.go`:
+
+| Tool | What it does |
+|------|-------------|
+| `retrieve_knowledge` | Hybrid RAG search (dense + sparse + RRF) on Qdrant |
+
+MCP server supports stdio and HTTP (streamable HTTP on :8081) protocols.
 
 ## Data Flow
-<!-- tags: workflows -->
 
-**Chat**: POST `/v1/chat` → create session → agent turn loop (LLM completion → tool calls → tool results, max 10 loops) → SSE stream events to client.
+**Chat**: POST `/v1/chat` → create/reuse session → load history → LLM agentic loop (completion → tool calls → tool results, repeats until done) → stream SSE events directly to client.
 
-**Research**: POST `/v1/stock/research` → for each ticker: Tavily async research → LLM digest → StockReport JSON → persist to DB.
+**SSE Events**: `start` (session_id), `thinking` (delta), `text` (delta), `tool_call` (name + args), `tool_result` (result), `error`, `done`.
 
-**RAG**: POST `/v1/documents/` → enqueue → worker: parse → chunk → embed → Qdrant upsert. Retrieved during chat via `retrieve_knowledge` MCP tool.
+**Research**: POST `/v1/stock/research` → for each ticker: Tavily web research → LLM digest → StockReport JSON → persist to DB. Also available as SSE stream via POST `/v1/stock/research/stream`.
 
-See [.agents/summary/workflows.md](.agents/summary/workflows.md) for sequence diagrams.
+**RAG Ingest**: POST `/v1/documents/` → save metadata to DB → upload file to MinIO → enqueue worker job → worker: download from MinIO → parse → chunk → embed (dense) → BM25 vectorize (sparse) → Qdrant upsert → update DB status.
+
+**RAG Retrieval**: During chat, `retrieve_knowledge` tool → hybrid search (dense + sparse prefetch → RRF fusion) → return formatted chunks to LLM.
 
 ## Configuration
-<!-- tags: config, env -->
 
-Required env vars: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY`. Optional: `PORT` (default 8080), `QDRANT_HOST`, `QDRANT_PORT`.
+**Required env vars**: `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY`, `LLM_PROVIDER`, `LLM_MODEL`, `EMBED_MODEL`.
 
-Agent flow configs are seeded in the migration SQL (`schema/migrations/0001_init.sql`). Three default flows: OpenAI Flow, Anthropic Flow, Multiple Agents Flow.
+**Optional**: `PORT` (default 8080), `QDRANT_HOST`, `QDRANT_PORT`, `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`.
+
+**CLI**: `go run cmd/main.go server [--port 8080] [--mcp-protocol http|stdio]` or `go run cmd/main.go mcp`.
 
 ## Known Gaps
-<!-- tags: gaps, todo -->
 
 - **No authentication** — hardcoded default user UUID, all endpoints unauthenticated
+- **Agent flows unused** — configs exist in DB but chat uses single provider/model from env vars
 - **No structured error handling** — mixed `WriteJSONError` and `http.Error` usage
-- **Limited tests** — only RAG package has tests; no handler, agent, or frontend tests
+- **Limited tests** — only knowledge_base package has tests; no handler, LLM, or frontend tests
 - **WebSocket disabled** — handler exists but route is commented out
-- **Agent flow management** — only List/Create; no Update/Delete/UI
-- **README outdated** — says Go 1.21+ (actual: 1.25.1), mentions Python/vnstock3 (removed)
-
-## Detailed Documentation
-<!-- tags: reference -->
-
-Full documentation in `.agents/summary/`:
-
-| File | Content |
-|------|---------|
-| [index.md](.agents/summary/index.md) | Documentation index with AI assistant usage guide |
-| [codebase_info.md](.agents/summary/codebase_info.md) | Tech stack, directory structure, env vars |
-| [architecture.md](.agents/summary/architecture.md) | System diagrams, layer architecture, design patterns |
-| [components.md](.agents/summary/components.md) | Per-package component breakdown |
-| [interfaces.md](.agents/summary/interfaces.md) | REST API, Go interfaces, MCP tools, SSE events |
-| [data_models.md](.agents/summary/data_models.md) | DB schema, Go types, TypeScript types |
-| [workflows.md](.agents/summary/workflows.md) | Chat, research, RAG, agent orchestration flows |
-| [dependencies.md](.agents/summary/dependencies.md) | All dependencies with versions and purposes |
-| [review_notes.md](.agents/summary/review_notes.md) | Documentation gaps and recommendations |
+- **Login non-functional** — LoginPage UI exists but form does nothing
+- **Migration trigger bug** — `set_documents_updated_at` trigger is created then immediately dropped
+- **Mixed i18n** — Vietnamese and English text mixed throughout frontend
 
 ## Custom Instructions
 <!-- This section is for human and agent-maintained operational knowledge.

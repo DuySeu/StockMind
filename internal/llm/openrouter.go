@@ -7,12 +7,12 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/llm/tools"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 	"github.com/OpenRouterTeam/go-sdk/models/operations"
 	"github.com/OpenRouterTeam/go-sdk/optionalnullable"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // NewOpenRouterClient builds an OpenRouter client from the given config.
@@ -28,7 +28,7 @@ func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, erro
 }
 
 // OpenRouterCompletion calls the OpenRouter API using the official SDK.
-func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
 
 	mapped := mapToOpenRouterChat(messages, tools)
@@ -145,8 +145,8 @@ type openRouterChatMapped struct {
 	Tools    []components.ChatFunctionTool
 }
 
-// mapToOpenRouterChat maps conversation history and MCP tool definitions into OpenRouter API
-func mapToOpenRouterChat(messages []database.Message, tools []mcp.Tool) openRouterChatMapped {
+// mapToOpenRouterChat maps conversation history and tool definitions into OpenRouter API
+func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openRouterChatMapped {
 	out := openRouterChatMapped{
 		Messages: make([]components.ChatMessages, 0, len(messages)),
 	}
@@ -223,9 +223,9 @@ func mapToOpenRouterChat(messages []database.Message, tools []mcp.Tool) openRout
 			out.Tools = append(out.Tools, components.CreateChatFunctionToolChatFunctionToolFunction(components.ChatFunctionToolFunction{
 				Type: components.ChatFunctionToolTypeFunction,
 				Function: components.ChatFunctionToolFunctionFunction{
-					Name:        t.Name,
-					Description: openrouter.String(t.Description),
-					Parameters:  schemaToMap(t.InputSchema),
+					Name:        t.Name(),
+					Description: openrouter.String(t.Description()),
+					Parameters:  t.InputSchema(),
 				},
 			}))
 		}
@@ -262,28 +262,4 @@ func OpenRouterEmbedding(ctx context.Context, client *openrouter.OpenRouter, mod
 		vecs[i] = v
 	}
 	return vecs, nil
-}
-
-// schemaToMap converts an MCP input schema into the generic map shape expected
-// by the OpenRouter SDK without going through json.Marshal/Unmarshal.
-func schemaToMap(schema mcp.ToolInputSchema) map[string]any {
-	m := make(map[string]any, 5)
-	if schema.Type != "" {
-		m["type"] = schema.Type
-	}
-	if schema.Properties != nil {
-		m["properties"] = schema.Properties
-	} else {
-		m["properties"] = map[string]any{}
-	}
-	if len(schema.Required) > 0 {
-		m["required"] = schema.Required
-	}
-	if schema.AdditionalProperties != nil {
-		m["additionalProperties"] = schema.AdditionalProperties
-	}
-	if schema.Defs != nil {
-		m["$defs"] = schema.Defs
-	}
-	return m
 }

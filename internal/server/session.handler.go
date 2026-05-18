@@ -12,7 +12,7 @@ import (
 func (s *Server) GetSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
 	// Get users from database
-	sessions, err := s.queries.GetSessionsByUserID(r.Context(), userID)
+	sessions, err := s.queries.GetConversationsByUserID(r.Context(), userID)
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get sessions: "+err.Error())
 		return
@@ -31,7 +31,7 @@ func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// Get messages from database
-	messages, err := s.queries.GetSessionHistoryBySessionID(r.Context(), uuid.Must(uuid.Parse(sessionID)))
+	messages, err := s.queries.GetMessagesByConversationID(r.Context(), uuid.Must(uuid.Parse(sessionID)))
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get messages: "+err.Error())
 		return
@@ -50,7 +50,7 @@ func (s *Server) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete session from database
-	if err := s.queries.DeleteSessionByID(r.Context(), uuid.Must(uuid.Parse(sessionID))); err != nil {
+	if err := s.queries.DeleteConversationByID(r.Context(), uuid.Must(uuid.Parse(sessionID))); err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to delete session: "+err.Error())
 		return
 	}

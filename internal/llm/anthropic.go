@@ -9,6 +9,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/llm/tools"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/bedrock"
@@ -16,7 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // NewAnthropicClient builds an Anthropic client (direct API or AWS Bedrock) from the given config.
@@ -67,7 +67,7 @@ func NewAnthropicClient(ctx context.Context, cfg common.Anthropic) (*anthropic.C
 
 // AnthropicCompletion sends messages to the Anthropic API and returns a streaming event channel.
 // It supports text streaming and tool use via the official anthropic-sdk-go streaming API.
-func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
 
 	// -- Map messages --
@@ -79,11 +79,11 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 	// -- Map tools --
 	anthropicTools := make([]anthropic.ToolUnionParam, 0, len(tools))
 	for _, t := range tools {
-		schema, _ := json.Marshal(t.InputSchema)
+		schema, _ := json.Marshal(t.InputSchema())
 		anthropicTools = append(anthropicTools, anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
-				Name:        t.Name,
-				Description: anthropic.String(t.Description),
+				Name:        t.Name(),
+				Description: anthropic.String(t.Description()),
 				InputSchema: anthropic.ToolInputSchemaParam{
 					Properties: schema,
 				},

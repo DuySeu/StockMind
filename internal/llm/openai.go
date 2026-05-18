@@ -10,8 +10,8 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/llm/tools"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	openai "github.com/sashabaranov/go-openai"
 )
 
@@ -50,7 +50,7 @@ func emitTextDeltas(ch chan<- database.StreamEvent, delta openai.ChatCompletionS
 }
 
 // OpenAICompletion sends messages to an OpenAI-compatible endpoint and returns a streaming event channel.
-func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
 
 	openaiMsgs := mapToOpenAIMessages(messages)
@@ -60,9 +60,9 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 		reqTools = append(reqTools, openai.Tool{
 			Type: openai.ToolTypeFunction,
 			Function: &openai.FunctionDefinition{
-				Name:        t.Name,
-				Description: t.Description,
-				Parameters:  t.InputSchema,
+				Name:        t.Name(),
+				Description: t.Description(),
+				Parameters:  t.InputSchema(),
 			},
 		})
 	}

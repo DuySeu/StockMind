@@ -9,22 +9,25 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	kb "stockmind/internal/knowledge_base"
+	"stockmind/internal/llm/tools"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/mark3labs/mcp-go/mcp"
 )
 
-type completionFunc func(context.Context, []database.Message, []mcp.Tool) (<-chan database.StreamEvent, error)
+type completionFunc func(context.Context, []database.Message, []*tools.Tool) (<-chan database.StreamEvent, error)
 
 type LLMService struct {
 	queries    *database.Queries
-	tools      *ToolManager
+	tools      *tools.ToolManager
 	completion completionFunc
 }
 
-func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, t *ToolManager) (*LLMService, error) {
+func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, knowledgeBase *kb.KnowledgeBase) (*LLMService, error) {
+	toolMgr := tools.NewToolManager(tools.InternalToolDeps{Retriever: knowledgeBase.Retriever})
+
 	var completion completionFunc
 	switch providerName {
 	case database.ModelProviderOpenAI:
@@ -32,7 +35,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 			return OpenAICompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderAnthropic:
@@ -40,7 +43,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 			return AnthropicCompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderOpenRouter:
@@ -48,7 +51,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 		if err != nil {
 			return nil, err
 		}
-		completion = func(ctx context.Context, history []database.Message, tools []mcp.Tool) (<-chan database.StreamEvent, error) {
+		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 			return OpenRouterCompletion(client, model, ctx, history, tools)
 		}
 	default:
@@ -57,7 +60,7 @@ func NewLLMService(ctx context.Context, providerName database.ModelProvider, mod
 
 	return &LLMService{
 		queries:    database.New(pool),
-		tools:      t,
+		tools:      toolMgr,
 		completion: completion,
 	}, nil
 }
@@ -96,7 +99,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 		var history []database.Message
 		if s.queries != nil {
 			var err error
-			history, err = s.queries.GetSessionHistoryBySessionID(ctx, sessionID)
+			history, err = s.queries.GetMessagesByConversationID(ctx, sessionID)
 			if err != nil {
 				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 				return
@@ -117,7 +120,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 		// 3. Persist the user message in parallel with the LLM call.
 		if s.queries != nil && userPrompt != "" {
 			go func() {
-				if err := s.queries.SessionAddChatHistory(ctx, database.SessionAddChatHistoryParams{
+				if err := s.queries.CreateMessage(ctx, database.CreateMessageParams{
 					ID:             uuid.New(),
 					ConversationID: sessionID,
 					Role:           "user",
@@ -181,7 +184,7 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 
 				body := turnText.String()
 				if s.queries != nil && (body != "" || len(meta) > 0) {
-					if err := s.queries.SessionAddChatHistory(ctx, database.SessionAddChatHistoryParams{
+					if err := s.queries.CreateMessage(ctx, database.CreateMessageParams{
 						ID:             uuid.New(),
 						ConversationID: sessionID,
 						Role:           string("assistant"),

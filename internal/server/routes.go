@@ -203,7 +203,7 @@ func (s *Server) chatHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID := req.SessionId
 	if sessionID == uuid.Nil {
 		userID := uuid.Must(uuid.Parse("123e4567-e89b-12d3-a456-426614174000"))
-		id, err := s.queries.CreateSession(r.Context(), database.CreateSessionParams{
+		id, err := s.queries.CreateConversation(r.Context(), database.CreateConversationParams{
 			ID:       uuid.New(),
 			UserID:   userID,
 			Title:    "New conversation",
