@@ -2,18 +2,18 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
 	kb "stockmind/internal/knowledge_base"
+	"stockmind/internal/llm/providers"
 	"stockmind/internal/llm/tools"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,38 +21,38 @@ type completionFunc func(context.Context, []database.Message, []*tools.Tool) (<-
 
 type LLMService struct {
 	queries    *database.Queries
-	tools      *tools.ToolManager
+	tools      *tools.Manager
 	completion completionFunc
 }
 
 func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, knowledgeBase *kb.KnowledgeBase) (*LLMService, error) {
-	toolMgr := tools.NewToolManager(tools.InternalToolDeps{Retriever: knowledgeBase.Retriever})
+	toolMgr := tools.NewManager(tools.Deps{Retriever: knowledgeBase.Retriever})
 
 	var completion completionFunc
 	switch providerName {
 	case database.ModelProviderOpenAI:
-		client, err := NewOpenAIClient(cfg.OpenAI)
+		client, err := providers.NewOpenAIClient(cfg.OpenAI)
 		if err != nil {
 			return nil, err
 		}
 		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
-			return OpenAICompletion(client, model, ctx, history, tools)
+			return providers.OpenAICompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderAnthropic:
-		client, err := NewAnthropicClient(ctx, cfg.Anthropic)
+		client, err := providers.NewAnthropicClient(ctx, cfg.Anthropic)
 		if err != nil {
 			return nil, err
 		}
 		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
-			return AnthropicCompletion(client, model, ctx, history, tools)
+			return providers.AnthropicCompletion(client, model, ctx, history, tools)
 		}
 	case database.ModelProviderOpenRouter:
-		client, err := NewOpenRouterClient(cfg.OpenRouter)
+		client, err := providers.NewOpenRouterClient(cfg.OpenRouter)
 		if err != nil {
 			return nil, err
 		}
 		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
-			return OpenRouterCompletion(client, model, ctx, history, tools)
+			return providers.OpenRouterCompletion(client, model, ctx, history, tools)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported provider: %q", providerName)
@@ -95,29 +95,52 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 	go func() {
 		defer close(outputCh)
 
-		// 1. Load prior history from DB
+		// 1. Load conversation metadata (summary + key facts) and last 20 messages.
 		var history []database.Message
+		var convSummary database.ConversationSummary
 		if s.queries != nil {
-			var err error
-			history, err = s.queries.GetMessagesByConversationID(ctx, sessionID)
+			conv, err := s.queries.GetConversationByID(ctx, sessionID)
+			if err != nil {
+				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
+				return
+			}
+			if len(conv.Metadata) > 0 {
+				_ = json.Unmarshal(conv.Metadata, &convSummary)
+			}
+
+			history, err = s.queries.GetMessagesByConversationID(ctx, database.GetMessagesByConversationIDParams{
+				ConversationID: sessionID,
+				Limit:          20,
+				Offset:         0,
+			})
 			if err != nil {
 				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 				return
 			}
 		}
 
-		// 2. Append the new user prompt in-memory
-		userCreatedAt := time.Now()
+		// 2. Prepend summary as a system message if one exists.
+		if convSummary.Summary != "" {
+			var sb strings.Builder
+			sb.WriteString("Previous conversation context:\n")
+			sb.WriteString(convSummary.Summary)
+			if len(convSummary.KeyFacts) > 0 {
+				sb.WriteString("\n\nKey facts from this conversation:\n- ")
+				sb.WriteString(strings.Join(convSummary.KeyFacts, "\n- "))
+			}
+			history = append([]database.Message{{Role: "system", Content: sb.String()}}, history...)
+		}
+
+		// 3. Append the new user prompt in-memory.
 		if userPrompt != "" {
 			history = append(history, database.Message{
 				ConversationID: sessionID,
 				Role:           "user",
 				Content:        userPrompt,
-				CreatedAt:      pgtype.Timestamptz{Time: userCreatedAt, Valid: true},
 			})
 		}
 
-		// 3. Persist the user message in parallel with the LLM call.
+		// 4. Persist the user message in parallel with the LLM call.
 		if s.queries != nil && userPrompt != "" {
 			go func() {
 				if err := s.queries.CreateMessage(ctx, database.CreateMessageParams{
@@ -135,14 +158,14 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 		var turnText strings.Builder
 		toolsMap := make(map[string]*database.Tool)
 
-		// 4. Call CallLLM to handle the provider interactions and tool loop.
+		// 5. Call CallLLM to handle the provider interactions and tool loop.
 		streamCh, err := s.CallLLM(ctx, history)
 		if err != nil {
 			outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 			return
 		}
 
-		// 5. Relay events, collect text, and intercept tool metadata for database saving.
+		// 6. Relay events, collect text, and intercept tool metadata for database saving.
 		for event := range streamCh {
 			switch event.Type {
 			case database.EventText:
@@ -187,12 +210,24 @@ func (s *LLMService) Chat(ctx context.Context, sessionID uuid.UUID, userPrompt s
 					if err := s.queries.CreateMessage(ctx, database.CreateMessageParams{
 						ID:             uuid.New(),
 						ConversationID: sessionID,
-						Role:           string("assistant"),
+						Role:           "assistant",
 						Content:        body,
 						Metadata:       meta,
 					}); err != nil {
 						log.Printf("llm: save assistant message: %v", err)
 					}
+				}
+
+				// 7. Trigger async summarization if threshold crossed.
+				if s.queries != nil {
+					go func() {
+						count, err := s.queries.GetMessageCountByConversationID(context.Background(), sessionID)
+						if err != nil {
+							log.Printf("llm: count messages: %v", err)
+							return
+						}
+						s.triggerAsyncSummarization(sessionID, count, convSummary)
+					}()
 				}
 				return
 
@@ -214,7 +249,7 @@ func (s *LLMService) CallLLM(ctx context.Context, history []database.Message) (<
 	go func() {
 		defer close(outputCh)
 
-		toolDefs := s.tools.GetDefinitions()
+		toolDefs := s.tools.All()
 
 	nextProviderRound:
 		for {

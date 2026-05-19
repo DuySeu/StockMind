@@ -1,4 +1,4 @@
-package core
+package providers
 
 import (
 	"context"
@@ -79,11 +79,11 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 	// -- Map tools --
 	anthropicTools := make([]anthropic.ToolUnionParam, 0, len(tools))
 	for _, t := range tools {
-		schema, _ := json.Marshal(t.InputSchema())
+		schema, _ := json.Marshal(t.Schema)
 		anthropicTools = append(anthropicTools, anthropic.ToolUnionParam{
 			OfTool: &anthropic.ToolParam{
-				Name:        t.Name(),
-				Description: anthropic.String(t.Description()),
+				Name:        t.Name,
+				Description: anthropic.String(t.Description),
 				InputSchema: anthropic.ToolInputSchemaParam{
 					Properties: schema,
 				},

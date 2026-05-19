@@ -15,11 +15,6 @@ func Start(ctx context.Context, protocol string) (func(), error) {
 	}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "get_stock_price",
-		Description: "Get latest stock price from VCI with symbol, time frame and look back period",
-	}, GetStockPrice)
-
-	mcp.AddTool(server, &mcp.Tool{
 		Name:        "piotroski_evaluation",
 		Description: "Get Piotroski evaluation for a stock",
 	}, GetPiotroskiEvaluation)

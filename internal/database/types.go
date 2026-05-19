@@ -106,6 +106,13 @@ type Source struct {
 	Title string `json:"title"`
 }
 
+// ConversationSummary is stored in conversations.metadata JSONB.
+type ConversationSummary struct {
+	Summary          string   `json:"summary"`
+	KeyFacts         []string `json:"key_facts"`
+	SummarizedCount  int64    `json:"summarized_count"`
+}
+
 // UnmarshalJSON allows Source to be deserialized from either a plain string
 // (just a URL) or a JSON object with "url" and "title" fields.
 func (s *Source) UnmarshalJSON(data []byte) error {

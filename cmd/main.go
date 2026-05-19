@@ -46,7 +46,7 @@ func main() {
 						Name:    "mcp-protocol",
 						Aliases: []string{"p"},
 						Usage:   "MCP protocol (stdio, http)",
-						Value:   "stdio",
+						Value:   "http",
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {

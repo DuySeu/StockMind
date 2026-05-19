@@ -1,5 +1,6 @@
-import { sendChatMessage, getMessages } from "@/api/chat";
+import { sendChatMessage } from "@/api/chat";
 import type { ChatEvent } from "@/api/chat";
+import { getSessionMessages } from "@/api/sessions";
 import stockmindLogo from "@/assets/stockmind.png";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
@@ -19,17 +20,22 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Message, ToolCall } from "@/types/message";
-import { ArrowUp, AudioLines, FileText, Image, Paperclip, X } from "lucide-react";
+import { ArrowUp, AudioLines, FileText, Image, Loader2, Paperclip, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+
+const PAGE_SIZE = 20;
 
 const ChatbotPage = () => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [title, setTitle] = useState("StockMind");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -46,32 +52,35 @@ const ChatbotPage = () => {
     },
   });
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change (only when not loading older messages)
   useEffect(() => {
+    if (isLoadingMore) return;
     if (scrollRef.current) {
       const scrollElement = scrollRef.current.querySelector('[data-slot="scroll-area-viewport"]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [messages]);
+  }, [messages, isLoadingMore]);
 
   // Fetch messages when navigating to an existing session.
-  // Skip if onSubmit is already streaming this session (streamingSessionRef).
   useEffect(() => {
     if (!id) {
       setMessages([]);
+      setOffset(0);
+      setHasMore(false);
       return;
     }
 
-    // onSubmit already owns the stream for this session — don't duplicate.
     if (streamingSessionRef.current === id) return;
 
     let cancelled = false;
     const fetchMessages = async () => {
-      const loadedMessages = await getMessages(id);
+      const page = await getSessionMessages(id, PAGE_SIZE, 0);
       if (cancelled) return;
-      setMessages(loadedMessages);
+      setMessages(page.messages);
+      setOffset(PAGE_SIZE);
+      setHasMore(page.has_more);
     };
 
     fetchMessages();
@@ -79,6 +88,38 @@ const ChatbotPage = () => {
       cancelled = true;
     };
   }, [id]);
+
+  // Scroll-to-top detection for loading older messages.
+  useEffect(() => {
+    if (!id || !hasMore) return;
+
+    const viewport = scrollRef.current?.querySelector('[data-slot="scroll-area-viewport"]');
+    if (!viewport) return;
+
+    const handleScroll = async () => {
+      if (viewport.scrollTop !== 0 || isLoadingMore || !hasMore) return;
+
+      setIsLoadingMore(true);
+      try {
+        const prevHeight = viewport.scrollHeight;
+        const page = await getSessionMessages(id, PAGE_SIZE, offset);
+        setMessages((prev) => [...page.messages, ...prev]);
+        setOffset((o) => o + PAGE_SIZE);
+        setHasMore(page.has_more);
+        // Restore scroll position after prepend.
+        requestAnimationFrame(() => {
+          viewport.scrollTop = viewport.scrollHeight - prevHeight;
+        });
+      } catch (err) {
+        toast.error("Failed to load older messages");
+      } finally {
+        setIsLoadingMore(false);
+      }
+    };
+
+    viewport.addEventListener("scroll", handleScroll);
+    return () => viewport.removeEventListener("scroll", handleScroll);
+  }, [id, hasMore, isLoadingMore, offset]);
 
   const handleFileClick = (accept: string) => {
     if (fileInputRef.current) {
@@ -90,7 +131,6 @@ const ChatbotPage = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // 10MB limit
       if (file.size > 10 * 1024 * 1024) {
         toast.error("File is too large. Max size is 10MB.");
       } else {
@@ -102,10 +142,6 @@ const ChatbotPage = () => {
     }
   };
 
-  /**
-   * Handle a single SSE event from the backend and update messages state.
-   * Returns the session_id when a "start" event provides one.
-   */
   const handleStreamEvent = useCallback((event: ChatEvent, callbacks: { onSessionId?: (sid: string) => void }) => {
     const { type, data } = event;
 
@@ -202,15 +238,10 @@ const ChatbotPage = () => {
       }
 
       case "tool_result": {
-        // Tool results can be appended as metadata or as a separate message
-        // depending on how MessageList renders them.
-        // For now, we skip tool_result display (tool output is usually
-        // digested by the LLM into the next text response).
         break;
       }
 
       case "done": {
-        // Close any open thinking blocks
         setMessages((prev) => {
           const updated = [...prev];
           const lastIndex = updated.length - 1;
@@ -243,12 +274,11 @@ const ChatbotPage = () => {
     const userInput = data.input.trim();
     if (!userInput) return;
 
-    const fileToSend = attachment; // Capture attachment before clearing
+    const fileToSend = attachment;
     form.reset();
     setAttachment(null);
     setIsStreaming(true);
 
-    // Add user message to the list
     setMessages((prev) => [
       ...prev,
       {
@@ -274,7 +304,6 @@ const ChatbotPage = () => {
             onSessionId: (sid) => {
               streamingSessionRef.current = sid;
 
-              // Navigate to the new session URL if this is a fresh chat
               if (!id && sid) {
                 setTitle(userInput);
                 navigate(`/c/${sid}`, { replace: true });
@@ -293,7 +322,6 @@ const ChatbotPage = () => {
         fileToSend,
       );
 
-      // Stream finished — release ownership so future navigations can reconnect.
       streamingSessionRef.current = null;
       setIsStreaming(false);
     } catch (err) {
@@ -321,6 +349,11 @@ const ChatbotPage = () => {
             <div ref={scrollRef} className="flex-1 overflow-hidden flex flex-col relative w-full h-full">
               <ScrollArea className="flex-1 w-full h-full">
                 <div className="max-w-4xl mx-auto px-4 pt-8 pb-36 md:pb-40 space-y-8 w-full min-h-full flex flex-col">
+                  {isLoadingMore && (
+                    <div className="flex justify-center py-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                    </div>
+                  )}
                   {messages.length > 0 || id ? (
                     <MessageList messages={messages} />
                   ) : (
@@ -458,3 +491,4 @@ const ChatbotPage = () => {
 };
 
 export default ChatbotPage;
+

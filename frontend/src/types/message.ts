@@ -22,6 +22,7 @@ export type ToolCall = {
 export type Metadata = ImageContent | ThinkingContent | ToolCall;
 
 export type Message = {
+  id?: string;
   role: "user" | "assistant";
   content?: string;
   metadata?: Metadata[];

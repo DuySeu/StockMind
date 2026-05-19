@@ -19,9 +19,9 @@ require (
 	github.com/minio/minio-go/v7 v7.1.0
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/nguyenthenguyen/docx v0.0.0-20230621112118-9c8e795a11db
+	github.com/openai/openai-go/v3 v3.36.0
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/qdrant/go-client v1.18.1
-	github.com/sashabaranov/go-openai v1.41.2
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/urfave/cli/v3 v3.9.0
 	github.com/yuin/goldmark v1.8.2

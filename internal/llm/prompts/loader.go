@@ -5,6 +5,7 @@ import (
 	"embed"
 	"fmt"
 	"text/template"
+	"time"
 )
 
 //go:embed templates/*.txt
@@ -28,12 +29,35 @@ type MetricsParams struct {
 	Content string
 }
 
+// SummarizationParams holds the variables for the summarization prompt.
+type SummarizationParams struct {
+	Summary  string
+	KeyFacts string
+	Messages string
+}
+
+// SystemParams holds the variables for the system prompt.
+type SystemParams struct {
+	Date     string
+	Summary  string
+	KeyFacts string
+}
+
 // PromptLoader renders prompts from embedded Go templates.
 type PromptLoader struct{}
 
 // NewPromptLoader creates a new prompt loader.
 func NewPromptLoader() *PromptLoader {
 	return &PromptLoader{}
+}
+
+// render executes a named template with the given data and returns the result.
+func (p *PromptLoader) render(name string, data any) (string, error) {
+	var buf bytes.Buffer
+	if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
+		return "", fmt.Errorf("failed to render prompt %s: %w", name, err)
+	}
+	return buf.String(), nil
 }
 
 // GetResearchPrompt renders the research prompt with the given params.
@@ -46,11 +70,13 @@ func (p *PromptLoader) GetMetricsPrompt(params MetricsParams) (string, error) {
 	return p.render("metrics_prompt.txt", params)
 }
 
-// render executes a named template with the given data and returns the result.
-func (p *PromptLoader) render(name string, data any) (string, error) {
-	var buf bytes.Buffer
-	if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
-		return "", fmt.Errorf("failed to render prompt %s: %w", name, err)
-	}
-	return buf.String(), nil
+// GetSummarizationPrompt renders the summarization prompt with the given params.
+func (p *PromptLoader) GetSummarizationPrompt(params SummarizationParams) (string, error) {
+	return p.render("summarization_prompt.txt", params)
+}
+
+// GetSummaryPrompt renders the summary prompt with the given params.
+func (p *PromptLoader) GetSystemPrompt(params SystemParams) (string, error) {
+	params.Date = time.Now().Format("2006-01-02")
+	return p.render("system_prompt.txt", params)
 }

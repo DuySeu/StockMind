@@ -4,132 +4,148 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sync"
+	"reflect"
+	"strings"
 
 	kb "stockmind/internal/knowledge_base"
 )
 
-// ──────── Tool Definition ────────
-
-// HandlerFunc is the execution function signature for a tool.
-type HandlerFunc func(ctx context.Context, args map[string]any) (map[string]any, error)
-
-// HandlerFactory creates a HandlerFunc given dependencies. Used for auto-registration.
-type HandlerFactory func(deps InternalToolDeps) HandlerFunc
-
-// Tool is a self-contained tool definition with schema and execution logic.
-type Tool struct {
-	name        string
-	description string
-	schema      map[string]any
-	handler     HandlerFunc
-}
-
-// NewTool creates a Tool. Used by internal/llm/tools and mcp_client to build tools.
-func NewTool(name, description string, schema map[string]any, handler HandlerFunc) *Tool {
-	return &Tool{name: name, description: description, schema: schema, handler: handler}
-}
-
-func (t *Tool) Name() string                { return t.name }
-func (t *Tool) Description() string         { return t.description }
-func (t *Tool) InputSchema() map[string]any { return t.schema }
-
-// Execute runs the tool with the given parsed arguments.
-func (t *Tool) Execute(ctx context.Context, args map[string]any) (map[string]any, error) {
-	return t.handler(ctx, args)
-}
-
-// ──────── Auto-Registration ────────
-
-// ToolSchema holds the static definition of a tool (sent to LLM providers).
-type ToolSchema struct {
-	Name        string
-	Description string
-	InputSchema map[string]any
-}
-
-// InternalToolDeps holds dependencies needed by internal tools.
-type InternalToolDeps struct {
+// Deps holds shared dependencies available to tool handlers.
+type Deps struct {
 	Retriever kb.Retriever
 }
 
-// toolDef is a deferred tool definition (schema + factory).
-type toolDef struct {
-	schema  ToolSchema
-	factory HandlerFactory
+// Tool defines a function-callable tool for LLM providers.
+type Tool struct {
+	Name        string
+	Description string
+	Schema      map[string]any
+	// Run executes the tool. rawArgs is the JSON string from the LLM.
+	Execute func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
 }
 
-var registry []toolDef
+// ──────── Registration ────────
 
-// Register queues a tool definition for later initialization.
-// Call this in init() of each handler file.
-func Register(schema ToolSchema, factory HandlerFactory) {
-	registry = append(registry, toolDef{schema: schema, factory: factory})
+type registration struct {
+	name, description string
+	schema            map[string]any
+	build             func(deps Deps) func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
 }
 
-// ──────── Tool Manager ────────
+var registrations []registration
 
-// ToolManager registers tools and dispatches execution.
-type ToolManager struct {
-	mu    sync.RWMutex
+// AddTool registers a typed tool. Schema is inferred from In struct tags.
+// Handler receives pre-parsed input and returns any JSON-serializable value.
+func AddTool[In any](name, description string, h func(ctx context.Context, deps Deps, input In) (any, error)) {
+	var zero In
+	schema := schemaFrom(zero)
+	registrations = append(registrations, registration{
+		name:        name,
+		description: description,
+		schema:      schema,
+		build: func(deps Deps) func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
+			return func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
+				var input In
+				if err := json.Unmarshal(rawArgs, &input); err != nil {
+					return nil, fmt.Errorf("parse input: %w", err)
+				}
+				result, err := h(ctx, deps, input)
+				if err != nil {
+					return nil, err
+				}
+				return json.Marshal(result)
+			}
+		},
+	})
+}
+
+// ──────── Manager ────────
+
+// Manager holds initialized tools. Safe for concurrent reads after creation.
+type Manager struct {
 	tools map[string]*Tool
+	list  []*Tool
 }
 
-// NewToolManager creates a ToolManager with all registered internal tools.
-func NewToolManager(deps InternalToolDeps) *ToolManager {
-	mgr := &ToolManager{tools: make(map[string]*Tool)}
-	for _, def := range registry {
-		handler := def.factory(deps)
-		mgr.add(NewTool(def.schema.Name, def.schema.Description, def.schema.InputSchema, handler))
+// NewManager builds all registered tools with the given dependencies.
+func NewManager(deps Deps) *Manager {
+	m := &Manager{tools: make(map[string]*Tool, len(registrations))}
+	for _, r := range registrations {
+		t := &Tool{
+			Name:        r.name,
+			Description: r.description,
+			Schema:      r.schema,
+			Execute:     r.build(deps),
+		}
+		m.tools[r.name] = t
+		m.list = append(m.list, t)
 	}
-	return mgr
+	return m
 }
 
-// add adds a tool to the registry.
-func (m *ToolManager) add(tool *Tool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.tools[tool.Name()] = tool
-}
+// All returns every registered tool definition (for sending to LLM providers).
+func (m *Manager) All() []*Tool { return m.list }
 
-// RegisterExternal adds an external tool (e.g. from MCP client) at runtime.
-func (m *ToolManager) RegisterExternal(tool *Tool) {
-	m.add(tool)
-}
-
-// GetDefinitions returns all registered tools for passing to providers.
-func (m *ToolManager) GetDefinitions() []*Tool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make([]*Tool, 0, len(m.tools))
-	for _, t := range m.tools {
-		out = append(out, t)
-	}
-	return out
-}
-
-// Execute runs the named tool, unmarshalling rawArgs from JSON first.
-func (m *ToolManager) Execute(ctx context.Context, name string, rawArgs string) (string, error) {
-	m.mu.RLock()
-	tool, ok := m.tools[name]
-	m.mu.RUnlock()
+// Execute calls the named tool with raw JSON args from the LLM.
+func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (string, error) {
+	t, ok := m.tools[name]
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
 	}
-
-	var args map[string]any
-	if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
-	result, err := tool.Execute(ctx, args)
+	result, err := t.Execute(ctx, json.RawMessage(rawArgs))
 	if err != nil {
 		return "", err
 	}
+	return string(result), nil
+}
 
-	out, err := json.Marshal(result)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal tool result: %w", err)
+// ──────── Schema Inference ────────
+
+// schemaFrom generates a JSON Schema object from struct tags.
+// Uses `json` tag for field name/required, `jsonschema` tag for description.
+func schemaFrom(v any) map[string]any {
+	t := reflect.TypeOf(v)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
 	}
-	return string(out), nil
+
+	props := map[string]any{}
+	var required []string
+
+	for i := range t.NumField() {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		if tag == "" || tag == "-" {
+			continue
+		}
+		name := strings.Split(tag, ",")[0]
+
+		prop := map[string]any{"type": goTypeToJSON(f.Type.Kind())}
+		if desc := f.Tag.Get("jsonschema"); desc != "" {
+			prop["description"] = desc
+		}
+		if !strings.Contains(tag, "omitempty") {
+			required = append(required, name)
+		}
+		props[name] = prop
+	}
+
+	schema := map[string]any{"type": "object", "properties": props}
+	if len(required) > 0 {
+		schema["required"] = required
+	}
+	return schema
+}
+
+func goTypeToJSON(k reflect.Kind) string {
+	switch k {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return "integer"
+	case reflect.Float32, reflect.Float64:
+		return "number"
+	case reflect.Bool:
+		return "boolean"
+	default:
+		return "string"
+	}
 }

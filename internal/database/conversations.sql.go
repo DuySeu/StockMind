@@ -69,6 +69,24 @@ func (q *Queries) DeleteConversationByID(ctx context.Context, id uuid.UUID) erro
 	return err
 }
 
+const getConversationByID = `-- name: GetConversationByID :one
+SELECT id, user_id, title, description, metadata, created_at FROM conversations WHERE id = $1
+`
+
+func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Conversation, error) {
+	row := q.db.QueryRow(ctx, getConversationByID, id)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Title,
+		&i.Description,
+		&i.Metadata,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getConversationsByUserID = `-- name: GetConversationsByUserID :many
 SELECT id, user_id, title, description, metadata, created_at FROM conversations WHERE user_id = $1 ORDER BY created_at DESC
 `
@@ -100,12 +118,34 @@ func (q *Queries) GetConversationsByUserID(ctx context.Context, userID uuid.UUID
 	return items, nil
 }
 
-const getMessagesByConversationID = `-- name: GetMessagesByConversationID :many
-SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC
+const getMessageCountByConversationID = `-- name: GetMessageCountByConversationID :one
+SELECT COUNT(*) FROM messages WHERE conversation_id = $1
 `
 
-func (q *Queries) GetMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]Message, error) {
-	rows, err := q.db.Query(ctx, getMessagesByConversationID, conversationID)
+func (q *Queries) GetMessageCountByConversationID(ctx context.Context, conversationID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, getMessageCountByConversationID, conversationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getMessagesByConversationID = `-- name: GetMessagesByConversationID :many
+SELECT id, conversation_id, role, content, metadata, created_at FROM (
+  SELECT id, conversation_id, role, content, metadata, created_at FROM messages
+  WHERE conversation_id = $1
+  ORDER BY created_at DESC
+  LIMIT $2 OFFSET $3
+) sub ORDER BY created_at ASC
+`
+
+type GetMessagesByConversationIDParams struct {
+	ConversationID uuid.UUID `db:"conversation_id" json:"conversation_id"`
+	Limit          int32     `db:"limit" json:"limit"`
+	Offset         int32     `db:"offset" json:"offset"`
+}
+
+func (q *Queries) GetMessagesByConversationID(ctx context.Context, arg GetMessagesByConversationIDParams) ([]Message, error) {
+	rows, err := q.db.Query(ctx, getMessagesByConversationID, arg.ConversationID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +169,20 @@ func (q *Queries) GetMessagesByConversationID(ctx context.Context, conversationI
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateConversationMetadata = `-- name: UpdateConversationMetadata :exec
+UPDATE conversations SET metadata = $2 WHERE id = $1
+`
+
+type UpdateConversationMetadataParams struct {
+	ID       uuid.UUID `db:"id" json:"id"`
+	Metadata []byte    `db:"metadata" json:"metadata"`
+}
+
+func (q *Queries) UpdateConversationMetadata(ctx context.Context, arg UpdateConversationMetadataParams) error {
+	_, err := q.db.Exec(ctx, updateConversationMetadata, arg.ID, arg.Metadata)
+	return err
 }
 
 const updateConversationName = `-- name: UpdateConversationName :exec

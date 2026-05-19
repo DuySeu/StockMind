@@ -11,7 +11,8 @@ import (
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/operations"
-	openai "github.com/sashabaranov/go-openai"
+	openai "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 )
 
 const (
@@ -53,13 +54,15 @@ func NewEmbedService(provider database.ModelProvider, model string, dimensions i
 		if cfg.OpenAI.APIKey == "" {
 			return nil, fmt.Errorf("embed_service: OpenAI API key is required")
 		}
-		oaiCfg := openai.DefaultConfig(cfg.OpenAI.APIKey)
-		oaiCfg.HTTPClient = common.SharedHTTPClient
-		if cfg.OpenAI.BaseURL != "" {
-			oaiCfg.BaseURL = cfg.OpenAI.BaseURL
+		opts := []option.RequestOption{
+			option.WithAPIKey(cfg.OpenAI.APIKey),
+			option.WithHTTPClient(common.SharedHTTPClient),
 		}
-		client := openai.NewClientWithConfig(oaiCfg)
-		fn = openAIEmbed(client, model)
+		if cfg.OpenAI.BaseURL != "" {
+			opts = append(opts, option.WithBaseURL(cfg.OpenAI.BaseURL))
+		}
+		client := openai.NewClient(opts...)
+		fn = openAIEmbed(&client, model)
 
 	default:
 		return nil, fmt.Errorf("embed_service: unsupported provider %q", provider)
@@ -142,9 +145,11 @@ func openRouterEmbed(client *openrouter.OpenRouter, model string) embedFunc {
 
 func openAIEmbed(client *openai.Client, model string) embedFunc {
 	return func(ctx context.Context, inputs []string) ([][]float32, error) {
-		resp, err := client.CreateEmbeddings(ctx, openai.EmbeddingRequest{
-			Model: openai.EmbeddingModel(model),
-			Input: inputs,
+		resp, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
+			Model: model,
+			Input: openai.EmbeddingNewParamsInputUnion{
+				OfArrayOfStrings: inputs,
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("openai: %w", err)
@@ -152,7 +157,11 @@ func openAIEmbed(client *openai.Client, model string) embedFunc {
 
 		vecs := make([][]float32, len(resp.Data))
 		for i, d := range resp.Data {
-			vecs[i] = d.Embedding
+			v := make([]float32, len(d.Embedding))
+			for j, f := range d.Embedding {
+				v[j] = float32(f)
+			}
+			vecs[i] = v
 		}
 		return vecs, nil
 	}

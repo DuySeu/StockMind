@@ -1,4 +1,4 @@
-package core
+package providers
 
 import (
 	"context"
@@ -223,9 +223,9 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 			out.Tools = append(out.Tools, components.CreateChatFunctionToolChatFunctionToolFunction(components.ChatFunctionToolFunction{
 				Type: components.ChatFunctionToolTypeFunction,
 				Function: components.ChatFunctionToolFunctionFunction{
-					Name:        t.Name(),
-					Description: openrouter.String(t.Description()),
-					Parameters:  t.InputSchema(),
+					Name:        t.Name,
+					Description: openrouter.String(t.Description),
+					Parameters:  t.Schema,
 				},
 			}))
 		}
