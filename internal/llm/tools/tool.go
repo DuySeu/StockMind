@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	kb "stockmind/internal/knowledge_base"
 )
 
-// Deps holds shared dependencies available to tool handlers.
-type Deps struct {
-	Retriever kb.Retriever
+// SchemaProvider allows an input struct to define its own JSON Schema.
+// If implemented, the custom schema is used instead of reflection-based inference.
+type SchemaProvider interface {
+	Schema() map[string]any
 }
 
 // Tool defines a function-callable tool for LLM providers.
@@ -20,43 +19,36 @@ type Tool struct {
 	Name        string
 	Description string
 	Schema      map[string]any
-	// Run executes the tool. rawArgs is the JSON string from the LLM.
-	Execute func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
+	Execute     func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
 }
 
-// ──────── Registration ────────
-
-type registration struct {
-	name, description string
-	schema            map[string]any
-	build             func(deps Deps) func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
-}
-
-var registrations []registration
-
-// AddTool registers a typed tool. Schema is inferred from In struct tags.
-// Handler receives pre-parsed input and returns any JSON-serializable value.
-func AddTool[In any](name, description string, h func(ctx context.Context, deps Deps, input In) (any, error)) {
+// NewTool creates a Tool with type-safe handler. Schema is inferred from struct tags,
+// or from SchemaProvider interface if implemented.
+func NewTool[In any](name, description string, h func(ctx context.Context, input In) (any, error)) *Tool {
 	var zero In
-	schema := schemaFrom(zero)
-	registrations = append(registrations, registration{
-		name:        name,
-		description: description,
-		schema:      schema,
-		build: func(deps Deps) func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
-			return func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
-				var input In
-				if err := json.Unmarshal(rawArgs, &input); err != nil {
-					return nil, fmt.Errorf("parse input: %w", err)
-				}
-				result, err := h(ctx, deps, input)
-				if err != nil {
-					return nil, err
-				}
-				return json.Marshal(result)
+	var schema map[string]any
+	if sp, ok := any(zero).(SchemaProvider); ok {
+		schema = sp.Schema()
+	} else {
+		schema = schemaFrom(zero)
+	}
+
+	return &Tool{
+		Name:        name,
+		Description: description,
+		Schema:      schema,
+		Execute: func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
+			var input In
+			if err := json.Unmarshal(rawArgs, &input); err != nil {
+				return nil, fmt.Errorf("parse input: %w", err)
 			}
+			result, err := h(ctx, input)
+			if err != nil {
+				return nil, err
+			}
+			return json.Marshal(result)
 		},
-	})
+	}
 }
 
 // ──────── Manager ────────
@@ -67,17 +59,11 @@ type Manager struct {
 	list  []*Tool
 }
 
-// NewManager builds all registered tools with the given dependencies.
-func NewManager(deps Deps) *Manager {
-	m := &Manager{tools: make(map[string]*Tool, len(registrations))}
-	for _, r := range registrations {
-		t := &Tool{
-			Name:        r.name,
-			Description: r.description,
-			Schema:      r.schema,
-			Execute:     r.build(deps),
-		}
-		m.tools[r.name] = t
+// NewManager builds a Manager from the given tools.
+func NewManager(tools []*Tool) *Manager {
+	m := &Manager{tools: make(map[string]*Tool, len(tools))}
+	for _, t := range tools {
+		m.tools[t.Name] = t
 		m.list = append(m.list, t)
 	}
 	return m
@@ -99,7 +85,7 @@ func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (str
 	return string(result), nil
 }
 
-// ──────── Schema Inference ────────
+// ──────── Schema Inference (fallback) ────────
 
 // schemaFrom generates a JSON Schema object from struct tags.
 // Uses `json` tag for field name/required, `jsonschema` tag for description.

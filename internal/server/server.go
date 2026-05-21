@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"stockmind/internal/common"
 	"stockmind/internal/database"
 	kb "stockmind/internal/knowledge_base"
 	core "stockmind/internal/llm"
@@ -14,8 +13,16 @@ import (
 	"stockmind/internal/storage"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/joho/godotenv/autoload"
 )
+
+// ServerDeps holds all dependencies needed by the HTTP server.
+type ServerDeps struct {
+	DBPool      *pgxpool.Pool
+	Agent       *core.LLMService
+	KBStore     kb.Store
+	ObjectStore storage.ObjectStore
+	Services    *service.Services
+}
 
 type Server struct {
 	queries        *database.Queries
@@ -23,37 +30,33 @@ type Server struct {
 	agent          *core.LLMService
 	knowledgeStore kb.Store
 	objectStore    storage.ObjectStore
-	service        *service.Service
+	services       *service.Services
 }
 
-func NewServer(ctx context.Context, config *common.Config, dbPool *pgxpool.Pool, knowledgeBase *kb.KnowledgeBase, objectStore storage.ObjectStore, service *service.Service, port string) *http.Server {
-	agent, err := core.NewLLMService(ctx, common.GetProviderName(), common.GetLLMModelName(), config.LLMConfig, dbPool, knowledgeBase)
-	if err != nil {
-		log.Fatalf("failed to initialize LLM service: %v", err)
+func NewServer(deps ServerDeps, port string) *http.Server {
+	srv := &Server{
+		queries:        database.New(deps.DBPool),
+		dbPool:         deps.DBPool,
+		agent:          deps.Agent,
+		knowledgeStore: deps.KBStore,
+		objectStore:    deps.ObjectStore,
+		services:       deps.Services,
 	}
 
-	srv := &Server{
-		queries:        database.New(dbPool),
-		dbPool:         dbPool,
-		agent:          agent,
-		knowledgeStore: knowledgeBase.Store,
-		objectStore:    objectStore,
-		service:        service,
-	}
+	// Initialize research worker pool now that the server (and its methods) exist.
+	deps.Services.InitResearchWorker(srv.ProcessResearchJob)
 
 	if err := srv.EnsureDefaultUser(); err != nil {
 		log.Printf("Warning: Failed to ensure default user: %v\n", err)
 	}
 
-	server := &http.Server{
+	return &http.Server{
 		Addr:         ":" + port,
 		Handler:      srv.RegisterRoutes(),
 		IdleTimeout:  time.Minute,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 5 * time.Minute,
 	}
-
-	return server
 }
 
 func (s *Server) EnsureDefaultUser() error {

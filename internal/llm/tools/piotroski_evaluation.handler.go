@@ -1,4 +1,4 @@
-package mcp
+package tools
 
 import (
 	"bytes"
@@ -10,9 +10,13 @@ import (
 	"time"
 
 	"stockmind/internal/common"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// GraphQLPayload represents the GraphQL request payload
+type GraphQLPayload struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables"`
+}
 
 type PiotroskiEvaluation struct {
 	Symbol  string  `json:"symbol"`
@@ -39,7 +43,7 @@ type PiotroskiInput struct {
 	Symbol string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
 }
 
-func GetPiotroskiEvaluation(ctx context.Context, req *mcp.CallToolRequest, input PiotroskiInput) (*mcp.CallToolResult, PiotroskiEvaluation, error) {
+func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, PiotroskiEvaluation, error) {
 	if input.Symbol == "" {
 		return nil, PiotroskiEvaluation{}, fmt.Errorf("symbol is required")
 	}

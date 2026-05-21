@@ -17,7 +17,7 @@ func (s *Server) GetNewsHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil || len(latestNews) == 0 {
 		log.Printf("[News] Failed to get latest news from DB or no news found for today (err: %v). Triggering Tavily...", err)
 
-		tavilyNews, tErr := s.service.Tavily.SearchWeb(r.Context(), "Tin tức thị trường chứng khoán Việt Nam hôm nay", common.NEWS_DOMAINS)
+		tavilyNews, tErr := s.services.Tavily.SearchWeb(r.Context(), "Tin tức thị trường chứng khoán Việt Nam hôm nay", common.NEWS_DOMAINS)
 
 		if tErr != nil {
 			log.Printf("[News] Failed to get latest news from Tavily: %v", tErr)

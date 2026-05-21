@@ -8,13 +8,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
 	"stockmind/internal/llm/prompts"
 	"stockmind/internal/service/tavily"
+	"stockmind/internal/service/worker"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -148,34 +148,51 @@ func (s *Server) persistReports(report database.ResearchReport) {
 }
 
 // ---------------------------------------------------------------------------
-// Orchestrator — researches tickers concurrently.
+// Orchestrator — researches tickers via the worker pool.
 // ---------------------------------------------------------------------------
 
 func (s *Server) stockDigestAgent(ctx context.Context, request ResearchRequestPayload, progressCh chan<- progressEvent) database.ResearchReport {
-	var (
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		reports = make(map[string]database.StockReport, len(request.Tickers))
-	)
+	resultCh := make(chan worker.ResearchResult, len(request.Tickers))
 
-	for _, ticker := range request.Tickers {
-		wg.Add(1)
-		go func(t string) {
-			defer wg.Done()
-
-			report, err := s.researchTicker(ctx, t, request.ResearchModel, progressCh)
-			if err != nil {
-				slog.Error("research failed", "ticker", t, "error", err)
-				return
+	var progressAnyCh chan<- any
+	if progressCh != nil {
+		proxy := make(chan any, 50)
+		progressAnyCh = proxy
+		go func() {
+			for v := range proxy {
+				if evt, ok := v.(progressEvent); ok {
+					progressCh <- evt
+				}
 			}
-
-			mu.Lock()
-			reports[t] = report
-			mu.Unlock()
-		}(ticker)
+		}()
 	}
 
-	wg.Wait()
+	for _, ticker := range request.Tickers {
+		job := &worker.ResearchJob{
+			Ticker:        ticker,
+			ResearchModel: request.ResearchModel,
+			ProgressCh:    progressAnyCh,
+			ResultCh:      resultCh,
+		}
+		if err := s.services.ResearchWorker.Enqueue(job); err != nil {
+			slog.Error("research enqueue failed", "ticker", ticker, "error", err)
+			resultCh <- worker.ResearchResult{Ticker: ticker, Err: err}
+		}
+	}
+
+	reports := make(map[string]database.StockReport, len(request.Tickers))
+	for range request.Tickers {
+		r := <-resultCh
+		if r.Err != nil {
+			slog.Error("research failed", "ticker", r.Ticker, "error", r.Err)
+			continue
+		}
+		reports[r.Ticker] = r.Report
+	}
+
+	if progressAnyCh != nil {
+		close(progressAnyCh)
+	}
 	if progressCh != nil {
 		close(progressCh)
 	}
@@ -189,6 +206,29 @@ func (s *Server) stockDigestAgent(ctx context.Context, request ResearchRequestPa
 // ---------------------------------------------------------------------------
 // Single-ticker research with optional progress reporting
 // ---------------------------------------------------------------------------
+
+// ProcessResearchJob is the worker process function for research jobs.
+func (s *Server) ProcessResearchJob(job *worker.ResearchJob) {
+	// Build a typed progress channel from the any channel
+	var progressCh chan<- progressEvent
+	if job.ProgressCh != nil {
+		progressCh = newProgressAdapter(job.ProgressCh)
+	}
+
+	report, err := s.researchTicker(context.Background(), job.Ticker, job.ResearchModel, progressCh)
+	job.ResultCh <- worker.ResearchResult{Ticker: job.Ticker, Report: report, Err: err}
+}
+
+// newProgressAdapter converts chan<- any to chan<- progressEvent via a goroutine.
+func newProgressAdapter(ch chan<- any) chan<- progressEvent {
+	typed := make(chan progressEvent, 50)
+	go func() {
+		for evt := range typed {
+			ch <- evt
+		}
+	}()
+	return typed
+}
 
 func (s *Server) researchTicker(ctx context.Context, ticker, model string, progressCh chan<- progressEvent) (database.StockReport, error) {
 	emit := func(step, message string, progress int) {
@@ -217,7 +257,7 @@ func (s *Server) researchTicker(ctx context.Context, ticker, model string, progr
 
 	// 2. Submit async research job
 	emit("submitting", "Submitting research request...", 25)
-	requestID, err := s.service.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
+	requestID, err := s.services.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
 		Input:        prompt,
 		Model:        model,
 		Stream:       false,
@@ -231,7 +271,7 @@ func (s *Server) researchTicker(ctx context.Context, ticker, model string, progr
 
 	// 3. Poll until completed
 	emit("polling", "Gathering and analyzing data...", 40)
-	pollResp, err := s.service.Tavily.PollResearch(ctx, requestID)
+	pollResp, err := s.services.Tavily.PollResearch(ctx, requestID)
 	if err != nil {
 		emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
 		return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)

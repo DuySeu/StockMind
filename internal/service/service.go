@@ -12,22 +12,33 @@ import (
 	_ "github.com/joho/godotenv/autoload"
 )
 
-type Service struct {
-	Tavily *tavily.Client
-	Worker *worker.Worker
+type Services struct {
+	Tavily         *tavily.Client
+	DocWorker      *worker.DocumentWorker
+	ResearchWorker *worker.ResearchWorker
 }
 
-func NewService(pipeline *kb.IngestPipeline, dbPool *pgxpool.Pool, store storage.ObjectStore) *Service {
-	w := worker.NewWorker(dbPool, pipeline, store)
-	log.Println("Worker pool initialized (elastic, max 2)")
+func NewService(pipeline *kb.IngestPipeline, dbPool *pgxpool.Pool, store storage.ObjectStore) *Services {
+	dw := worker.NewDocumentWorker(dbPool, pipeline, store)
+	log.Println("Document worker pool initialized (elastic, max 2)")
 
-	return &Service{
-		Tavily: tavily.NewClient(),
-		Worker: w,
+	return &Services{
+		Tavily:    tavily.NewClient(),
+		DocWorker: dw,
 	}
 }
 
-// Shutdown stops the worker pool and waits for in-flight jobs to finish.
-func (s *Service) Shutdown() {
-	s.Worker.Shutdown()
+// InitResearchWorker initializes the research worker pool with the given process function.
+// Must be called after the server is created since the process function depends on server methods.
+func (s *Services) InitResearchWorker(processFunc func(*worker.ResearchJob)) {
+	s.ResearchWorker = worker.NewResearchWorker(processFunc)
+	log.Println("Research worker pool initialized (elastic, max 3)")
+}
+
+// Shutdown stops all worker pools and waits for in-flight jobs to finish.
+func (s *Services) Shutdown() {
+	s.DocWorker.Shutdown()
+	if s.ResearchWorker != nil {
+		s.ResearchWorker.Shutdown()
+	}
 }

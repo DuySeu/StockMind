@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"stockmind/internal/common"
 	"stockmind/internal/database"
 	kb "stockmind/internal/knowledge_base"
+	core "stockmind/internal/llm"
+	"stockmind/internal/llm/tools"
 	"stockmind/internal/mcp"
 	"stockmind/internal/server"
 	"stockmind/internal/service"
@@ -42,18 +45,11 @@ func main() {
 						Value: "8080",
 						Usage: "Port to run the server on",
 					},
-					&cli.StringFlag{
-						Name:    "mcp-protocol",
-						Aliases: []string{"p"},
-						Usage:   "MCP protocol (stdio, http)",
-						Value:   "http",
-					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
 					port := cmd.String("port")
-					mcpProtocol := cmd.String("mcp-protocol")
 
-					runContext, shutdown, err := runServer(ctx, port, mcpProtocol)
+					runContext, shutdown, err := runServer(ctx, port)
 					if err != nil {
 						log.Printf("Failed to run server: %v", err)
 						return err
@@ -67,27 +63,6 @@ func main() {
 					return nil
 				},
 			},
-			{
-				Name:  "mcp",
-				Usage: "Run the MCP example",
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:    "protocol",
-						Aliases: []string{"p"},
-						Usage:   "Protocol to use (stdio, http). http means Streamable HTTP protocol",
-						Value:   "stdio",
-						Sources: cli.ValueSourceChain{
-							Chain: []cli.ValueSource{
-								cli.EnvVar("MCP_PROTOCOL"),
-							},
-						},
-					},
-				},
-				Action: func(ctx context.Context, cmd *cli.Command) error {
-					protocol := cmd.String("protocol")
-					return runMCP(ctx, protocol)
-				},
-			},
 		},
 	}
 	if err := app.Run(context.Background(), os.Args); err != nil {
@@ -95,13 +70,7 @@ func main() {
 	}
 }
 
-func runMCP(_ context.Context, protocol string) error {
-	log.Printf("Running MCP server with protocol: %s", protocol)
-	_, err := mcp.Start(context.Background(), protocol)
-	return err
-}
-
-func runServer(ctx context.Context, port string, mcpProtocol string) (context.Context, func(), error) {
+func runServer(ctx context.Context, port string) (context.Context, func(), error) {
 	log.Printf("Running server on port: %s", port)
 
 	config := common.LoadConfig()
@@ -139,24 +108,63 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		return nil, nil, fmt.Errorf("failed to init knowledge base: %w", err)
 	}
 
-	// Initialize MCP server (no longer needs retriever)
-	var mcpShutdown func()
-	if mcpProtocol == "http" {
-		log.Printf("Initializing MCP server with HTTP protocol on 0.0.0.0:8081")
-		shutdown, err := mcp.Start(ctx, mcpProtocol)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to start MCP: %w", err)
+	// Initialize MCP client manager and dynamically bridge MCP tools
+	var mcpManager *mcp.Manager
+	var bridgedMCPTools []*tools.Tool
+
+	var mcpConfigs []mcp.ServerConfig
+	if _, err := exec.LookPath("uvx"); err == nil {
+		mcpConfigs = append(mcpConfigs, mcp.ServerConfig{
+			Name:    "aws-docs",
+			Command: "uvx",
+			Args: []string{
+				"awslabs.aws-documentation-mcp-server@latest",
+			},
+			Env: map[string]string{
+				"FASTMCP_LOG_LEVEL":           "ERROR",
+				"AWS_DOCUMENTATION_PARTITION": "aws",
+			},
+		})
+	} else {
+		log.Println("Warning: uvx not found — external MCP clients like AWS documentation disabled")
+	}
+
+	if len(mcpConfigs) > 0 {
+		mcpManager = mcp.NewManager(mcpConfigs)
+		var bridgeErr error
+		bridgedMCPTools, bridgeErr = tools.BridgeMCPTools(ctx, mcpManager)
+		if bridgeErr != nil {
+			log.Printf("Warning: failed to bridge MCP tools: %v", bridgeErr)
+		} else {
+			log.Printf("Successfully bridged %d dynamic MCP tools", len(bridgedMCPTools))
 		}
-		mcpShutdown = shutdown
 	}
 
 	// Initialize Services
 	services := service.NewService(knowledgeBase.Pipeline, dbPool, objectStore)
 
-	// Create HTTP server
-	srv := server.NewServer(ctx, &config, dbPool, knowledgeBase, objectStore, services, port)
-	runContext, cancel := context.WithCancel(ctx)
+	// Initialize tools and LLM service
+	toolDefs := tools.RegisterTools(knowledgeBase.Retriever, services)
+	if len(bridgedMCPTools) > 0 {
+		toolDefs = append(toolDefs, bridgedMCPTools...)
+	}
+	toolMgr := tools.NewManager(toolDefs)
 
+	agent, err := core.NewLLMService(ctx, common.GetProviderName(), common.GetLLMModelName(), config.LLMConfig, dbPool, toolMgr)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to init LLM service: %w", err)
+	}
+
+	// Create HTTP server
+	srv := server.NewServer(server.ServerDeps{
+		DBPool:      dbPool,
+		Agent:       agent,
+		KBStore:     knowledgeBase.Store,
+		ObjectStore: objectStore,
+		Services:    services,
+	}, port)
+
+	runContext, cancel := context.WithCancel(ctx)
 	stopCh := make(chan struct{})
 
 	go func() {
@@ -172,17 +180,20 @@ func runServer(ctx context.Context, port string, mcpProtocol string) (context.Co
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 
-		if mcpShutdown != nil {
-			log.Printf("Shutting down MCP server...")
-			mcpShutdown()
-		}
-
+		// 1. Stop accepting new HTTP requests, drain in-flight
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			log.Printf("stopping server: %v", err)
 		}
 
+		// 2. Stop worker pool (drain queued jobs)
 		log.Printf("Shutting down async worker pool...")
 		services.Shutdown()
+
+		// 3. Stop all external MCP client sessions
+		if mcpManager != nil {
+			log.Printf("Shutting down all active external MCP client sessions...")
+			mcpManager.CloseAll()
+		}
 
 		<-stopCh
 	}, nil

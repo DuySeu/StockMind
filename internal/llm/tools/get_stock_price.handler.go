@@ -14,12 +14,38 @@ import (
 )
 
 type GetStockPriceInput struct {
-	Symbol    string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
-	TimeFrame string `json:"time_frame,omitempty" jsonschema:"Time frame: ONE_DAY, ONE_MINUTE, or ONE_HOUR. Default is ONE_DAY"`
-	CountBack int    `json:"count_back,omitempty" jsonschema:"Number of data points to look back. Default is 10"`
+	Symbol    string `json:"symbol"`
+	TimeFrame string `json:"time_frame,omitempty"`
+	CountBack int    `json:"count_back,omitempty"`
 }
 
-func HandleGetStockPrice(ctx context.Context, _ Deps, input GetStockPriceInput) (any, error) {
+func (GetStockPriceInput) Schema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"symbol": map[string]any{
+				"type":        "string",
+				"description": "Stock symbol, e.g., HPG",
+			},
+			"time_frame": map[string]any{
+				"type":        "string",
+				"description": "Time frame for price data",
+				"enum":        []string{"ONE_DAY", "ONE_MINUTE", "ONE_HOUR"},
+				"default":     "ONE_DAY",
+			},
+			"count_back": map[string]any{
+				"type":        "integer",
+				"description": "Number of data points to look back",
+				"default":     10,
+				"minimum":     1,
+				"maximum":     100,
+			},
+		},
+		"required": []string{"symbol"},
+	}
+}
+
+func HandleGetStockPrice(ctx context.Context, input GetStockPriceInput) (any, error) {
 	if input.Symbol == "" {
 		return nil, fmt.Errorf("symbol is required")
 	}

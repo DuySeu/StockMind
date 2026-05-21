@@ -140,7 +140,7 @@ func (s *Server) Upload(ctx context.Context, name string, fileType database.File
 		return database.Document{}, fmt.Errorf("failed to upload file to storage: %w", err)
 	}
 
-	job := &worker.Job{
+	job := &worker.DocumentJob{
 		DocID:     docID,
 		Name:      name,
 		FileType:  fileType,
@@ -148,7 +148,7 @@ func (s *Server) Upload(ctx context.Context, name string, fileType database.File
 		ObjectKey: objectKey,
 	}
 
-	if err := s.service.Worker.Enqueue(job); err != nil {
+	if err := s.services.DocWorker.Enqueue(job); err != nil {
 		return database.Document{}, err
 	}
 

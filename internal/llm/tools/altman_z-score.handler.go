@@ -1,9 +1,7 @@
-package mcp
+package tools
 
 import (
 	"context"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type AltmanZScoreInput struct {
@@ -15,7 +13,7 @@ type AltmanZScoreOutput struct {
 	Score  float64 `json:"score"`
 }
 
-func GetAltmanZScore(ctx context.Context, req *mcp.CallToolRequest, input AltmanZScoreInput) (*mcp.CallToolResult, AltmanZScoreOutput, error) {
+func GetAltmanZScore(ctx context.Context, input AltmanZScoreInput) (any, error) {
 	a, _ := workingCapital()
 	b, _ := retainedEarnings()
 	c, _ := earningBeforeInterestAndTaxes()
@@ -23,7 +21,7 @@ func GetAltmanZScore(ctx context.Context, req *mcp.CallToolRequest, input Altman
 	e, _ := sales()
 
 	zScore := 1.2*a + 1.4*b + 3.3*c + 0.6*d + 1.0*e
-	return nil, AltmanZScoreOutput{Symbol: input.Symbol, Score: zScore}, nil
+	return AltmanZScoreOutput{Symbol: input.Symbol, Score: zScore}, nil
 }
 
 func workingCapital() (float64, error) {

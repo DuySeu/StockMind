@@ -9,7 +9,6 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	kb "stockmind/internal/knowledge_base"
 	"stockmind/internal/llm/providers"
 	"stockmind/internal/llm/tools"
 
@@ -25,9 +24,7 @@ type LLMService struct {
 	completion completionFunc
 }
 
-func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, knowledgeBase *kb.KnowledgeBase) (*LLMService, error) {
-	toolMgr := tools.NewManager(tools.Deps{Retriever: knowledgeBase.Retriever})
-
+func NewLLMService(ctx context.Context, providerName database.ModelProvider, model string, cfg common.LLMProvider, pool *pgxpool.Pool, toolMgr *tools.Manager) (*LLMService, error) {
 	var completion completionFunc
 	switch providerName {
 	case database.ModelProviderOpenAI:

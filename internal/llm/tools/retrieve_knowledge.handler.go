@@ -12,12 +12,12 @@ type RetrieveKnowledgeInput struct {
 	Query string `json:"query" jsonschema:"Query related to financial knowledge or concepts"`
 }
 
-func HandleRetrieveKnowledge(ctx context.Context, deps Deps, input RetrieveKnowledgeInput) (any, error) {
+func HandleRetrieveKnowledge(ctx context.Context, retriever kb.Retriever, input RetrieveKnowledgeInput) (any, error) {
 	if strings.TrimSpace(input.Query) == "" {
 		return nil, fmt.Errorf("query is required")
 	}
 
-	results, err := deps.Retriever.Search(ctx, input.Query, kb.SearchHybrid, 5)
+	results, err := retriever.Search(ctx, input.Query, kb.SearchHybrid, 5)
 	if err != nil {
 		return nil, fmt.Errorf("knowledge base search failed: %w", err)
 	}
