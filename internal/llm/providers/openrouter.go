@@ -2,6 +2,8 @@ package providers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,9 +13,15 @@ import (
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
-	"github.com/OpenRouterTeam/go-sdk/models/operations"
 	"github.com/OpenRouterTeam/go-sdk/optionalnullable"
 )
+
+type OpenRouterCompletionParams struct {
+	Context context.Context
+	Client  *openrouter.OpenRouter
+	Model   string
+	Prompt  string
+}
 
 // NewOpenRouterClient builds an OpenRouter client from the given config.
 func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, error) {
@@ -28,21 +36,30 @@ func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, erro
 }
 
 // OpenRouterCompletion calls the OpenRouter API using the official SDK.
-func OpenRouterCompletion(client *openrouter.OpenRouter, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
+func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
+	msgs := []components.ChatMessages{}
 
-	mapped := mapToOpenRouterChat(messages, tools)
+	openrouterMsgs := mapToOpenRouterChat(messages, tools)
+	if params.Prompt != "" {
+		msgs = append(msgs, components.CreateChatMessagesSystem(
+			components.ChatSystemMessage{
+				Content: components.CreateChatSystemMessageContentStr(params.Prompt),
+				Role:    components.ChatSystemMessageRoleSystem,
+			},
+		))
+	}
 
 	req := components.ChatRequest{
-		Model:    openrouter.Pointer(model),
-		Messages: mapped.Messages,
+		Model:    openrouter.Pointer(params.Model),
+		Messages: append(msgs, openrouterMsgs.Messages...),
 		Stream:   openrouter.Pointer(true),
 	}
-	if len(mapped.Tools) > 0 {
-		req.Tools = mapped.Tools
+	if len(openrouterMsgs.Tools) > 0 {
+		req.Tools = openrouterMsgs.Tools
 	}
 
-	res, err := client.Chat.Send(ctx, req)
+	res, err := params.Client.Chat.Send(params.Context, req)
 	if err != nil {
 		return nil, fmt.Errorf("openrouter: send request: %w", err)
 	}
@@ -173,16 +190,33 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 		content := strings.TrimSpace(m.Content)
 
 		switch role {
-		case "system":
-			msg = components.CreateChatMessagesSystem(components.ChatSystemMessage{
-				Role:    components.ChatSystemMessageRoleSystem,
-				Content: components.CreateChatSystemMessageContentStr(content),
-			})
 		case "user":
-			msg = components.CreateChatMessagesUser(components.ChatUserMessage{
-				Role:    components.ChatUserMessageRoleUser,
-				Content: components.CreateChatUserMessageContentStr(content),
-			})
+			var attachments []database.Attachment
+			if len(m.Metadata) > 0 {
+				attachments = m.Metadata[0].Attachments
+			}
+			if len(attachments) > 0 {
+				parts := []components.ChatContentItems{
+					components.CreateChatContentItemsText(components.ChatContentText{Text: content}),
+				}
+				for _, a := range attachments {
+					if strings.HasPrefix(a.MediaType, "image/") {
+						dataURL := "data:" + a.MediaType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
+						parts = append(parts, components.CreateChatContentItemsImageURL(components.ChatContentImage{
+							ImageURL: components.ChatContentImageImageURL{URL: dataURL},
+						}))
+					}
+				}
+				msg = components.CreateChatMessagesUser(components.ChatUserMessage{
+					Role:    components.ChatUserMessageRoleUser,
+					Content: components.CreateChatUserMessageContentArrayOfChatContentItems(parts),
+				})
+			} else {
+				msg = components.CreateChatMessagesUser(components.ChatUserMessage{
+					Role:    components.ChatUserMessageRoleUser,
+					Content: components.CreateChatUserMessageContentStr(content),
+				})
+			}
 		case "assistant":
 			var toolCalls []components.ChatToolCall
 			if len(m.Metadata) > 0 {
@@ -233,33 +267,35 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 	return out
 }
 
-// OpenRouterEmbedding calls the OpenRouter embeddings endpoint using the shared SDK client.
-// It accepts a batch of strings and returns float32 vectors.
-func OpenRouterEmbedding(ctx context.Context, client *openrouter.OpenRouter, model string, inputs []string) ([][]float32, error) {
-	req := operations.CreateEmbeddingsRequest{
-		Model: model,
-		Input: operations.CreateInputUnionArrayOfStr(inputs),
+// OpenRouterStructuredCompletion calls the OpenRouter API without streaming using
+// response_format json_object. The prompt must describe the desired JSON structure.
+// Result must be a pointer; the JSON response is unmarshalled into it.
+func OpenRouterStructuredCompletion(params OpenRouterCompletionParams, result any) error {
+	rf := components.CreateResponseFormatJSONObject(components.FormatJSONObjectConfig{})
+
+	req := components.ChatRequest{
+		Model: openrouter.Pointer(params.Model),
+		Messages: []components.ChatMessages{
+			components.CreateChatMessagesUser(components.ChatUserMessage{
+				Content: components.CreateChatUserMessageContentStr(params.Prompt),
+				Role:    components.ChatUserMessageRoleUser,
+			}),
+		},
+		Stream:         openrouter.Pointer(false),
+		ResponseFormat: &rf,
 	}
 
-	resp, err := client.Embeddings.Generate(ctx, req)
+	res, err := params.Client.Chat.Send(params.Context, req)
 	if err != nil {
-		return nil, fmt.Errorf("openrouter embedding: %w", err)
+		return fmt.Errorf("openrouter structured: %w", err)
 	}
-	if resp == nil || resp.CreateEmbeddingsResponseBody == nil {
-		return nil, fmt.Errorf("openrouter embedding: empty response")
+	if res.ChatResult == nil || len(res.ChatResult.Choices) == 0 {
+		return fmt.Errorf("openrouter structured: empty response")
 	}
 
-	data := resp.CreateEmbeddingsResponseBody.Data
-	vecs := make([][]float32, len(data))
-	for i, d := range data {
-		if d.Embedding.ArrayOfNumber == nil {
-			return nil, fmt.Errorf("openrouter embedding: unexpected format at index %d", i)
-		}
-		v := make([]float32, len(d.Embedding.ArrayOfNumber))
-		for j, f := range d.Embedding.ArrayOfNumber {
-			v[j] = float32(f)
-		}
-		vecs[i] = v
+	ptr, set := res.ChatResult.Choices[0].Message.Content.Get()
+	if !set || ptr == nil || ptr.Str == nil {
+		return fmt.Errorf("openrouter structured: no content")
 	}
-	return vecs, nil
+	return json.Unmarshal([]byte(*ptr.Str), result)
 }

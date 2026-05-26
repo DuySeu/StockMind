@@ -10,7 +10,6 @@ import (
 )
 
 // Client wraps an MCP ClientSession connected to an external server subprocess.
-// It is safe for concurrent use after construction.
 type Client struct {
 	session *mcp.ClientSession
 }
@@ -52,7 +51,7 @@ func New(ctx context.Context, command string, args []string, extraEnv map[string
 
 // CallTool invokes a named tool on the connected MCP server and returns the
 // concatenated text content of the result as a string.
-//
+
 // If the tool result carries IsError=true, an error is returned containing
 // the tool's error text so the LLM tool loop can handle it gracefully.
 func (c *Client) CallTool(ctx context.Context, name string, arguments map[string]any) (string, error) {

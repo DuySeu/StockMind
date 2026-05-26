@@ -2,6 +2,8 @@ package providers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +15,13 @@ import (
 	openai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
+
+type OpenAICompletionParams struct {
+	Context context.Context
+	Client  *openai.Client
+	Model   string
+	Prompt  string
+}
 
 // NewOpenAIClient builds an OpenAI-compatible client from the given config.
 func NewOpenAIClient(config common.OpenAI) (*openai.Client, error) {
@@ -35,8 +44,7 @@ func NewOpenAIClient(config common.OpenAI) (*openai.Client, error) {
 	return &client, nil
 }
 
-// emitTextDeltas forwards visible assistant text from a stream delta directly
-// onto ch.
+// emitTextDeltas forwards visible assistant text from a stream delta directly onto ch.
 func emitTextDeltas(ch chan<- database.StreamEvent, delta openai.ChatCompletionChunkChoiceDelta) {
 	if delta.Content != "" {
 		ch <- database.StreamEvent{Type: database.EventText, Content: delta.Content}
@@ -47,10 +55,14 @@ func emitTextDeltas(ch chan<- database.StreamEvent, delta openai.ChatCompletionC
 }
 
 // OpenAICompletion sends messages to an OpenAI-compatible endpoint and returns a streaming event channel.
-func OpenAICompletion(client *openai.Client, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
+func OpenAICompletion(params OpenAICompletionParams, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
+	msgs := []openai.ChatCompletionMessageParamUnion{}
 
 	openaiMsgs := mapToOpenAIMessages(messages)
+	if params.Prompt != "" {
+		msgs = append(msgs, openai.SystemMessage(params.Prompt))
+	}
 
 	var reqTools []openai.ChatCompletionToolUnionParam
 	for _, t := range tools {
@@ -61,15 +73,15 @@ func OpenAICompletion(client *openai.Client, model string, ctx context.Context, 
 		}))
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model:    model,
-		Messages: openaiMsgs,
+	req := openai.ChatCompletionNewParams{
+		Model:    params.Model,
+		Messages: append(msgs, openaiMsgs...),
 	}
 	if len(reqTools) > 0 {
-		params.Tools = reqTools
+		req.Tools = reqTools
 	}
 
-	stream := client.Chat.Completions.NewStreaming(ctx, params)
+	stream := params.Client.Chat.Completions.NewStreaming(params.Context, req)
 
 	go func() {
 		defer close(ch)
@@ -152,10 +164,27 @@ func mapToOpenAIMessages(messages []database.Message) []openai.ChatCompletionMes
 		content := strings.TrimSpace(m.Content)
 
 		switch m.Role {
-		case "system":
-			result = append(result, openai.SystemMessage(content))
 		case "user":
-			result = append(result, openai.UserMessage(content))
+			var attachments []database.Attachment
+			if len(m.Metadata) > 0 {
+				attachments = m.Metadata[0].Attachments
+			}
+			if len(attachments) > 0 {
+				parts := []openai.ChatCompletionContentPartUnionParam{
+					openai.TextContentPart(content),
+				}
+				for _, a := range attachments {
+					if strings.HasPrefix(a.MediaType, "image/") {
+						dataURL := "data:" + a.MediaType + ";base64," + base64.StdEncoding.EncodeToString(a.Data)
+						parts = append(parts, openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+							URL: dataURL,
+						}))
+					}
+				}
+				result = append(result, openai.UserMessage(parts))
+			} else {
+				result = append(result, openai.UserMessage(content))
+			}
 		case "assistant":
 			msg := openai.ChatCompletionAssistantMessageParam{
 				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
@@ -194,4 +223,28 @@ func mapToOpenAIMessages(messages []database.Message) []openai.ChatCompletionMes
 	}
 
 	return result
+}
+
+// OpenAIStructuredCompletion calls the OpenAI API without streaming using
+// response_format json_object. The prompt must describe the desired JSON structure.
+// Result must be a pointer; the JSON response is unmarshalled into it.
+func OpenAIStructuredCompletion(params OpenAICompletionParams, result any) error {
+	req := openai.ChatCompletionNewParams{
+		Model: params.Model,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.UserMessage(params.Prompt),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &openai.ResponseFormatJSONObjectParam{},
+		},
+	}
+
+	res, err := params.Client.Chat.Completions.New(params.Context, req)
+	if err != nil {
+		return fmt.Errorf("openai structured: %w", err)
+	}
+	if len(res.Choices) == 0 {
+		return fmt.Errorf("openai structured: empty response")
+	}
+	return json.Unmarshal([]byte(res.Choices[0].Message.Content), result)
 }

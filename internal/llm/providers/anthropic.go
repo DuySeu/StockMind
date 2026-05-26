@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -18,6 +19,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
+
+type AnthropicCompletionParams struct {
+	Context context.Context
+	Client  *anthropic.Client
+	Model   string
+	Prompt  string
+}
 
 // NewAnthropicClient builds an Anthropic client (direct API or AWS Bedrock) from the given config.
 func NewAnthropicClient(ctx context.Context, cfg common.Anthropic) (*anthropic.Client, error) {
@@ -67,9 +75,8 @@ func NewAnthropicClient(ctx context.Context, cfg common.Anthropic) (*anthropic.C
 
 // AnthropicCompletion sends messages to the Anthropic API and returns a streaming event channel.
 // It supports text streaming and tool use via the official anthropic-sdk-go streaming API.
-func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Context, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
+func AnthropicCompletion(params AnthropicCompletionParams, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
-
 	// -- Map messages --
 	anthropicMsgs, err := mapToAnthropicMessages(messages)
 	if err != nil {
@@ -92,17 +99,22 @@ func AnthropicCompletion(client *anthropic.Client, model string, ctx context.Con
 	}
 
 	// -- Build request params --
-	params := anthropic.MessageNewParams{
-		Model:     anthropic.Model(model),
+	req := anthropic.MessageNewParams{
+		Model:     anthropic.Model(params.Model),
 		MaxTokens: 8096,
 		Messages:  anthropicMsgs,
 	}
+	if params.Prompt != "" {
+		req.System = []anthropic.TextBlockParam{
+			{Text: params.Prompt},
+		}
+	}
 	if len(anthropicTools) > 0 {
-		params.Tools = anthropicTools
+		req.Tools = anthropicTools
 	}
 
 	// -- Start stream --
-	stream := client.Messages.NewStreaming(ctx, params)
+	stream := params.Client.Messages.NewStreaming(params.Context, req)
 
 	go func() {
 		defer close(ch)
@@ -184,6 +196,18 @@ func mapToAnthropicMessages(messages []database.Message) ([]anthropic.MessagePar
 			})
 		}
 
+		// Append image blocks for user messages with attachments.
+		if m.Role == "user" && len(m.Metadata) > 0 {
+			for _, a := range m.Metadata[0].Attachments {
+				if strings.HasPrefix(a.MediaType, "image/") {
+					blocks = append(blocks, anthropic.NewImageBlockBase64(
+						a.MediaType,
+						base64.StdEncoding.EncodeToString(a.Data),
+					))
+				}
+			}
+		}
+
 		var toolResultBlocks []anthropic.ContentBlockParamUnion
 
 		if len(m.Metadata) > 0 {
@@ -247,4 +271,35 @@ func mapToAnthropicMessages(messages []database.Message) ([]anthropic.MessagePar
 	}
 
 	return merged, nil
+}
+
+// AnthropicStructuredCompletion calls the Anthropic API without streaming.
+// The prompt must describe the desired JSON structure and instruct the model to respond with JSON only.
+// Result must be a pointer; the JSON response is unmarshalled into it.
+func AnthropicStructuredCompletion(params AnthropicCompletionParams, result any) error {
+	req := anthropic.BetaMessageNewParams{
+		Model:     anthropic.Model(params.Model),
+		MaxTokens: 4096,
+		Messages: []anthropic.BetaMessageParam{
+			anthropic.NewBetaUserMessage(anthropic.NewBetaTextBlock(params.Prompt)),
+		},
+		OutputFormat: anthropic.BetaJSONOutputFormatParam{
+			Schema: result,
+		},
+		Betas: []anthropic.AnthropicBeta{"structured-outputs-2025-11-13"},
+	}
+
+	res, err := params.Client.Beta.Messages.New(params.Context, req)
+	if err != nil {
+		return fmt.Errorf("anthropic structured: %w", err)
+	}
+	if len(res.Content) == 0 {
+		return fmt.Errorf("anthropic structured: empty response")
+	}
+
+	text := res.Content[0].Text
+	if text == "" {
+		return fmt.Errorf("anthropic structured: no text content")
+	}
+	return json.Unmarshal([]byte(text), result)
 }

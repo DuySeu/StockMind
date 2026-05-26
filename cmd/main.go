@@ -131,10 +131,13 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 
 	if len(mcpConfigs) > 0 {
 		mcpManager = mcp.NewManager(mcpConfigs)
-		var bridgeErr error
-		bridgedMCPTools, bridgeErr = tools.BridgeMCPTools(ctx, mcpManager)
-		if bridgeErr != nil {
-			log.Printf("Warning: failed to bridge MCP tools: %v", bridgeErr)
+
+		bridgeCtx, bridgeCancel := context.WithTimeout(ctx, 30*time.Second)
+		defer bridgeCancel()
+
+		bridgedMCPTools, err := tools.BridgeMCPTools(bridgeCtx, mcpManager)
+		if err != nil {
+			log.Printf("Warning: failed to bridge MCP tools: %v", err)
 		} else {
 			log.Printf("Successfully bridged %d dynamic MCP tools", len(bridgedMCPTools))
 		}
@@ -150,7 +153,7 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	}
 	toolMgr := tools.NewManager(toolDefs)
 
-	agent, err := core.NewLLMService(ctx, common.GetProviderName(), common.GetLLMModelName(), config.LLMConfig, dbPool, toolMgr)
+	agent, err := core.NewLLMService(ctx, config.LLM, toolMgr)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to init LLM service: %w", err)
 	}

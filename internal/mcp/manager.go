@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -45,7 +46,7 @@ func (m *Manager) GetOrStart(ctx context.Context, name string) (*Client, error) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Double-check after lock
+	// Double-check after acquiring write lock.
 	if client, exists = m.clients[name]; exists {
 		return client, nil
 	}
@@ -64,8 +65,42 @@ func (m *Manager) GetOrStart(ctx context.Context, name string) (*Client, error) 
 	return newClient, nil
 }
 
-// ActiveServers returns the names of all configured servers.
-func (m *Manager) ActiveServers() []string {
+// CallTool invokes a tool on the named server with automatic retry on dead sessions.
+// If the first attempt fails, the client is evicted and a fresh connection is tried once.
+func (m *Manager) CallTool(ctx context.Context, server, tool string, args map[string]any) (string, error) {
+	client, err := m.GetOrStart(ctx, server)
+	if err != nil {
+		return "", err
+	}
+
+	result, err := client.CallTool(ctx, tool, args)
+	if err == nil {
+		return result, nil
+	}
+
+	// Evict dead client and retry once.
+	log.Printf("MCP call %s.%s failed, reconnecting: %v", server, tool, err)
+	m.evict(server)
+
+	client, err = m.GetOrStart(ctx, server)
+	if err != nil {
+		return "", fmt.Errorf("reconnect to %s failed: %w", server, err)
+	}
+	return client.CallTool(ctx, tool, args)
+}
+
+// evict removes and closes a client from the registry.
+func (m *Manager) evict(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if client, ok := m.clients[name]; ok {
+		_ = client.Close()
+		delete(m.clients, name)
+	}
+}
+
+// ConfiguredServers returns the names of all configured (not necessarily running) servers.
+func (m *Manager) ConfiguredServers() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	names := make([]string, 0, len(m.configs))
@@ -75,7 +110,7 @@ func (m *Manager) ActiveServers() []string {
 	return names
 }
 
-// CloseAll cleanly terminates all active MCP client sessions.
+// CloseAll gracefully terminates all active MCP client sessions.
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

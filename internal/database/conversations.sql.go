@@ -87,6 +87,42 @@ func (q *Queries) GetConversationByID(ctx context.Context, id uuid.UUID) (Conver
 	return i, err
 }
 
+const getConversationWithMessages = `-- name: GetConversationWithMessages :one
+SELECT
+  c.metadata AS conv_metadata,
+  COALESCE(
+    (SELECT jsonb_agg(sub ORDER BY sub.created_at ASC)
+     FROM (
+       SELECT id, conversation_id, role, content, metadata, created_at
+       FROM messages
+       WHERE conversation_id = c.id
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3
+     ) sub
+    ), '[]'::jsonb
+  )::jsonb AS messages
+FROM conversations c
+WHERE c.id = $1
+`
+
+type GetConversationWithMessagesParams struct {
+	ID     uuid.UUID `db:"id" json:"id"`
+	Limit  int32     `db:"limit" json:"limit"`
+	Offset int32     `db:"offset" json:"offset"`
+}
+
+type GetConversationWithMessagesRow struct {
+	ConvMetadata []byte `db:"conv_metadata" json:"conv_metadata"`
+	Messages     []byte `db:"messages" json:"messages"`
+}
+
+func (q *Queries) GetConversationWithMessages(ctx context.Context, arg GetConversationWithMessagesParams) (GetConversationWithMessagesRow, error) {
+	row := q.db.QueryRow(ctx, getConversationWithMessages, arg.ID, arg.Limit, arg.Offset)
+	var i GetConversationWithMessagesRow
+	err := row.Scan(&i.ConvMetadata, &i.Messages)
+	return i, err
+}
+
 const getConversationsByUserID = `-- name: GetConversationsByUserID :many
 SELECT id, user_id, title, description, metadata, created_at FROM conversations WHERE user_id = $1 ORDER BY created_at DESC
 `

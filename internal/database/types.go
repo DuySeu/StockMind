@@ -1,6 +1,8 @@
 package database
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type StreamEventType string
 type ModelProvider string
@@ -62,7 +64,8 @@ type Tool struct {
 type Attachment struct {
 	Name      string `json:"name"`
 	MediaType string `json:"media_type"`
-	Data      []byte `json:"data"`
+	Path      string `json:"path"`
+	Data      []byte `json:"-"` // transient: resolved at runtime, not persisted
 }
 
 type MCPConfig struct {
@@ -108,9 +111,9 @@ type Source struct {
 
 // ConversationSummary is stored in conversations.metadata JSONB.
 type ConversationSummary struct {
-	Summary          string   `json:"summary"`
-	KeyFacts         []string `json:"key_facts"`
-	SummarizedCount  int64    `json:"summarized_count"`
+	Summary         string   `json:"summary"`
+	KeyFacts        []string `json:"key_facts"`
+	SummarizedCount int64    `json:"summarized_count"`
 }
 
 // UnmarshalJSON allows Source to be deserialized from either a plain string

@@ -33,13 +33,13 @@ type EmbedService struct {
 
 // NewEmbedService creates an EmbedService for the given provider and model.
 // Supported providers: "openrouter", "openai".
-func NewEmbedService(provider database.ModelProvider, model string, dimensions int, cfg common.LLMProvider) (*EmbedService, error) {
+func NewEmbedService(dimensions int, cfg common.LLM) (*EmbedService, error) {
 	if dimensions <= 0 {
 		dimensions = embeddingDimensions
 	}
 
 	var fn embedFunc
-	switch provider {
+	switch cfg.GetProviderName() {
 	case database.ModelProviderOpenRouter:
 		if cfg.OpenRouter.APIKey == "" {
 			return nil, fmt.Errorf("embed_service: OPENROUTER_API_KEY is required")
@@ -48,7 +48,7 @@ func NewEmbedService(provider database.ModelProvider, model string, dimensions i
 			openrouter.WithSecurity(cfg.OpenRouter.APIKey),
 			openrouter.WithClient(common.SharedHTTPClient),
 		)
-		fn = openRouterEmbed(client, model)
+		fn = openRouterEmbed(client, cfg.GetEmbedModelName())
 
 	case database.ModelProviderOpenAI:
 		if cfg.OpenAI.APIKey == "" {
@@ -62,15 +62,15 @@ func NewEmbedService(provider database.ModelProvider, model string, dimensions i
 			opts = append(opts, option.WithBaseURL(cfg.OpenAI.BaseURL))
 		}
 		client := openai.NewClient(opts...)
-		fn = openAIEmbed(&client, model)
+		fn = openAIEmbed(&client, cfg.GetEmbedModelName())
 
 	default:
-		return nil, fmt.Errorf("embed_service: unsupported provider %q", provider)
+		return nil, fmt.Errorf("embed_service: unsupported provider %q", cfg.GetProviderName())
 	}
 
 	return &EmbedService{
 		embed:      fn,
-		model:      model,
+		model:      cfg.GetEmbedModelName(),
 		dimensions: dimensions,
 		batchSize:  defaultBatchSize,
 	}, nil

@@ -86,7 +86,7 @@ func New(ctx context.Context, cfg *common.Config, dbPool *pgxpool.Pool) (*Knowle
 	}
 	log.Println("Knowledge base Qdrant collection ready")
 
-	embedder, err := NewEmbedService(common.GetProviderName(), common.GetEmbedModelName(), 0, cfg.LLMConfig)
+	embedder, err := NewEmbedService(0, cfg.LLM)
 	if err != nil {
 		return nil, fmt.Errorf("knowledge_base: %w", err)
 	}

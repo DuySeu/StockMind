@@ -10,10 +10,10 @@ import (
 )
 
 type Config struct {
-	Database  Database    `json:"database" yaml:"database"`
-	Qdrant    Qdrant      `json:"qdrant" yaml:"qdrant"`
-	MinIO     MinIO       `json:"minio" yaml:"minio"`
-	LLMConfig LLMProvider `json:"llmProvider" yaml:"llmProvider"`
+	Database Database `json:"database" yaml:"database"`
+	Qdrant   Qdrant   `json:"qdrant" yaml:"qdrant"`
+	MinIO    MinIO    `json:"minio" yaml:"minio"`
+	LLM      LLM      `json:"llm" yaml:"llm"`
 }
 
 type MinIO struct {
@@ -41,7 +41,7 @@ type Qdrant struct {
 	UseHTTPS   bool   `json:"useHTTPS" yaml:"useHTTPS"`
 }
 
-type LLMProvider struct {
+type LLM struct {
 	OpenAI     OpenAI     `json:"openai" yaml:"openai,omitempty"`
 	Anthropic  Anthropic  `json:"anthropic" yaml:"anthropic,omitempty"`
 	OpenRouter OpenRouter `json:"openrouter" yaml:"openrouter,omitempty"`
@@ -95,7 +95,7 @@ func LoadConfig() Config {
 			Bucket:    os.Getenv("MINIO_BUCKET"),
 			SSLMode:   os.Getenv("MINIO_SSLMODE") == "true",
 		},
-		LLMConfig: LLMProvider{
+		LLM: LLM{
 			OpenAI: OpenAI{
 				APIKey:  os.Getenv("OPENROUTER_API_KEY"),
 				BaseURL: "https://openrouter.ai/api/v1",
@@ -143,19 +143,19 @@ func (c *Config) GetDBURL() string {
 
 // GetLLMModelName returns the model name from the LLM_MODEL environment variable.
 // Example: "openai/gpt-4o", "anthropic/claude-3-5-sonnet"
-func GetLLMModelName() string {
+func (c *LLM) GetLLMModelName() string {
 	return os.Getenv("LLM_MODEL")
 }
 
 // GetEmbedModelName returns the model name from the EMBED_MODEL environment variable.
 // Example: "nvidia/llama-nemotron-embed-vl-1b-v2:free"
-func GetEmbedModelName() string {
+func (c *LLM) GetEmbedModelName() string {
 	return os.Getenv("EMBED_MODEL")
 }
 
 // GetProviderName returns the provider name from the LLM_PROVIDER environment variable.
 // Supported values: "openai", "anthropic"
-func GetProviderName() database.ModelProvider {
+func (c *LLM) GetProviderName() database.ModelProvider {
 	return database.ModelProvider(os.Getenv("LLM_PROVIDER"))
 }
 

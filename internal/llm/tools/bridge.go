@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+
 	"stockmind/internal/mcp"
 )
 
-// BridgeMCPTools dynamically queries all active servers from the mcp.Manager
-// and returns their tool definitions bridged into StockMind's internal tools format.
+// BridgeMCPTools queries all configured MCP servers, lists their tools, and
+// returns them bridged into StockMind's internal tool format.
+// Each tool's Execute closure routes calls through Manager.CallTool (retry-aware).
 func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) {
 	var bridgedTools []*Tool
 
-	for _, serverName := range manager.ActiveServers() {
+	for _, serverName := range manager.ConfiguredServers() {
 		client, err := manager.GetOrStart(ctx, serverName)
 		if err != nil {
 			log.Printf("Warning: Failed to connect to MCP server %s: %v. Skipping.", serverName, err)
@@ -28,23 +30,18 @@ func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) 
 		for _, mt := range mcpTools {
 			mcpToolName := mt.Name
 			localToolName := fmt.Sprintf("%s_%s", serverName, mcpToolName)
-			description := mt.Description
 
-			// InputSchema is of type any, which in ListTools is unmarshaled as map[string]any.
-			// Let's perform a type check/conversion to ensure it's map[string]any.
 			schemaMap, ok := mt.InputSchema.(map[string]any)
 			if !ok {
-				// Fallback to json marshal/unmarshal if it's not directly a map
 				schemaBytes, err := json.Marshal(mt.InputSchema)
 				if err == nil {
 					_ = json.Unmarshal(schemaBytes, &schemaMap)
 				}
 			}
 
-			// Capture loop variables correctly for the closure
+			// Capture for closure — route through Manager (not a raw *Client pointer).
 			targetServer := serverName
 			targetTool := mcpToolName
-			targetClient := client
 
 			executeFn := func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error) {
 				var args map[string]any
@@ -54,18 +51,15 @@ func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) 
 					}
 				}
 
-				resStr, err := targetClient.CallTool(ctx, targetTool, args)
+				resStr, err := manager.CallTool(ctx, targetServer, targetTool, args)
 				if err != nil {
 					return nil, fmt.Errorf("mcp bridge error on %s.%s: %w", targetServer, targetTool, err)
 				}
 
-				// Check if the result is already valid JSON
-				var checkJSON any
-				if err := json.Unmarshal([]byte(resStr), &checkJSON); err == nil {
+				// Return as-is if already valid JSON, otherwise marshal as string.
+				if json.Valid([]byte(resStr)) {
 					return json.RawMessage(resStr), nil
 				}
-
-				// If not valid JSON, marshal it as a JSON string so the LLM loop parses it correctly
 				fallbackJSON, err := json.Marshal(resStr)
 				if err != nil {
 					return nil, fmt.Errorf("failed to marshal non-JSON tool result: %w", err)
@@ -75,7 +69,7 @@ func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) 
 
 			bridgedTools = append(bridgedTools, &Tool{
 				Name:        localToolName,
-				Description: description,
+				Description: mt.Description,
 				Schema:      schemaMap,
 				Execute:     executeFn,
 			})
