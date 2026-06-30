@@ -7,6 +7,11 @@ const (
 	INTRADAY_URL    = "market-watch"
 	GRAPHQL_URL     = "https://trading.vietcap.com.vn/data-mt/graphql"
 
+	// IQ_INSIGHT_URL is VietCap's company-insight REST service (company profile,
+	// shareholders, relationships) — distinct from the GraphQL ratio endpoint.
+	IQ_INSIGHT_URL = "https://iq.vietcap.com.vn/api/iq-insight-service"
+	COMPANY_URL    = "/v1/company"
+
 	TAVILY_URL = "https://api.tavily.com"
 )
 

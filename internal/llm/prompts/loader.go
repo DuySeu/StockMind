@@ -43,6 +43,12 @@ type SystemParams struct {
 	KeyFacts string
 }
 
+// FundamentalAnalysisParams holds the variables for the fundamental analysis prompt.
+type FundamentalAnalysisParams struct {
+	Symbol string
+	Facts  string
+}
+
 // PromptLoader renders prompts from embedded Go templates.
 type PromptLoader struct{}
 
@@ -79,4 +85,9 @@ func (p *PromptLoader) GetSummarizationPrompt(params SummarizationParams) (strin
 func (p *PromptLoader) GetSystemPrompt(params SystemParams) (string, error) {
 	params.Date = time.Now().Format("2006-01-02")
 	return p.render("system_prompt.txt", params)
+}
+
+// GetFundamentalAnalysisPrompt renders the fundamental analysis prompt with the given params.
+func (p *PromptLoader) GetFundamentalAnalysisPrompt(params FundamentalAnalysisParams) (string, error) {
+	return p.render("fundamental_analysis.txt", params)
 }

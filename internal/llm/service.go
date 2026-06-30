@@ -98,6 +98,11 @@ func NewLLMService(ctx context.Context, cfg common.LLM, toolMgr *tools.Manager) 
 	}, nil
 }
 
+// StructuredCompletion sends a prompt to the LLM and unmarshals the JSON response into result.
+func (s *LLMService) StructuredCompletion(ctx context.Context, prompt string, result any) error {
+	return s.structuredCompletion(ctx, prompt, result)
+}
+
 // ──────── Agentic Tool Loop ────────
 
 // runToolRound runs each tool in order, streams ToolResult events, and appends

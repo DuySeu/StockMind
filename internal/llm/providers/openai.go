@@ -246,5 +246,8 @@ func OpenAIStructuredCompletion(params OpenAICompletionParams, result any) error
 	if len(res.Choices) == 0 {
 		return fmt.Errorf("openai structured: empty response")
 	}
-	return json.Unmarshal([]byte(res.Choices[0].Message.Content), result)
+	if err := json.Unmarshal([]byte(res.Choices[0].Message.Content), result); err != nil {
+		return fmt.Errorf("openai structured: %w", err)
+	}
+	return nil
 }

@@ -288,25 +288,24 @@ func (s *Server) maybeSummarize(sessionID uuid.UUID, convSummary database.Conver
 		return
 	}
 
-	s.agent.Summarize(batch, convSummary, func(result core.SummarizeResult) {
-		updated := database.ConversationSummary{
-			Summary:         result.Summary,
-			KeyFacts:        result.KeyFacts,
-			SummarizedCount: result.SummarizedCount,
-		}
-		metaBytes, err := json.Marshal(updated)
-		if err != nil {
-			log.Printf("chat: marshal summary: %v", err)
-			return
-		}
-		if err := s.queries.UpdateConversationMetadata(context.Background(), database.UpdateConversationMetadataParams{
-			ID:       sessionID,
-			Metadata: metaBytes,
-		}); err != nil {
-			log.Printf("chat: update conversation metadata: %v", err)
-		}
-		log.Printf("bg: maybeSummarize done [session=%s] (summarized)", sessionID)
-	})
+	result, err := s.agent.Summarize(batch, convSummary)
+	if err != nil {
+		log.Printf("chat: summarize: %v", err)
+		return
+	}
+
+	metaBytes, err := json.Marshal(result)
+	if err != nil {
+		log.Printf("chat: marshal summary: %v", err)
+		return
+	}
+	if err := s.queries.UpdateConversationMetadata(context.Background(), database.UpdateConversationMetadataParams{
+		ID:       sessionID,
+		Metadata: metaBytes,
+	}); err != nil {
+		log.Printf("chat: update conversation metadata: %v", err)
+	}
+	log.Printf("bg: maybeSummarize done [session=%s] (summarized)", sessionID)
 }
 
 // resolveAttachments fetches attachment data from object store for messages

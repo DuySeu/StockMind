@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"stockmind/internal/common"
@@ -28,6 +29,49 @@ import (
 type ResearchRequestPayload struct {
 	Tickers       []string `json:"tickers"        validate:"required,min=1,max=5"`
 	ResearchModel string   `json:"research_model" validate:"required,oneof=mini pro"`
+}
+
+type FundamentalAnalysisRequestPayload struct {
+	Symbol string `json:"symbol" validate:"required"`
+}
+
+type ResearchReport struct {
+	database.GetResearchReportsRow
+	Price float64 `json:"price"`
+}
+
+type FundamentalAnalysisOutput struct {
+	Overview         Overview         `json:"overview"`
+	BusinessActivity BusinessActivity `json:"business_activity"`
+	EconomicMoat     string           `json:"economic_moat"`
+	Outlook          Outlook          `json:"outlook"`
+	Risks            Risks            `json:"risks"`
+	Macro            string           `json:"macro"`
+}
+
+type Overview struct {
+	CompanyName          string         `json:"company_name"`
+	Industry             string         `json:"industry"`
+	Brief                string         `json:"brief"`
+	ShareholderStructure map[string]any `json:"shareholder_structure"`
+	Ecosystem            map[string]any `json:"ecosystem,omitempty"`
+}
+
+type BusinessActivity struct {
+	RevenueAndProfitStructure map[string]any `json:"revenue_and_profit_structure"`
+	OperationalProcesses      string         `json:"operational_processes"`
+	IndustrySpecific          string         `json:"industry_specific"`
+}
+
+type Risks struct {
+	EconomicRisks    string   `json:"economic_risks"`
+	LegalRisks       string   `json:"legal_risks"`
+	DependentFactors []string `json:"dependent_factors"`
+}
+
+type Outlook struct {
+	Potential      []string `json:"potential_factors"`
+	ExpansionPlans string   `json:"expansion_plans"`
 }
 
 // ---------------------------------------------------------------------------
@@ -60,23 +104,97 @@ type progressEvent struct {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// firstWord returns the first whitespace-delimited word from s.
-// If s is empty or blank, it returns "Unknown".
-func firstWord(s string) string {
-	if words := strings.Fields(s); len(words) > 0 {
-		return words[0]
-	}
-	return "Unknown"
-}
-
-// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
+// POST /v1/stock/fundamental-analysis  body: {"symbol": "HPG"}
+func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	var input FundamentalAnalysisRequestPayload
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		common.WriteJSONError(w, http.StatusBadRequest, "Invalid JSON")
+		return
+	}
+	symbol := strings.ToUpper(strings.TrimSpace(input.Symbol))
+	if symbol == "" {
+		common.WriteJSONError(w, http.StatusBadRequest, "symbol is required")
+		return
+	}
+
+	ctx := r.Context()
+
+	// 1. Company details (required for grounding).
+	details, err := faFetchIQ[faCompanyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
+	if err != nil {
+		common.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("fetch company details for %s: %v", symbol, err))
+		return
+	}
+	if details.ViOrganName == "" && details.EnOrganName == "" {
+		common.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("no company data found for %s", symbol))
+		return
+	}
+
+	// 2. Shareholders + relationships (best-effort, fetched concurrently).
+	var (
+		wg      sync.WaitGroup
+		holders faShareholderStructure
+		rel     faRelationship
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		h, err := faFetchIQ[faShareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
+		if err != nil {
+			slog.Warn("fundamental_analysis: fetch shareholder structure", "symbol", symbol, "error", err)
+			return
+		}
+		holders = h
+	}()
+	go func() {
+		defer wg.Done()
+		rl, err := faFetchIQ[faRelationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
+		if err != nil {
+			slog.Warn("fundamental_analysis: fetch relationship", "symbol", symbol, "error", err)
+			return
+		}
+		rel = rl
+	}()
+	wg.Wait()
+
+	// 3. Build authoritative factual fields.
+	result := FundamentalAnalysisOutput{
+		Overview: Overview{
+			CompanyName: faFirstNonEmpty(details.ViOrganName, details.EnOrganName),
+			Industry:    faFirstNonEmpty(details.SectorVn, details.Sector),
+			Brief:       faFirstNonEmpty(faStripHTML(details.Profile), faStripHTML(details.EnProfile)),
+			ShareholderStructure: map[string]any{
+				"total_shares":           holders.TotalShares,
+				"state_percentage":       holders.StatePercentage,
+				"foreign_percentage":     holders.ForeignPercentage,
+				"other_percentage":       holders.OtherPercentage,
+				"board_percentage":       holders.BodPercentage,
+				"institution_percentage": holders.InstitutionPercentage,
+			},
+			Ecosystem: faBuildEcosystem(rel),
+		},
+	}
+
+	// 4. LLM synthesis of analytical fields (non-fatal on failure). Factual
+	// fields stay authoritative; only the analytical narrative is merged in.
+	if analysis, err := faSynthesizeAnalysis(ctx, s.agent, symbol, result.Overview, details); err != nil {
+		slog.Warn("fundamental_analysis: synthesis failed", "symbol", symbol, "error", err)
+	} else {
+		result.BusinessActivity = analysis.BusinessActivity
+		result.EconomicMoat = analysis.EconomicMoat
+		result.Outlook = analysis.Outlook
+		result.Risks = analysis.Risks
+		result.Macro = analysis.Macro
+	}
+
+	common.WriteJSON(w, http.StatusOK, result)
+}
+
 // MarketResearchHandler is the synchronous (non-streaming) research endpoint.
+// POST /v1/stock/research  body: {"tickers": ["HPG", "VNM"], "research_model": "mini"}
 func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := decodeAndValidateRequest(r)
 	if err != nil {
@@ -84,12 +202,13 @@ func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := s.stockDigestAgent(r.Context(), req, nil)
+	response := s.stockDigestAgent(req, nil)
 	go s.persistReports(response)
 	common.WriteJSON(w, http.StatusOK, response)
 }
 
 // MarketResearchStreamHandler is the SSE streaming research endpoint.
+// POST /v1/stock/research/stream  body: {"tickers": ["HPG", "VNM"], "research_model": "mini"}
 func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -105,7 +224,7 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	doneCh := make(chan database.ResearchReport, 1)
 
 	go func() {
-		doneCh <- s.stockDigestAgent(r.Context(), req, progressCh)
+		doneCh <- s.stockDigestAgent(req, progressCh)
 	}()
 
 	for evt := range progressCh {
@@ -135,9 +254,17 @@ func (s *Server) persistReports(report database.ResearchReport) {
 		if err != nil {
 			slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
 		}
+
+		// Use the first whitespace-delimited word of the recommendation,
+		// defaulting to "Unknown" when it is empty or blank.
+		recommendation := "Unknown"
+		if words := strings.Fields(ticker.Recommendation); len(words) > 0 {
+			recommendation = words[0]
+		}
+
 		_, err = s.queries.CreateResearchReport(context.Background(), database.CreateResearchReportParams{
 			Ticker:         ticker.Ticker,
-			Recommendation: firstWord(ticker.Recommendation),
+			Recommendation: recommendation,
 			ReferencePrice: strconv.FormatFloat(price, 'f', -1, 64),
 			Report:         ticker,
 		})
@@ -151,7 +278,7 @@ func (s *Server) persistReports(report database.ResearchReport) {
 // Orchestrator — researches tickers via the worker pool.
 // ---------------------------------------------------------------------------
 
-func (s *Server) stockDigestAgent(ctx context.Context, request ResearchRequestPayload, progressCh chan<- progressEvent) database.ResearchReport {
+func (s *Server) stockDigestAgent(request ResearchRequestPayload, progressCh chan<- progressEvent) database.ResearchReport {
 	resultCh := make(chan worker.ResearchResult, len(request.Tickers))
 
 	var progressAnyCh chan<- any
@@ -209,33 +336,16 @@ func (s *Server) stockDigestAgent(ctx context.Context, request ResearchRequestPa
 
 // ProcessResearchJob is the worker process function for research jobs.
 func (s *Server) ProcessResearchJob(job *worker.ResearchJob) {
-	// Build a typed progress channel from the any channel
-	var progressCh chan<- progressEvent
-	if job.ProgressCh != nil {
-		progressCh = newProgressAdapter(job.ProgressCh)
-	}
+	ctx := context.Background()
+	ticker := job.Ticker
 
-	report, err := s.researchTicker(context.Background(), job.Ticker, job.ResearchModel, progressCh)
-	job.ResultCh <- worker.ResearchResult{Ticker: job.Ticker, Report: report, Err: err}
-}
-
-// newProgressAdapter converts chan<- any to chan<- progressEvent via a goroutine.
-func newProgressAdapter(ch chan<- any) chan<- progressEvent {
-	typed := make(chan progressEvent, 50)
-	go func() {
-		for evt := range typed {
-			ch <- evt
-		}
-	}()
-	return typed
-}
-
-func (s *Server) researchTicker(ctx context.Context, ticker, model string, progressCh chan<- progressEvent) (database.StockReport, error) {
+	// emit forwards a progress event to the job's progress channel (a no-op when
+	// no consumer is attached).
 	emit := func(step, message string, progress int) {
-		if progressCh == nil {
+		if job.ProgressCh == nil {
 			return
 		}
-		progressCh <- progressEvent{
+		job.ProgressCh <- progressEvent{
 			Ticker:   ticker,
 			Step:     step,
 			Message:  message,
@@ -243,50 +353,56 @@ func (s *Server) researchTicker(ctx context.Context, ticker, model string, progr
 		}
 	}
 
-	// 1. Build the prompt
-	emit("building_prompt", "Building research prompt...", 10)
-	loader := prompts.NewPromptLoader()
-	prompt, err := loader.GetResearchPrompt(prompts.ResearchParams{
-		Ticker: ticker,
-		Date:   time.Now().Format(time.RFC3339),
-	})
-	if err != nil {
-		emit("failed", fmt.Sprintf("Failed to build prompt: %v", err), 0)
-		return database.StockReport{}, fmt.Errorf("build prompt for %s: %w", ticker, err)
+	// run performs the research flow; its early returns keep error handling local.
+	run := func() (database.StockReport, error) {
+		// 1. Build the prompt
+		emit("building_prompt", "Building research prompt...", 10)
+		loader := prompts.NewPromptLoader()
+		prompt, err := loader.GetResearchPrompt(prompts.ResearchParams{
+			Ticker: ticker,
+			Date:   time.Now().Format(time.RFC3339),
+		})
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to build prompt: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("build prompt for %s: %w", ticker, err)
+		}
+
+		// 2. Submit async research job
+		emit("submitting", "Submitting research request...", 25)
+		requestID, err := s.services.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
+			Input:        prompt,
+			Model:        job.ResearchModel,
+			Stream:       false,
+			OutputSchema: tavily.ResearchOutputSchema(),
+		})
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to submit: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("submit research for %s: %w", ticker, err)
+		}
+		slog.Info("tavily research submitted", "ticker", ticker, "request_id", requestID)
+
+		// 3. Poll until completed
+		emit("polling", "Gathering and analyzing data...", 40)
+		pollResp, err := s.services.Tavily.PollResearch(ctx, requestID)
+		if err != nil {
+			emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
+		}
+
+		// 4. Parse structured content
+		emit("parsing", "Parsing research results...", 85)
+		report, err := parseResearchResult(ticker, pollResp)
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to parse: %v", err), 0)
+			return database.StockReport{}, err
+		}
+
+		emit("completed", "Research complete", 100)
+		return report, nil
 	}
 
-	// 2. Submit async research job
-	emit("submitting", "Submitting research request...", 25)
-	requestID, err := s.services.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
-		Input:        prompt,
-		Model:        model,
-		Stream:       false,
-		OutputSchema: tavily.ResearchOutputSchema(),
-	})
-	if err != nil {
-		emit("failed", fmt.Sprintf("Failed to submit: %v", err), 0)
-		return database.StockReport{}, fmt.Errorf("submit research for %s: %w", ticker, err)
-	}
-	slog.Info("tavily research submitted", "ticker", ticker, "request_id", requestID)
-
-	// 3. Poll until completed
-	emit("polling", "Gathering and analyzing data...", 40)
-	pollResp, err := s.services.Tavily.PollResearch(ctx, requestID)
-	if err != nil {
-		emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
-		return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
-	}
-
-	// 4. Parse structured content
-	emit("parsing", "Parsing research results...", 85)
-	report, err := parseResearchResult(ticker, pollResp)
-	if err != nil {
-		emit("failed", fmt.Sprintf("Failed to parse: %v", err), 0)
-		return database.StockReport{}, err
-	}
-
-	emit("completed", "Research complete", 100)
-	return report, nil
+	report, err := run()
+	job.ResultCh <- worker.ResearchResult{Ticker: ticker, Report: report, Err: err}
 }
 
 // ---------------------------------------------------------------------------
@@ -333,11 +449,7 @@ func parseResearchResult(ticker string, resp *tavily.ResearchPollResponse) (data
 // Report retrieval handlers
 // ---------------------------------------------------------------------------
 
-type ResearchReport struct {
-	database.GetResearchReportsRow
-	Price float64 `json:"price"`
-}
-
+// GET /v1/stock/research-reports
 func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Request) {
 	var reports []ResearchReport
 	reportFromDB, err := s.queries.GetResearchReports(r.Context())
@@ -359,6 +471,7 @@ func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Reques
 	common.WriteJSON(w, http.StatusOK, reports)
 }
 
+// GET /v1/stock/research-reports/{id}
 func (s *Server) GetResearchReportByIDHandler(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	report, err := s.queries.GetResearchReportById(r.Context(), uuid.Must(uuid.Parse(id)))

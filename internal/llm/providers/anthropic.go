@@ -301,5 +301,8 @@ func AnthropicStructuredCompletion(params AnthropicCompletionParams, result any)
 	if text == "" {
 		return fmt.Errorf("anthropic structured: no text content")
 	}
-	return json.Unmarshal([]byte(text), result)
+	if err := json.Unmarshal([]byte(text), result); err != nil {
+		return fmt.Errorf("anthropic structured: %w", err)
+	}
+	return nil
 }

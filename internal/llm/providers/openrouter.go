@@ -5,10 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
-
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"strings"
+
 	"stockmind/internal/llm/tools"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
@@ -39,8 +39,14 @@ func NewOpenRouterClient(config common.OpenRouter) (*openrouter.OpenRouter, erro
 func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database.Message, tools []*tools.Tool) (<-chan database.StreamEvent, error) {
 	ch := make(chan database.StreamEvent, 256)
 	msgs := []components.ChatMessages{}
+	// -- Map messages --
+	openrouterMsgs := mapToOpenRouterMessages(messages)
 
-	openrouterMsgs := mapToOpenRouterChat(messages, tools)
+	req := components.ChatRequest{
+		Model:    openrouter.Pointer(params.Model),
+		Messages: append(msgs, openrouterMsgs...),
+		Stream:   openrouter.Pointer(true),
+	}
 	if params.Prompt != "" {
 		msgs = append(msgs, components.CreateChatMessagesSystem(
 			components.ChatSystemMessage{
@@ -49,14 +55,18 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 			},
 		))
 	}
-
-	req := components.ChatRequest{
-		Model:    openrouter.Pointer(params.Model),
-		Messages: append(msgs, openrouterMsgs.Messages...),
-		Stream:   openrouter.Pointer(true),
-	}
-	if len(openrouterMsgs.Tools) > 0 {
-		req.Tools = openrouterMsgs.Tools
+	if len(tools) > 0 {
+		req.Tools = make([]components.ChatFunctionTool, 0, len(tools))
+		for _, t := range tools {
+			req.Tools = append(req.Tools, components.CreateChatFunctionToolChatFunctionToolFunction(components.ChatFunctionToolFunction{
+				Type: components.ChatFunctionToolTypeFunction,
+				Function: components.ChatFunctionToolFunctionFunction{
+					Name:        t.Name,
+					Description: openrouter.String(t.Description),
+					Parameters:  t.Schema,
+				},
+			}))
+		}
 	}
 
 	res, err := params.Client.Chat.Send(params.Context, req)
@@ -156,17 +166,9 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 	return ch, nil
 }
 
-// openRouterChatMapped is the OpenRouter Chat request payload derived from domain types.
-type openRouterChatMapped struct {
-	Messages []components.ChatMessages
-	Tools    []components.ChatFunctionTool
-}
-
-// mapToOpenRouterChat maps conversation history and tool definitions into OpenRouter API
-func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openRouterChatMapped {
-	out := openRouterChatMapped{
-		Messages: make([]components.ChatMessages, 0, len(messages)),
-	}
+// mapToOpenRouterMessages maps conversation history and tool definitions into OpenRouter API
+func mapToOpenRouterMessages(messages []database.Message) []components.ChatMessages {
+	msgs := make([]components.ChatMessages, 0, len(messages))
 
 	appendToolResultMessages := func(meta []database.Metadata) {
 		if len(meta) == 0 {
@@ -176,7 +178,7 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 			if t.ID == "" {
 				continue
 			}
-			out.Messages = append(out.Messages, components.CreateChatMessagesTool(components.ChatToolMessage{
+			msgs = append(msgs, components.CreateChatMessagesTool(components.ChatToolMessage{
 				Role:       components.ChatToolMessageRoleTool,
 				ToolCallID: t.ID,
 				Content:    components.CreateChatToolMessageContentStr(t.Result),
@@ -240,7 +242,7 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 			if content != "" {
 				assistantMsg.Content = optionalnullable.From(openrouter.Pointer(components.CreateChatAssistantMessageContentStr(content)))
 			}
-			out.Messages = append(out.Messages, components.CreateChatMessagesAssistant(assistantMsg))
+			msgs = append(msgs, components.CreateChatMessagesAssistant(assistantMsg))
 			appendToolResultMessages(m.Metadata)
 			continue
 		case "tool":
@@ -248,23 +250,10 @@ func mapToOpenRouterChat(messages []database.Message, tools []*tools.Tool) openR
 			continue
 		}
 
-		out.Messages = append(out.Messages, msg)
+		msgs = append(msgs, msg)
 	}
 
-	if len(tools) > 0 {
-		out.Tools = make([]components.ChatFunctionTool, 0, len(tools))
-		for _, t := range tools {
-			out.Tools = append(out.Tools, components.CreateChatFunctionToolChatFunctionToolFunction(components.ChatFunctionToolFunction{
-				Type: components.ChatFunctionToolTypeFunction,
-				Function: components.ChatFunctionToolFunctionFunction{
-					Name:        t.Name,
-					Description: openrouter.String(t.Description),
-					Parameters:  t.Schema,
-				},
-			}))
-		}
-	}
-	return out
+	return msgs
 }
 
 // OpenRouterStructuredCompletion calls the OpenRouter API without streaming using
@@ -297,5 +286,8 @@ func OpenRouterStructuredCompletion(params OpenRouterCompletionParams, result an
 	if !set || ptr == nil || ptr.Str == nil {
 		return fmt.Errorf("openrouter structured: no content")
 	}
-	return json.Unmarshal([]byte(*ptr.Str), result)
+	if err := json.Unmarshal([]byte(*ptr.Str), result); err != nil {
+		return fmt.Errorf("openrouter structured: %w", err)
+	}
+	return nil
 }

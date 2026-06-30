@@ -82,6 +82,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Post("/add-symbol", s.AddSymbolInPriceBoardHandler)
 			r.Post("/research", s.MarketResearchHandler)
 			r.Post("/research/stream", s.MarketResearchStreamHandler)
+			r.Post("/fundamental-analysis", s.FundamentalAnalysisHandler)
 		})
 
 		r.Route("/news", func(r chi.Router) {
