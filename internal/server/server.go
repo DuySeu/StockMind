@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"stockmind/internal/database"
-	kb "stockmind/internal/knowledge_base"
+	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
 	"stockmind/internal/service"
 	"stockmind/internal/storage"

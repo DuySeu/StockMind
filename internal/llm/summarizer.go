@@ -42,7 +42,7 @@ func (s *LLMService) Summarize(messages []database.Message, current database.Con
 	}
 
 	var result summarizationResult
-	if err := s.structuredCompletion(ctx, prompt, &result); err != nil {
+	if err := s.StructuredCompletion(ctx, prompt, &result); err != nil {
 		return database.ConversationSummary{}, fmt.Errorf("summarizer: %w", err)
 	}
 

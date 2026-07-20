@@ -2,105 +2,35 @@ package core
 
 import (
 	"context"
-	"fmt"
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	"stockmind/internal/llm/providers"
+	"stockmind/internal/llm/models"
 	"stockmind/internal/llm/tools"
 )
-
-type completionFunc func(context.Context, []database.Message, []*tools.Tool, string) (<-chan database.StreamEvent, error)
-type structuredCompletionFunc func(ctx context.Context, prompt string, result any) error
 
 // LLMService handles LLM interactions (agentic tool loop + summarization).
 // It has no database dependency — all persistence is handled by the caller.
 type LLMService struct {
-	tools                *tools.Manager
-	completion           completionFunc
-	structuredCompletion structuredCompletionFunc
+	tools    *tools.Manager
+	provider models.Provider
 }
 
 func NewLLMService(ctx context.Context, cfg common.LLM, toolMgr *tools.Manager) (*LLMService, error) {
-	var completion completionFunc
-	var structuredCompletion structuredCompletionFunc
-	switch cfg.GetProviderName() {
-	case database.ModelProviderOpenAI:
-		client, err := providers.NewOpenAIClient(cfg.OpenAI)
-		if err != nil {
-			return nil, err
-		}
-		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool, prompt string) (<-chan database.StreamEvent, error) {
-			return providers.OpenAICompletion(providers.OpenAICompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-			}, history, tools)
-		}
-		structuredCompletion = func(ctx context.Context, prompt string, result any) error {
-			return providers.OpenAIStructuredCompletion(providers.OpenAICompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-				Prompt:  prompt,
-			}, result)
-		}
-	case database.ModelProviderAnthropic:
-		client, err := providers.NewAnthropicClient(ctx, cfg.Anthropic)
-		if err != nil {
-			return nil, err
-		}
-		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool, prompt string) (<-chan database.StreamEvent, error) {
-			return providers.AnthropicCompletion(providers.AnthropicCompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-				Prompt:  prompt,
-			}, history, tools)
-		}
-		structuredCompletion = func(ctx context.Context, prompt string, result any) error {
-			return providers.AnthropicStructuredCompletion(providers.AnthropicCompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-				Prompt:  prompt,
-			}, result)
-		}
-	case database.ModelProviderOpenRouter:
-		client, err := providers.NewOpenRouterClient(cfg.OpenRouter)
-		if err != nil {
-			return nil, err
-		}
-		completion = func(ctx context.Context, history []database.Message, tools []*tools.Tool, prompt string) (<-chan database.StreamEvent, error) {
-			return providers.OpenRouterCompletion(providers.OpenRouterCompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-				Prompt:  prompt,
-			}, history, tools)
-		}
-		structuredCompletion = func(ctx context.Context, prompt string, result any) error {
-			return providers.OpenRouterStructuredCompletion(providers.OpenRouterCompletionParams{
-				Context: ctx,
-				Client:  client,
-				Model:   cfg.GetLLMModelName(),
-				Prompt:  prompt,
-			}, result)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported provider: %q", cfg.GetProviderName())
+	provider, err := models.NewProvider(ctx, cfg)
+	if err != nil {
+		return nil, err
 	}
 
 	return &LLMService{
-		tools:                toolMgr,
-		completion:           completion,
-		structuredCompletion: structuredCompletion,
+		tools:    toolMgr,
+		provider: provider,
 	}, nil
 }
 
 // StructuredCompletion sends a prompt to the LLM and unmarshals the JSON response into result.
 func (s *LLMService) StructuredCompletion(ctx context.Context, prompt string, result any) error {
-	return s.structuredCompletion(ctx, prompt, result)
+	return s.provider.StructuredCompletion(ctx, prompt, result)
 }
 
 // ──────── Agentic Tool Loop ────────
@@ -144,7 +74,7 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 
 	nextProviderRound:
 		for {
-			streamCh, err := s.completion(ctx, history, toolDefs, opts[0].SystemPrompt)
+			streamCh, err := s.provider.Completion(ctx, history, toolDefs, opts[0].SystemPrompt)
 			if err != nil {
 				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 				return

@@ -13,7 +13,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	kb "stockmind/internal/knowledge_base"
+	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
 	"stockmind/internal/llm/tools"
 	"stockmind/internal/mcp"
@@ -103,7 +103,7 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	log.Println("MinIO object store ready")
 
 	// Initialize Knowledge Base (Qdrant + Embedder + BM25)
-	knowledgeBase, err := kb.New(ctx, &config, dbPool)
+	kbBase, err := kb.New(ctx, &config, dbPool)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to init knowledge base: %w", err)
 	}
@@ -144,10 +144,10 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	}
 
 	// Initialize Services
-	services := service.NewService(knowledgeBase.Pipeline, dbPool, objectStore)
+	services := service.NewService(kbBase.Pipeline, dbPool, objectStore)
 
 	// Initialize tools and LLM service
-	toolDefs := tools.RegisterTools(knowledgeBase.Retriever, services)
+	toolDefs := tools.RegisterTools(kbBase.Retriever, services)
 	if len(bridgedMCPTools) > 0 {
 		toolDefs = append(toolDefs, bridgedMCPTools...)
 	}
@@ -162,7 +162,7 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	srv := server.NewServer(server.ServerDeps{
 		DBPool:      dbPool,
 		Agent:       agent,
-		KBStore:     knowledgeBase.Store,
+		KBStore:     kbBase.Store,
 		ObjectStore: objectStore,
 		Services:    services,
 	}, port)

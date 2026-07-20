@@ -3,7 +3,7 @@ package service
 import (
 	"log"
 
-	kb "stockmind/internal/knowledge_base"
+	kb "stockmind/internal/knowledge"
 	"stockmind/internal/service/tavily"
 	"stockmind/internal/service/worker"
 	"stockmind/internal/storage"

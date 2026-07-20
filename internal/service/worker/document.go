@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"stockmind/internal/database"
-	kb "stockmind/internal/knowledge_base"
+	kb "stockmind/internal/knowledge"
 	"stockmind/internal/storage"
 
 	"github.com/google/uuid"

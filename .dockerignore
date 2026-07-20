@@ -16,6 +16,11 @@ README.md
 QUICKSTART.md
 
 # IDE files
+.cursor/
+.kiro/
+.air.toml
+.planning/
+.agents/
 .vscode/
 .idea/
 *.swp
@@ -47,7 +52,7 @@ docker-compose*.yml
 
 # Development tools
 Makefile
-.dockerignore
+docs/
 
 # Temporary files
 tmp/
