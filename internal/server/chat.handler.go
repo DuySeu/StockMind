@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -135,7 +135,7 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 
 	if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
-		log.Printf("sse: EnableFullDuplex: %v", err)
+		slog.Warn("sse: EnableFullDuplex", "error", err)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -219,9 +219,14 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if ev.Type == database.EventDone {
+		switch ev.Type {
+		case database.EventDone:
 			common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
-		} else {
+		case database.EventText, database.EventThinking:
+			// Text/thinking deltas carry their payload in Content, not Data.
+			// The client reads the `data` field as a string for these events.
+			common.WriteSSE(w, common.SSEEvent(ev.Type, ev.Content))
+		default:
 			common.WriteSSE(w, common.SSEEvent(ev.Type, ev.Data))
 		}
 	}
@@ -252,7 +257,7 @@ func (s *Server) persistMessage(sessionID uuid.UUID, role, content string, meta 
 	if content == "" && len(meta) == 0 {
 		return
 	}
-	log.Printf("bg: persistMessage start [session=%s role=%s]", sessionID, role)
+	slog.Debug("bg: persistMessage start", "session", sessionID, "role", role)
 	if err := s.queries.CreateMessage(context.Background(), database.CreateMessageParams{
 		ID:             uuid.New(),
 		ConversationID: sessionID,
@@ -260,21 +265,21 @@ func (s *Server) persistMessage(sessionID uuid.UUID, role, content string, meta 
 		Content:        content,
 		Metadata:       meta,
 	}); err != nil {
-		log.Printf("chat: save %s message: %v", role, err)
+		slog.Error("chat: save message", "role", role, "error", err)
 	}
-	log.Printf("bg: persistMessage done [session=%s role=%s]", sessionID, role)
+	slog.Debug("bg: persistMessage done", "session", sessionID, "role", role)
 }
 
 // maybeSummarize checks if summarization threshold is crossed and triggers async summarization.
 func (s *Server) maybeSummarize(sessionID uuid.UUID, convSummary database.ConversationSummary) {
-	log.Printf("bg: maybeSummarize start [session=%s]", sessionID)
+	slog.Debug("bg: maybeSummarize start", "session", sessionID)
 	count, err := s.queries.GetMessageCountByConversationID(context.Background(), sessionID)
 	if err != nil {
-		log.Printf("chat: count messages: %v", err)
+		slog.Error("chat: count messages", "error", err)
 		return
 	}
 	if count < convSummary.SummarizedCount+core.SummarizationThreshold {
-		log.Printf("bg: maybeSummarize done [session=%s] (threshold not reached)", sessionID)
+		slog.Debug("bg: maybeSummarize done (threshold not reached)", "session", sessionID)
 		return
 	}
 
@@ -284,28 +289,28 @@ func (s *Server) maybeSummarize(sessionID uuid.UUID, convSummary database.Conver
 		Offset:         int32(convSummary.SummarizedCount),
 	})
 	if err != nil {
-		log.Printf("chat: fetch summarization batch: %v", err)
+		slog.Error("chat: fetch summarization batch", "error", err)
 		return
 	}
 
 	result, err := s.agent.Summarize(batch, convSummary)
 	if err != nil {
-		log.Printf("chat: summarize: %v", err)
+		slog.Error("chat: summarize", "error", err)
 		return
 	}
 
 	metaBytes, err := json.Marshal(result)
 	if err != nil {
-		log.Printf("chat: marshal summary: %v", err)
+		slog.Error("chat: marshal summary", "error", err)
 		return
 	}
 	if err := s.queries.UpdateConversationMetadata(context.Background(), database.UpdateConversationMetadataParams{
 		ID:       sessionID,
 		Metadata: metaBytes,
 	}); err != nil {
-		log.Printf("chat: update conversation metadata: %v", err)
+		slog.Error("chat: update conversation metadata", "error", err)
 	}
-	log.Printf("bg: maybeSummarize done [session=%s] (summarized)", sessionID)
+	slog.Debug("bg: maybeSummarize done (summarized)", "session", sessionID)
 }
 
 // resolveAttachments fetches attachment data from object store for messages
@@ -336,13 +341,13 @@ func (s *Server) resolveAttachments(ctx context.Context, history []database.Mess
 			a := &history[mi].Metadata[0].Attachments[ai]
 			rc, err := s.objectStore.Get(ctx, a.Path)
 			if err != nil {
-				log.Printf("resolve attachment %s: %v", a.Path, err)
+				slog.Error("resolve attachment", "path", a.Path, "error", err)
 				return
 			}
 			data, err := io.ReadAll(rc)
 			rc.Close()
 			if err != nil {
-				log.Printf("read attachment %s: %v", a.Path, err)
+				slog.Error("read attachment", "path", a.Path, "error", err)
 				return
 			}
 			a.Data = data

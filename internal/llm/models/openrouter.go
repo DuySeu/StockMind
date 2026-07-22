@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"stockmind/internal/common"
@@ -113,6 +114,7 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 
 		// Accumulate tool call arguments across delta chunks
 		pendingToolCalls := map[int]*database.Tool{}
+		var contentLen, reasoningLen int // diagnostic: bytes seen this stream
 
 		for res.EventStream.Next() {
 			event := res.EventStream.Value()
@@ -127,11 +129,13 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 			// ── Text delta ───────────────────────────────────────────────────
 			// OptionalNullable is map[bool]*T keyed by true (see go-sdk/optionalnullable).
 			if ptr, set := choice.Delta.Content.Get(); set && ptr != nil && *ptr != "" {
+				contentLen += len(*ptr)
 				ch <- database.StreamEvent{Type: database.EventText, Content: *ptr}
 			}
 			// Reasoning (a.k.a. "thinking") deltas are streamed separately so
 			// clients can render them as a distinct thought stream.
 			if ptr, set := choice.Delta.Reasoning.Get(); set && ptr != nil && *ptr != "" {
+				reasoningLen += len(*ptr)
 				ch <- database.StreamEvent{Type: database.EventThinking, Content: *ptr}
 			}
 
@@ -164,6 +168,9 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 			// ── Finish reasons ───────────────────────────────────────────────
 			if choice.FinishReason != nil {
 				reason := string(*choice.FinishReason)
+				slog.Info("openrouter: finish_reason", "reason", reason,
+					"content_len", contentLen, "reasoning_len", reasoningLen,
+					"pending_tool_calls", len(pendingToolCalls))
 				switch reason {
 				case "tool_calls":
 					// Emit each fully-assembled tool call in index order.
@@ -190,9 +197,14 @@ func OpenRouterCompletion(params OpenRouterCompletionParams, messages []database
 		}
 
 		if err := res.EventStream.Err(); err != nil {
+			slog.Error("openrouter: stream error", "error", err,
+				"content_len", contentLen, "reasoning_len", reasoningLen)
 			ch <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 			return
 		}
+		slog.Info("openrouter: stream end (no stop finish_reason)",
+			"content_len", contentLen, "reasoning_len", reasoningLen,
+			"pending_tool_calls", len(pendingToolCalls))
 		ch <- database.StreamEvent{Type: database.EventDone}
 	}()
 

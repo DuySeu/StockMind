@@ -1,7 +1,7 @@
 package server
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path"
@@ -109,7 +109,7 @@ func spaHandler() http.HandlerFunc {
 			http.ServeFileFS(w, r, spaFS, "index.html")
 			return
 		}
-		fmt.Println("Serving file", "path", path.Clean(r.URL.Path))
+		slog.Debug("serving file", "path", path.Clean(r.URL.Path))
 		f, err := spaFS.Open(strings.TrimPrefix(path.Clean(r.URL.Path), "/"))
 		if err == nil {
 			defer f.Close()

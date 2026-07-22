@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	kb "stockmind/internal/knowledge"
 	impl "stockmind/internal/llm/tools/implementations"
@@ -61,7 +61,7 @@ func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) 
 	for _, serverName := range manager.ConfiguredServers() {
 		client, err := manager.GetOrStart(ctx, serverName)
 		if err != nil {
-			log.Printf("Warning: Failed to connect to MCP server %s: %v. Skipping.", serverName, err)
+			slog.Warn("failed to connect to MCP server, skipping", "server", serverName, "error", err)
 			continue
 		}
 
@@ -116,7 +116,7 @@ func BridgeMCPTools(ctx context.Context, manager *mcp.Manager) ([]*Tool, error) 
 				Schema:      schemaMap,
 				Execute:     executeFn,
 			})
-			log.Printf("Dynamic MCP Tool bridged: %s (routes to %s.%s)", localToolName, serverName, mcpToolName)
+			slog.Info("dynamic MCP tool bridged", "tool", localToolName, "server", serverName, "mcp_tool", mcpToolName)
 		}
 	}
 

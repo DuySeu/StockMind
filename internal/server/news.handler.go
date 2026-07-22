@@ -1,7 +1,7 @@
 package server
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
@@ -15,12 +15,12 @@ func (s *Server) GetNewsHandler(w http.ResponseWriter, r *http.Request) {
 	latestNews, err := s.queries.GetLatestNews(r.Context(), currentDate)
 
 	if err != nil || len(latestNews) == 0 {
-		log.Printf("[News] Failed to get latest news from DB or no news found for today (err: %v). Triggering Tavily...", err)
+		slog.Warn("[News] no news in DB for today, triggering Tavily", "error", err)
 
 		tavilyNews, tErr := s.services.Tavily.SearchWeb(r.Context(), "Tin tức thị trường chứng khoán Việt Nam hôm nay", common.NEWS_DOMAINS)
 
 		if tErr != nil {
-			log.Printf("[News] Failed to get latest news from Tavily: %v", tErr)
+			slog.Error("[News] failed to get latest news from Tavily", "error", tErr)
 			common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get latest news")
 			return
 		}
@@ -32,7 +32,7 @@ func (s *Server) GetNewsHandler(w http.ResponseWriter, r *http.Request) {
 				Description: article.Description,
 			})
 			if sErr != nil {
-				log.Printf("[News] Failed to save news to DB: %v", sErr)
+				slog.Error("[News] failed to save news to DB", "error", sErr)
 				continue
 			}
 			latestNews = append(latestNews, saved)

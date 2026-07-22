@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 )
 
@@ -79,7 +79,7 @@ func (m *Manager) CallTool(ctx context.Context, server, tool string, args map[st
 	}
 
 	// Evict dead client and retry once.
-	log.Printf("MCP call %s.%s failed, reconnecting: %v", server, tool, err)
+	slog.Warn("MCP call failed, reconnecting", "server", server, "tool", tool, "error", err)
 	m.evict(server)
 
 	client, err = m.GetOrStart(ctx, server)

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -122,7 +122,7 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 		defer wg.Done()
 		h, err := fetchIQ[shareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
 		if err != nil {
-			log.Printf("fundamental_analysis: shareholder structure for %s: %v", symbol, err)
+			slog.Warn("fundamental_analysis: shareholder structure", "symbol", symbol, "error", err)
 			return
 		}
 		holders = h
@@ -131,7 +131,7 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 		defer wg.Done()
 		r, err := fetchIQ[relationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
 		if err != nil {
-			log.Printf("fundamental_analysis: relationship for %s: %v", symbol, err)
+			slog.Warn("fundamental_analysis: relationship", "symbol", symbol, "error", err)
 			return
 		}
 		rel = r

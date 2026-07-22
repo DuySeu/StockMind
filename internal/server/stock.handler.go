@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
@@ -129,7 +129,7 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 	watchlist, err = s.queries.GetWatchlist(r.Context(), int32(limit))
 
 	if err != nil {
-		log.Printf("[PriceBoard] Failed to get watchlist: %v", err)
+		slog.Error("[PriceBoard] failed to get watchlist", "error", err)
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get watchlist")
 		return
 	}
@@ -146,7 +146,7 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 
 	priceBoard, err := FetchStockPrice(r.Context(), symbols)
 	if err != nil {
-		log.Printf("[PriceBoard] %v", err)
+		slog.Error("[PriceBoard] price board error", "error", err)
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to fetch stock prices")
 		return
 	}
@@ -163,7 +163,7 @@ func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Req
 
 	_, err := s.queries.CreateWatchlistData(r.Context(), req.Symbol)
 	if err != nil {
-		log.Printf("[PriceBoard] Failed to add symbol to watchlist: %v", err)
+		slog.Error("[PriceBoard] failed to add symbol to watchlist", "error", err)
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to add symbol to watchlist")
 		return
 	}
@@ -174,7 +174,7 @@ func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Req
 func (s *Server) GetWatchlistHandler(w http.ResponseWriter, r *http.Request) {
 	watchlist, err := s.queries.GetWatchlist(r.Context(), 0)
 	if err != nil {
-		log.Printf("[PriceBoard] Failed to get watchlist: %v", err)
+		slog.Error("[PriceBoard] failed to get watchlist", "error", err)
 		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to get watchlist")
 		return
 	}

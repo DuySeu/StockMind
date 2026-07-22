@@ -3,7 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"stockmind/internal/database"
@@ -70,7 +70,7 @@ func (p *docProcessor) process(job *DocumentJob) {
 			ChunkCount: int32(count),
 			ErrorMsg:   msg,
 		}); err != nil {
-			log.Printf("worker: failed to update status to %s for doc %s: %v", status, job.DocID, err)
+			slog.Error("worker: failed to update doc status", "status", status, "doc", job.DocID, "error", err)
 		}
 	}
 

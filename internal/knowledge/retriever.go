@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 )
 
@@ -45,7 +45,7 @@ func (r *retriever) searchHybrid(ctx context.Context, query string, topK int) ([
 	dense, err := r.embedder.EmbedQuery(ctx, query)
 	if err != nil {
 		// Fallback to keyword-only if embedding fails
-		log.Printf("knowledge_base: embedding failed, falling back to keyword search: %v", err)
+		slog.Warn("knowledge_base: embedding failed, falling back to keyword search", "error", err)
 		return r.searchKeyword(ctx, query, topK)
 	}
 

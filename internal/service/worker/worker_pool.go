@@ -2,7 +2,7 @@ package worker
 
 import (
 	"errors"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -70,7 +70,7 @@ func (p *Pool[T]) trySpawn() {
 func (p *Pool[T]) run() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("worker: recovered from panic: %v", r)
+			slog.Error("worker: recovered from panic", "panic", r)
 		}
 		p.mu.Lock()
 		p.activeWorkers--

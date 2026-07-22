@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
@@ -48,10 +49,15 @@ func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- database.
 		}
 		tr := database.Tool{ID: tc.ID, Result: result, IsError: isError}
 		outputCh <- database.StreamEvent{Type: database.EventToolResult, Data: tr}
+		// Preserve Name + Arguments so the next provider round can reconstruct a
+		// valid assistant tool_call message (an empty function name is rejected
+		// by OpenRouter/OpenAI/Anthropic, breaking the follow-up completion).
 		assembled = append(assembled, database.Tool{
-			ID:      tc.ID,
-			Result:  tr.Result,
-			IsError: tr.IsError,
+			ID:        tc.ID,
+			Name:      tc.Name,
+			Arguments: tc.Arguments,
+			Result:    tr.Result,
+			IsError:   tr.IsError,
 		})
 	}
 	meta := []database.Metadata{{Tool: assembled}}
@@ -71,21 +77,32 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 	go func() {
 		defer close(outputCh)
 		toolDefs := s.tools.All()
+		round := 0
 
 	nextProviderRound:
 		for {
+			round++
+			slog.Info("llm: provider round start", "round", round, "history", len(history), "tools", len(toolDefs))
 			streamCh, err := s.provider.Completion(ctx, history, toolDefs, opts[0].SystemPrompt)
 			if err != nil {
+				slog.Error("llm: completion failed", "round", round, "error", err)
 				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}
 				return
 			}
 
 			var pendingTools []database.Tool
+			var textLen, thinkingLen int // diagnostic: bytes streamed this round
 
 			for event := range streamCh {
 				switch event.Type {
 				case database.EventText:
+					textLen += len(event.Content)
 					outputCh <- event
+
+				case database.EventThinking:
+					// NOTE: the loop does not forward thinking deltas today; we only
+					// count them here to see if a round's answer arrives as reasoning.
+					thinkingLen += len(event.Content)
 
 				case database.EventToolCall:
 					tc := event.Data.(database.Tool)
@@ -93,6 +110,8 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 					pendingTools = append(pendingTools, tc)
 
 				case database.EventDone:
+					slog.Info("llm: provider round done", "round", round,
+						"text_len", textLen, "thinking_len", thinkingLen, "tool_calls", len(pendingTools))
 					if len(pendingTools) > 0 {
 						history = s.runToolRound(ctx, outputCh, history, pendingTools)
 						pendingTools = pendingTools[:0]
@@ -102,11 +121,15 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 					return
 
 				case database.EventError:
+					slog.Error("llm: provider round error", "round", round, "error", event.Data)
 					outputCh <- event
 					return
 				}
 			}
 
+			// Stream closed without an explicit EventDone.
+			slog.Warn("llm: stream closed without done", "round", round,
+				"text_len", textLen, "thinking_len", thinkingLen, "pending_tools", len(pendingTools))
 			if len(pendingTools) > 0 {
 				history = s.runToolRound(ctx, outputCh, history, pendingTools)
 				continue

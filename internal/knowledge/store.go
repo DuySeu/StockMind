@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -83,7 +83,7 @@ func (s *QdrantStore) EnsureCollection(ctx context.Context) error {
 		}
 	}
 
-	log.Printf("Qdrant collection ready: %s", CollectionName)
+	slog.Info("Qdrant collection ready", "collection", CollectionName)
 	return nil
 }
 

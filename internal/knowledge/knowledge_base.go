@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"stockmind/internal/common"
 
@@ -84,7 +84,7 @@ func New(ctx context.Context, cfg *common.Config, dbPool *pgxpool.Pool) (*Knowle
 	if err := store.EnsureCollection(ctx); err != nil {
 		return nil, fmt.Errorf("knowledge_base: %w", err)
 	}
-	log.Println("Knowledge base Qdrant collection ready")
+	slog.Info("knowledge base Qdrant collection ready")
 
 	embedder, err := NewEmbedService(0, cfg.LLM)
 	if err != nil {

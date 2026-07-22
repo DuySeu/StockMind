@@ -2,7 +2,7 @@ package server
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -47,7 +47,7 @@ func NewServer(deps ServerDeps, port string) *http.Server {
 	deps.Services.InitResearchWorker(srv.ProcessResearchJob)
 
 	if err := srv.EnsureDefaultUser(); err != nil {
-		log.Printf("Warning: Failed to ensure default user: %v\n", err)
+		slog.Warn("failed to ensure default user", "error", err)
 	}
 
 	return &http.Server{

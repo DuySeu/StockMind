@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -31,6 +32,8 @@ func main() {
 		fmt.Printf("Warning: Failed to load .env file: %v\n", err)
 	}
 
+	common.InitLogging()
+
 	app := cli.Command{
 		Name:    "stock_mind",
 		Usage:   "StockMind is an AI-powered assistant designed to simplify access to financial information and insights about the Vietnamese stock market.",
@@ -51,7 +54,7 @@ func main() {
 
 					runContext, shutdown, err := runServer(ctx, port)
 					if err != nil {
-						log.Printf("Failed to run server: %v", err)
+						slog.Error("failed to run server", "error", err)
 						return err
 					}
 
@@ -71,7 +74,7 @@ func main() {
 }
 
 func runServer(ctx context.Context, port string) (context.Context, func(), error) {
-	log.Printf("Running server on port: %s", port)
+	slog.Info("running server", "port", port)
 
 	config := common.LoadConfig()
 
@@ -93,14 +96,14 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	if err := database.MigrateDB(dbPool); err != nil {
 		return nil, nil, fmt.Errorf("database migration failed: %w", err)
 	}
-	log.Println("Database connection established")
+	slog.Info("database connection established")
 
 	// Initialize MinIO object store
 	objectStore, err := storage.NewMinIOStore(ctx, config.MinIO)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to init object store: %w", err)
 	}
-	log.Println("MinIO object store ready")
+	slog.Info("minio object store ready")
 
 	// Initialize Knowledge Base (Qdrant + Embedder + BM25)
 	kbBase, err := kb.New(ctx, &config, dbPool)
@@ -126,7 +129,7 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 			},
 		})
 	} else {
-		log.Println("Warning: uvx not found — external MCP clients like AWS documentation disabled")
+		slog.Warn("uvx not found — external MCP clients like AWS documentation disabled")
 	}
 
 	if len(mcpConfigs) > 0 {
@@ -137,9 +140,9 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 
 		bridgedMCPTools, err := tools.BridgeMCPTools(bridgeCtx, mcpManager)
 		if err != nil {
-			log.Printf("Warning: failed to bridge MCP tools: %v", err)
+			slog.Warn("failed to bridge MCP tools", "error", err)
 		} else {
-			log.Printf("Successfully bridged %d dynamic MCP tools", len(bridgedMCPTools))
+			slog.Info("bridged dynamic MCP tools", "count", len(bridgedMCPTools))
 		}
 	}
 
@@ -172,9 +175,9 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 
 	go func() {
 		defer close(stopCh)
-		log.Printf("Server starting on port: %s", port)
+		slog.Info("server starting", "port", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("unexpected server closure: %v", err)
+			slog.Error("unexpected server closure", "error", err)
 			cancel()
 		}
 	}()
@@ -185,16 +188,16 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 
 		// 1. Stop accepting new HTTP requests, drain in-flight
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("stopping server: %v", err)
+			slog.Error("stopping server", "error", err)
 		}
 
 		// 2. Stop worker pool (drain queued jobs)
-		log.Printf("Shutting down async worker pool...")
+		slog.Info("shutting down async worker pool")
 		services.Shutdown()
 
 		// 3. Stop all external MCP client sessions
 		if mcpManager != nil {
-			log.Printf("Shutting down all active external MCP client sessions...")
+			slog.Info("shutting down external MCP client sessions")
 			mcpManager.CloseAll()
 		}
 
