@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -21,6 +22,7 @@ import (
 type chatRequest struct {
 	Content   string    `json:"content"`
 	SessionId uuid.UUID `json:"session_id,omitempty"`
+	MaxMode   bool      `json:"max_mode,omitempty"`
 }
 
 func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,6 +30,9 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	var content string
 	var sessionID uuid.UUID
 	var files []database.Attachment
+	var maxMode bool
+
+	log.Println("maxMode", maxMode)
 
 	contentType := r.Header.Get("Content-Type")
 
@@ -42,6 +47,9 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 			if id, err := uuid.Parse(s); err == nil {
 				sessionID = id
 			}
+		}
+		if m := r.FormValue("max_mode"); m != "" {
+			maxMode = m == "true"
 		}
 		if r.MultipartForm != nil {
 			for _, fh := range r.MultipartForm.File["file"] {
@@ -70,6 +78,7 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		content = body.Content
 		sessionID = body.SessionId
+		maxMode = body.MaxMode // TODO: handle max mode when active, run multi-agent pipeline
 
 	default:
 		common.WriteJSONError(w, http.StatusUnsupportedMediaType, "unsupported Content-Type: expected application/json or multipart/form-data")

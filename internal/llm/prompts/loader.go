@@ -49,6 +49,22 @@ type FundamentalAnalysisParams struct {
 	Facts  string
 }
 
+// PlanParams holds the variables for the multi-agent planning prompt.
+// Roster is the pre-rendered catalogue of available agents; Errors carries
+// validation failures on a repair retry and is empty on the first attempt.
+type PlanParams struct {
+	Goal   string
+	Roster string
+	Date   string
+	Errors string
+}
+
+// AgentPromptParams holds the variables shared by every specialist agent's role
+// prompt. Date is injected automatically so agents can reason about "today".
+type AgentPromptParams struct {
+	Date string
+}
+
 // PromptLoader renders prompts from embedded Go templates.
 type PromptLoader struct{}
 
@@ -90,4 +106,17 @@ func (p *PromptLoader) GetSystemPrompt(params SystemParams) (string, error) {
 // GetFundamentalAnalysisPrompt renders the fundamental analysis prompt with the given params.
 func (p *PromptLoader) GetFundamentalAnalysisPrompt(params FundamentalAnalysisParams) (string, error) {
 	return p.render("fundamental_analysis.txt", params)
+}
+
+// GetPlanPrompt renders the multi-agent planning prompt with the given params.
+func (p *PromptLoader) GetPlanPrompt(params PlanParams) (string, error) {
+	params.Date = time.Now().Format("2006-01-02")
+	return p.render("plan_prompt.txt", params)
+}
+
+// GetAgentPrompt renders a specialist agent's role prompt by template file name
+// (e.g. "agent_market_data.txt"). Generic on purpose: adding an agent needs a new
+// .txt file but no new loader method.
+func (p *PromptLoader) GetAgentPrompt(tplName string) (string, error) {
+	return p.render(tplName, AgentPromptParams{Date: time.Now().Format("2006-01-02")})
 }

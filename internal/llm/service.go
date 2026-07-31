@@ -67,6 +67,11 @@ func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- database.
 // LLMOptions holds optional parameters for LLMChat.
 type LLMOptions struct {
 	SystemPrompt string
+	// Tools restricts this turn to the named tools. Nil (the zero value) means
+	// every registered tool, which is what the chat path wants; a non-nil slice
+	// means exactly those tools, and a non-nil empty slice means none at all.
+	// See tools.Manager.Subset.
+	Tools []string
 }
 
 // LLMChat runs the agentic tool loop: call LLM → execute tool calls → append results → repeat until done.
@@ -74,16 +79,23 @@ type LLMOptions struct {
 func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, opts ...LLMOptions) (<-chan database.StreamEvent, error) {
 	outputCh := make(chan database.StreamEvent, 4)
 
+	// Options are variadic, so callers may omit them entirely — take the first if
+	// present and otherwise fall back to the zero value (all tools, no system prompt).
+	var opt LLMOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+
 	go func() {
 		defer close(outputCh)
-		toolDefs := s.tools.All()
+		toolDefs := s.tools.Subset(opt.Tools)
 		round := 0
 
 	nextProviderRound:
 		for {
 			round++
 			slog.Info("llm: provider round start", "round", round, "history", len(history), "tools", len(toolDefs))
-			streamCh, err := s.provider.Completion(ctx, history, toolDefs, opts[0].SystemPrompt)
+			streamCh, err := s.provider.Completion(ctx, history, toolDefs, opt.SystemPrompt)
 			if err != nil {
 				slog.Error("llm: completion failed", "round", round, "error", err)
 				outputCh <- database.StreamEvent{Type: database.EventError, Data: err.Error()}

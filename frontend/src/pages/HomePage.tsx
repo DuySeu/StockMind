@@ -22,6 +22,7 @@ import { useEffect, useState } from "react";
 import { getLatestNews } from "@/api/news";
 import type { PriceBoard } from "@/types/stock";
 import { getPriceBoard } from "@/api/stock";
+import { PRICE_STATE, getPriceState } from "@/lib/stock";
 
 /* ───────────────────────── Data ───────────────────────── */
 
@@ -84,46 +85,49 @@ const pricingPlans = [
 
 /* ───────────────────── Sub-Components ───────────────────── */
 
-
-
 function HeroSection() {
   return (
-    <section className="relative pt-20 pb-32 px-6 overflow-hidden bg-[radial-gradient(circle_at_50%_50%,rgba(160,255,155,0.1)_0%,var(--background)_100%)]">
-      <div className="max-w-4xl mx-auto text-center">
-        <h1 className="text-5xl lg:text-[64px] font-black leading-[1.1] tracking-tight mb-6">
+    /* The old background was a hardcoded rgba(160,255,155,…) radial — the
+       previous mint green, frozen into the markup and immune to the theme.
+       This is the same effect built from tokens. */
+    <section className="relative overflow-hidden bg-gradient-to-b from-secondary/70 via-background to-background px-4 pb-24 pt-16 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl text-center">
+        <h1 className="mb-5 text-4xl font-bold leading-[1.1] tracking-tight lg:text-5xl">
           Your AI Copilot for <br />
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-green-400">
+          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             Vietnam Stock Investing
           </span>
         </h1>
 
-        <p className="text-lg lg:text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+        <p className="mx-auto mb-8 max-w-2xl text-base text-muted-foreground lg:text-lg">
           Analyze, track, and master the Vietnamese stock market with real-time AI insights, automated research, and
           expert-grade signals.
         </p>
 
         {/* AI Chat Input */}
-        <div className="relative group max-w-2xl mx-auto">
-          {/* Glow */}
-          <div className="absolute -inset-1 bg-gradient-to-r from-primary to-emerald-400 rounded-2xl blur opacity-25 group-focus-within:opacity-50 transition duration-1000" />
-
-          <div className="relative flex items-center bg-card border border-border rounded-xl p-2 shadow-xl">
-            <Search className="ml-4 size-5 text-muted-foreground" />
+        <div className="group relative mx-auto max-w-2xl">
+          <div className="glass-raised relative flex items-center gap-1 rounded-xl p-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30">
+            <Search className="ml-2 size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <Input
-              className="border-none shadow-none focus-visible:ring-0 px-4 py-4 h-auto text-base placeholder:text-muted-foreground bg-transparent"
-              placeholder="Ask about FPT, VNM vs MSN, or VIC..."
+              aria-label="Ask about a stock"
+              className="h-auto border-none bg-transparent px-3 py-3 text-base shadow-none placeholder:text-muted-foreground focus-visible:ring-0 dark:bg-transparent"
+              placeholder="Ask about FPT, VNM vs MSN, or VIC…"
             />
-            <Button className="rounded-lg px-8 py-3 h-auto font-bold hover:scale-[1.02] transition-transform">
-              Analyze
+            <Button asChild className="shrink-0">
+              <Link to="/c">Analyze</Link>
             </Button>
           </div>
 
-          <div className="mt-4 flex flex-wrap justify-center gap-3 text-sm text-muted-foreground">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground">
             <span>Try:</span>
             {['"Compare VIC vs VHM financials"', '"FPT technical outlook"', '"Market sentiment today"'].map((q) => (
-              <button key={q} className="hover:text-primary transition-colors">
+              <Link
+                key={q}
+                to="/c"
+                className="rounded-md border border-border bg-card px-2.5 py-1 text-xs backdrop-blur-sm transition-colors hover:border-ring hover:text-foreground"
+              >
                 {q}
-              </button>
+              </Link>
             ))}
           </div>
         </div>
@@ -147,51 +151,55 @@ function TickerCard({ listingInfo, matchPrice }: PriceBoard) {
   const changePositive = changeVal > 0;
   const changeStr = `${changeVal > 0 ? "+" : ""}${changePct.toFixed(1)}%`;
 
-  const signalVariant = changePositive ? "buy" : changeVal < 0 ? "sell" : "neutral";
   const signal = changePositive ? "Buy" : changeVal < 0 ? "Sell" : "Hold";
   const strength = changePositive ? 8.4 : changeVal < 0 ? 3.2 : 5.0;
   const strengthPct = strength * 10;
 
-  const signalBadgeClass =
-    signalVariant === "buy"
-      ? "bg-primary/20 text-emerald-700 dark:text-emerald-400"
-      : signalVariant === "sell"
-        ? "bg-rose-500/20 text-rose-700 dark:text-rose-400"
-        : "bg-secondary text-muted-foreground";
-
-  const changeClass = changePositive
-    ? "text-emerald-500"
-    : changePositive === false
-      ? "text-rose-500"
-      : "text-muted-foreground";
+  // Board state drives the colour, so a card and a board row never disagree.
+  const state = getPriceState({
+    price: priceVal,
+    reference: refPrice,
+    ceiling: listingInfo.ceiling,
+    floor: listingInfo.floor,
+  });
+  const style = PRICE_STATE[state];
 
   return (
-    <Card className="p-6 rounded-2xl gap-0">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h4 className="text-xl font-black">{ticker}</h4>
-          <p className="text-xs text-muted-foreground truncate max-w-[120px]" title={sector}>
+    <Card className="gap-0 rounded-xl p-5">
+      <div className="mb-4 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-lg font-bold">{ticker}</h3>
+          <p className="truncate text-xs text-muted-foreground" title={sector}>
             {sector}
           </p>
         </div>
-        <span className={`${signalBadgeClass} px-2 py-1 rounded text-xs font-bold uppercase tracking-wider`}>
+        <span
+          className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${style.bg} ${style.text}`}
+        >
           {signal}
         </span>
       </div>
 
-      <div className="mb-4">
-        <span className="text-2xl font-bold">{priceDisplay}</span>
-        <span className={`${changeClass} text-sm font-bold ml-2`}>{changeStr}</span>
+      <div className="mb-4 flex items-baseline gap-2">
+        <span className="font-mono text-2xl font-semibold tabular-nums">{priceDisplay}</span>
+        {/* Arrow as well as colour — the change is not carried by hue alone. */}
+        <span className={`font-mono text-sm font-semibold tabular-nums ${style.text}`}>
+          <span aria-hidden="true" className="mr-0.5 text-[10px]">
+            {style.sign}
+          </span>
+          {changeStr}
+        </span>
       </div>
 
       <Progress
         value={strengthPct}
-        className={`h-1 ${signalVariant === "buy" ? "" : "[&>[data-slot=progress-indicator]]:bg-muted-foreground"}`}
+        aria-label={`AI strength ${strength.toFixed(1)} out of 10`}
+        className={`h-1 ${state === "up" || state === "ceiling" ? "" : "[&>[data-slot=progress-indicator]]:bg-muted-foreground"}`}
       />
 
-      <div className="flex justify-between mt-2 text-[10px] text-muted-foreground font-bold uppercase">
+      <div className="mt-2 flex justify-between text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         <span>AI Strength</span>
-        <span>{strength.toFixed(1)}/10</span>
+        <span className="font-mono tabular-nums">{strength.toFixed(1)}/10</span>
       </div>
     </Card>
   );
@@ -205,22 +213,27 @@ function WatchlistSection() {
       setPriceBoard(res);
     });
   }, []);
+
   return (
-    <section id="watchlist" className="py-20 px-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-10">
-        <h3 className="text-2xl font-bold">Market Watchlist</h3>
+    <section id="watchlist" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <h2 className="text-2xl font-bold tracking-tight">Market Watchlist</h2>
         <Link
           to="/watchlist"
-          className="text-primary font-semibold flex items-center gap-1 hover:opacity-80 transition-opacity"
+          className="flex shrink-0 items-center gap-1 text-sm font-medium text-primary transition-colors hover:underline"
         >
-          View All <ArrowRight className="size-4" />
+          View all <ArrowRight className="size-4" aria-hidden="true" />
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {priceBoard.map((d, i) => (
-          <TickerCard key={d.listingInfo?.symbol ?? i} {...d} />
-        ))}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {priceBoard.length > 0
+          ? priceBoard.map((d, i) => <TickerCard key={d.listingInfo?.symbol ?? i} {...d} />)
+          : /* Reserved space rather than nothing, so the section does not
+               jump when data lands. */
+            Array.from({ length: 4 }).map((_, i) => (
+              <Card key={i} className="h-[168px] animate-pulse gap-0 rounded-xl bg-muted/60 p-5" />
+            ))}
       </div>
     </section>
   );
@@ -228,22 +241,24 @@ function WatchlistSection() {
 
 function CapabilitiesSection() {
   return (
-    <section id="features" className="py-20 px-6 bg-card/50">
-      <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-black mb-4">Unmatched AI Capabilities</h2>
+    <section id="features" className="border-y border-border bg-card/50 px-4 py-16 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-12 text-center">
+          <h2 className="mb-3 text-3xl font-bold tracking-tight">Unmatched AI Capabilities</h2>
           <p className="text-muted-foreground">The most powerful toolset ever built for HSX and HNX.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
           {capabilities.map((cap) => (
             <div
               key={cap.title}
-              className="p-8 rounded-3xl bg-background border border-primary/10 hover:border-primary/30 transition-colors"
+              className="glass rounded-xl p-6 transition-colors hover:border-ring"
             >
-              <cap.icon className="size-9 text-emerald-500 mb-6" />
-              <h3 className="text-xl font-bold mb-3">{cap.title}</h3>
-              <p className="text-sm text-muted-foreground">{cap.description}</p>
+              <span className="mb-4 inline-flex size-10 items-center justify-center rounded-lg bg-secondary">
+                <cap.icon className="size-5 text-primary" aria-hidden="true" />
+              </span>
+              <h3 className="mb-2 text-base font-semibold">{cap.title}</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">{cap.description}</p>
             </div>
           ))}
         </div>
@@ -254,73 +269,76 @@ function CapabilitiesSection() {
 
 function StockAnalysisSection() {
   return (
-    <section className="py-20 px-6 max-w-7xl mx-auto">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+    <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+      <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-12">
         {/* Stock Card Mockup */}
         <div className="lg:col-span-7">
-          <Card className="rounded-[2.5rem] shadow-2xl overflow-hidden gap-0 py-0">
-            {/* Header */}
-            <div className="p-8 border-b border-border flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="size-12 rounded-full bg-secondary flex items-center justify-center font-black text-xl">
+          <Card className="gap-0 overflow-hidden rounded-xl py-0 shadow-lg">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border p-6">
+              <div className="flex items-center gap-3">
+                <div className="flex size-11 items-center justify-center rounded-lg bg-secondary text-lg font-bold">
                   F
                 </div>
                 <div>
-                  <h4 className="text-2xl font-black">FPT Corporation</h4>
+                  <h3 className="text-lg font-bold">FPT Corporation</h3>
                   <p className="text-sm text-muted-foreground">HOSE: FPT • Technology</p>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-3xl font-black">
-                  121,300 <span className="text-emerald-500 text-lg font-bold">+2.3%</span>
+                <div className="font-mono text-2xl font-semibold tabular-nums">
+                  121,300{" "}
+                  <span className="text-base font-semibold text-price-up">
+                    <span aria-hidden="true" className="text-[10px]">
+                      ▲
+                    </span>{" "}
+                    +2.3%
+                  </span>
                 </div>
-                <div className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Market Open</div>
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Market Open</div>
               </div>
             </div>
 
-            {/* Body */}
-            <CardContent className="p-8">
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 mb-8">
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-2xl">
-                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-black uppercase mb-1">
-                    AI Score
-                  </p>
-                  <p className="text-3xl font-black text-emerald-700 dark:text-emerald-300">
+            <CardContent className="p-6">
+              <div className="mb-6 grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-price-up-bg p-3">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-price-up">AI Score</p>
+                  <p className="font-mono text-2xl font-bold tabular-nums text-price-up">
                     8.4
-                    <span className="text-sm opacity-60">/10</span>
+                    <span className="text-sm font-normal opacity-70">/10</span>
                   </p>
                 </div>
-                <div className="bg-secondary/50 p-4 rounded-2xl">
-                  <p className="text-[10px] text-muted-foreground font-black uppercase mb-1">Revenue Growth</p>
-                  <p className="text-3xl font-black">+21%</p>
+                <div className="rounded-lg bg-muted p-3">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Revenue Growth
+                  </p>
+                  <p className="font-mono text-2xl font-bold tabular-nums">+21%</p>
                 </div>
-                <div className="bg-primary/20 p-4 rounded-2xl">
-                  <p className="text-[10px] text-emerald-700 font-black uppercase mb-1">Rating</p>
-                  <p className="text-xl font-black text-emerald-900 dark:text-primary">L-T Buy</p>
-                </div>
-              </div>
-
-              {/* Insights */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="size-5 text-emerald-500 shrink-0" />
-                  <p className="text-sm font-medium">Cloud and AI services expansion driving 25% margin growth.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="size-5 text-emerald-500 shrink-0" />
-                  <p className="text-sm font-medium">Strong dividend history with 20% yield growth YoY.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="size-5 text-amber-500 shrink-0" />
-                  <p className="text-sm font-medium">High valuation relative to regional peers (P/E 22.4x).</p>
+                <div className="rounded-lg bg-secondary p-3">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Rating
+                  </p>
+                  <p className="text-lg font-bold text-primary">L-T Buy</p>
                 </div>
               </div>
 
-              {/* Chart placeholder */}
-              <div className="mt-8">
-                <div className="w-full h-40 bg-secondary rounded-2xl relative overflow-hidden flex items-center justify-center">
-                  <LineChart className="size-16 text-muted-foreground/30" />
+              <div className="space-y-3">
+                <div className="flex items-start gap-2.5">
+                  <CheckCircle className="mt-0.5 size-4 shrink-0 text-price-up" aria-hidden="true" />
+                  <p className="text-sm">Cloud and AI services expansion driving 25% margin growth.</p>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <CheckCircle className="mt-0.5 size-4 shrink-0 text-price-up" aria-hidden="true" />
+                  <p className="text-sm">Strong dividend history with 20% yield growth YoY.</p>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-price-ref" aria-hidden="true" />
+                  <p className="text-sm">High valuation relative to regional peers (P/E 22.4x).</p>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <div className="relative flex h-36 w-full items-center justify-center overflow-hidden rounded-lg bg-muted">
+                  <LineChart className="size-12 text-muted-foreground/40" aria-hidden="true" />
                 </div>
               </div>
             </CardContent>
@@ -329,45 +347,47 @@ function StockAnalysisSection() {
 
         {/* Chatbot Demo */}
         <div className="lg:col-span-5">
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div>
-              <Badge className="bg-primary/20 text-emerald-700 dark:text-emerald-400 border-none px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest mb-4">
+              <Badge className="mb-3 rounded-md border-none bg-secondary px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-secondary-foreground">
                 Interactive Demo
               </Badge>
-              <h2 className="text-4xl font-black leading-tight">
+              <h2 className="text-3xl font-bold leading-tight tracking-tight">
                 Your Portfolio <br />
                 Converses with You
               </h2>
-              <p className="text-muted-foreground mt-4">
+              <p className="mt-3 text-muted-foreground">
                 Stop staring at charts. Start asking questions. Our AI understands Vietnamese market nuances and
                 specific ticker histories.
               </p>
             </div>
 
-            {/* Mini Chat UI */}
-            <Card className="rounded-3xl p-6 shadow-xl gap-0 space-y-4">
-              {/* User message */}
-              <div className="flex gap-3">
-                <div className="size-8 rounded-full bg-secondary shrink-0" />
-                <div className="bg-secondary p-3 rounded-2xl rounded-tl-none text-sm">Why is FPT up today?</div>
-              </div>
-
-              {/* AI response */}
-              <div className="flex gap-3 justify-end">
-                <div className="bg-primary/20 text-emerald-900 dark:text-primary p-3 rounded-2xl rounded-tr-none text-sm max-w-[80%]">
-                  FPT reported a 20.1% increase in pre-tax profit for the first 5 months. The tech sector is also seeing
-                  net foreign buying of over 200bn VND today.
-                </div>
-                <div className="size-8 rounded-full bg-primary shrink-0 flex items-center justify-center">
-                  <Zap className="size-4 text-primary-foreground" />
+            {/* Mini Chat UI — mirrors the real chat: user filled on the right,
+                assistant plain on the left. */}
+            <Card className="gap-0 space-y-3 rounded-xl p-5 shadow-md">
+              <div className="flex justify-end gap-2.5">
+                <div className="max-w-[80%] rounded-xl rounded-tr-sm bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">
+                  Why is FPT up today?
                 </div>
               </div>
 
-              {/* Typing indicator */}
-              <div className="pt-2">
-                <div className="flex items-center bg-secondary rounded-xl px-4 py-2 text-xs text-muted-foreground italic">
-                  AI is typing...
+              <div className="flex gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-secondary">
+                  <Zap className="size-3.5 text-primary" aria-hidden="true" />
                 </div>
+                <div className="text-sm leading-relaxed text-foreground">
+                  FPT reported a 20.1% increase in pre-tax profit for the first 5 months. The tech sector is also
+                  seeing net foreign buying of over 200bn VND today.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1 pl-9">
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                </span>
+                <span className="text-xs text-muted-foreground">AI is typing…</span>
               </div>
             </Card>
           </div>
@@ -391,8 +411,10 @@ function NewsSection() {
             const titleLower = String(item.title || "").toLowerCase();
             const combined = titleLower + " " + descLower;
 
+            // Classification rules unchanged; only the class strings became
+            // tokens so the badges follow the dark-mode toggle.
             let sentiment = "Neutral";
-            let sentimentColor = "text-amber-500 bg-amber-50 dark:bg-amber-900/20";
+            let sentimentColor = "text-price-ref bg-price-ref-bg";
             let impact = "No immediate change";
             let impactColor = "text-muted-foreground";
 
@@ -403,9 +425,9 @@ function NewsSection() {
               combined.includes("chấp thuận")
             ) {
               sentiment = "Positive";
-              sentimentColor = "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20";
+              sentimentColor = "text-price-up bg-price-up-bg";
               impact = "+ Market Sentiment";
-              impactColor = "text-primary";
+              impactColor = "text-price-up";
             } else if (
               combined.includes("giảm") ||
               combined.includes("lỗ") ||
@@ -413,9 +435,9 @@ function NewsSection() {
               combined.includes("cảnh báo")
             ) {
               sentiment = "Negative";
-              sentimentColor = "text-rose-500 bg-rose-50 dark:bg-rose-900/20";
+              sentimentColor = "text-price-down bg-price-down-bg";
               impact = "- Market Pressure";
-              impactColor = "text-destructive";
+              impactColor = "text-price-down";
             }
 
             let summary = item.description || "";
@@ -446,11 +468,11 @@ function NewsSection() {
   }, []);
 
   return (
-    <section id="news" className="py-20 px-6 bg-background">
-      <div className="max-w-7xl mx-auto">
-        <h2 className="text-3xl font-black mb-12 text-center">AI News Intelligence</h2>
+    <section id="news" className="border-y border-border bg-card/50 px-4 py-16 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="mb-10 text-center text-2xl font-bold tracking-tight">AI News Intelligence</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {localNewsData.length > 0 ? (
             localNewsData.map((news: any, i: number) => (
               <a
@@ -458,28 +480,33 @@ function NewsSection() {
                 target="_blank"
                 rel="noopener noreferrer"
                 key={i}
-                className="block transition-transform hover:-translate-y-1"
+                className="group block rounded-xl transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
               >
-                <Card className="p-6 rounded-3xl gap-0 h-full">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${news.sentimentColor}`}>
+                <Card className="h-full gap-0 rounded-xl p-5">
+                  <div className="mb-3 flex items-center gap-2">
+                    {/* The word carries the sentiment; the colour only reinforces it. */}
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${news.sentimentColor}`}
+                    >
                       {news.sentiment}
                     </span>
-                    <span className="text-xs text-muted-foreground">{news.time}</span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">{news.time}</span>
                   </div>
 
-                  <h3 className="font-bold mb-3 leading-snug">{news.title}</h3>
+                  <h3 className="mb-3 font-semibold leading-snug group-hover:underline">{news.title}</h3>
 
-                  <div className="bg-secondary p-3 rounded-xl mb-4">
-                    <p className="text-xs text-muted-foreground italic line-clamp-3">{news.summary}</p>
+                  <div className="mb-3 rounded-lg bg-muted p-3">
+                    <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground">{news.summary}</p>
                   </div>
 
-                  <p className={`text-[10px] font-bold ${news.impactColor}`}>Impact: {news.impact}</p>
+                  <p className={`mt-auto text-xs font-semibold ${news.impactColor}`}>Impact: {news.impact}</p>
                 </Card>
               </a>
             ))
           ) : (
-            <div className="col-span-3 text-center text-muted-foreground py-10">Fetching latest AI news...</div>
+            <div className="col-span-full py-10 text-center text-sm text-muted-foreground">
+              Fetching latest AI news…
+            </div>
           )}
         </div>
       </div>
@@ -489,48 +516,45 @@ function NewsSection() {
 
 function PricingSection() {
   return (
-    <section id="pricing" className="py-24 px-6 max-w-7xl mx-auto">
-      <div className="text-center mb-16">
-        <h2 className="text-4xl font-black mb-4">Simple, Transparent Pricing</h2>
+    <section id="pricing" className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
+      <div className="mb-12 text-center">
+        <h2 className="mb-3 text-3xl font-bold tracking-tight">Simple, Transparent Pricing</h2>
         <p className="text-muted-foreground">Choose the plan that fits your investing style.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      {/* items-start + a ring instead of scale-105: the popular card used to be
+          transformed, which overlapped its neighbours on narrow screens. */}
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
         {pricingPlans.map((plan) => (
           <Card
             key={plan.name}
-            className={`p-10 rounded-[2.5rem] relative gap-0 ${
-              plan.popular ? "bg-foreground text-background scale-105 border-4 border-primary/30 shadow-2xl" : ""
+            className={`relative gap-0 rounded-xl p-7 ${
+              plan.popular ? "border-primary shadow-lg ring-1 ring-primary md:-mt-2" : ""
             }`}
           >
             {plan.popular && (
-              <div className="absolute top-0 right-10 -translate-y-1/2 bg-primary text-primary-foreground px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest">
+              <div className="absolute right-6 top-0 -translate-y-1/2 rounded-md bg-primary px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
                 Most Popular
               </div>
             )}
 
-            <h3 className="text-xl font-bold mb-2">{plan.name}</h3>
+            <h3 className="mb-1.5 text-base font-semibold">{plan.name}</h3>
 
-            <div className="flex items-baseline gap-1 mb-6">
-              <span className="text-4xl font-black">{plan.price}</span>
-              <span className={plan.popular ? "text-background/50" : "text-muted-foreground"}>VND/mo</span>
+            <div className="mb-5 flex items-baseline gap-1">
+              <span className="font-mono text-3xl font-bold tabular-nums">{plan.price}</span>
+              <span className="text-sm text-muted-foreground">VND/mo</span>
             </div>
 
-            <ul className="space-y-4 mb-10 text-sm">
+            <ul className="mb-8 space-y-3 text-sm">
               {plan.features.map((f) => (
-                <li key={f} className="flex items-center gap-2">
-                  <Check className="size-5 text-primary shrink-0" />
+                <li key={f} className="flex items-start gap-2">
+                  <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
                   {f}
                 </li>
               ))}
             </ul>
 
-            <Button
-              variant={plan.popular ? "default" : "outline"}
-              className={`w-full py-4 h-auto rounded-2xl font-bold ${
-                plan.popular ? "shadow-lg shadow-primary/20" : ""
-              }`}
-            >
+            <Button variant={plan.popular ? "default" : "outline"} className="w-full">
               {plan.buttonText}
             </Button>
           </Card>
@@ -542,29 +566,34 @@ function PricingSection() {
 
 function Footer() {
   return (
-    <footer className="bg-foreground text-muted-foreground py-20 px-6 border-t border-border">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-12">
-          {/* Brand */}
+    /* Was bg-foreground + text-muted-foreground — a light-workspace grey on
+       near-black, about 2.4:1. The sidebar tokens are the theme's dark surface
+       and are contrast-gated as a pair. */
+    <footer className="bg-sidebar px-4 py-16 text-sidebar-foreground/70 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
           <div className="col-span-2 lg:col-span-2">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="size-8 bg-primary rounded-lg flex items-center justify-center">
-                <TrendingUp className="size-4 text-primary-foreground" strokeWidth={3} />
-              </div>
-              <h2 className="text-xl font-black tracking-tight text-background">StockMind</h2>
+            <div className="mb-4 flex items-center gap-2.5">
+              <span className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary">
+                <TrendingUp
+                  className="size-4 text-sidebar-primary-foreground"
+                  strokeWidth={2.5}
+                  aria-hidden="true"
+                />
+              </span>
+              <span className="text-lg font-bold tracking-tight text-sidebar-foreground">StockMind</span>
             </div>
             <p className="max-w-xs text-sm leading-relaxed">
               Empowering the next generation of Vietnamese investors with state-of-the-art AI technology.
             </p>
           </div>
 
-          {/* Links */}
           <div>
-            <h4 className="text-background font-bold mb-6">Product</h4>
-            <ul className="space-y-4 text-sm">
+            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Product</h2>
+            <ul className="space-y-3 text-sm">
               {["Features", "Pricing", "Changelog"].map((l) => (
                 <li key={l}>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
                     {l}
                   </a>
                 </li>
@@ -573,11 +602,11 @@ function Footer() {
           </div>
 
           <div>
-            <h4 className="text-background font-bold mb-6">Company</h4>
-            <ul className="space-y-4 text-sm">
+            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Company</h2>
+            <ul className="space-y-3 text-sm">
               {["About Us", "Careers", "Privacy"].map((l) => (
                 <li key={l}>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
                     {l}
                   </a>
                 </li>
@@ -586,11 +615,11 @@ function Footer() {
           </div>
 
           <div>
-            <h4 className="text-background font-bold mb-6">Social</h4>
-            <ul className="space-y-4 text-sm">
+            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Social</h2>
+            <ul className="space-y-3 text-sm">
               {["Facebook", "LinkedIn", "TikTok"].map((l) => (
                 <li key={l}>
-                  <a href="#" className="hover:text-primary transition-colors">
+                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
                     {l}
                   </a>
                 </li>
@@ -599,9 +628,9 @@ function Footer() {
           </div>
         </div>
 
-        <Separator className="my-8 bg-background/10" />
+        <Separator className="my-8 bg-sidebar-border" />
 
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
+        <div className="flex flex-col items-center justify-between gap-3 text-xs md:flex-row">
           <p>© 2024 StockMind AI. All rights reserved.</p>
           <p>Data provided by HSX/HNX. AI insights are for informational purposes only.</p>
         </div>

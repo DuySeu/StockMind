@@ -44,9 +44,10 @@ function parseFrame(frame: string, onEvent: (event: ChatEvent) => void) {
 export const sendChatMessage = async (
   content: string,
   sessionId: string | undefined,
+  maxMode: boolean,
+  file: File | null,
   onEvent: (event: ChatEvent) => void,
   onError: (error: unknown) => void,
-  file?: File | null,
   signal?: AbortSignal,
 ): Promise<void> => {
   try {
@@ -57,11 +58,12 @@ export const sendChatMessage = async (
       const formData = new FormData();
       formData.append("content", content);
       if (sessionId) formData.append("session_id", sessionId);
+      if (maxMode) formData.append("max_mode", maxMode.toString());
       formData.append("file", file);
       body = formData;
     } else {
       headers["Content-Type"] = "application/json";
-      body = JSON.stringify({ content, session_id: sessionId });
+      body = JSON.stringify({ content, session_id: sessionId, max_mode: maxMode });
     }
 
     const response = await fetch(`${api.defaults.baseURL}/chat`, {

@@ -73,7 +73,7 @@ const ResearchReport = ({ data }: { data: any }) => {
                 className="flex items-center justify-between text-primary-foreground border border-border rounded-md p-2 hover:bg-accent/10 transition-colors"
               >
                 <p className="text-xs">{item.url}</p>
-                <ExternalLink className="h-4 w-4 text-accent" />
+                <ExternalLink className="h-4 w-4 text-primary" />
               </a>
             ))}
           </AccordionContent>

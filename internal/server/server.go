@@ -9,6 +9,7 @@ import (
 	"stockmind/internal/database"
 	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
+	"stockmind/internal/orchestration"
 	"stockmind/internal/service"
 	"stockmind/internal/storage"
 
@@ -17,11 +18,12 @@ import (
 
 // ServerDeps holds all dependencies needed by the HTTP server.
 type ServerDeps struct {
-	DBPool      *pgxpool.Pool
-	Agent       *core.LLMService
-	KBStore     kb.Store
-	ObjectStore storage.ObjectStore
-	Services    *service.Services
+	DBPool       *pgxpool.Pool
+	Agent        *core.LLMService
+	KBStore      kb.Store
+	ObjectStore  storage.ObjectStore
+	Services     *service.Services
+	Orchestrator *orchestration.Orchestrator
 }
 
 type Server struct {
@@ -31,6 +33,7 @@ type Server struct {
 	knowledgeStore kb.Store
 	objectStore    storage.ObjectStore
 	services       *service.Services
+	orchestrator   *orchestration.Orchestrator
 }
 
 func NewServer(deps ServerDeps, port string) *http.Server {
@@ -41,6 +44,7 @@ func NewServer(deps ServerDeps, port string) *http.Server {
 		knowledgeStore: deps.KBStore,
 		objectStore:    deps.ObjectStore,
 		services:       deps.Services,
+		orchestrator:   deps.Orchestrator,
 	}
 
 	// Initialize research worker pool now that the server (and its methods) exist.

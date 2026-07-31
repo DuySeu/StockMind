@@ -6,7 +6,7 @@ import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { calculateChangePercent, getPriceColorClass } from "@/lib/stock";
+import { calculateChangePercent, getPriceClass } from "@/lib/stock";
 import { Check, FileText, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -49,7 +49,7 @@ const ReportDialog = ({ reportId }: { reportId: string }) => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <button className="cursor-pointer hover:text-accent transition-colors" onClick={fetchReport}>
+      <button className="cursor-pointer hover:text-primary transition-colors" onClick={fetchReport}>
         <FileText />
       </button>
       <DialogContent className="w-full sm:max-w-6xl">
@@ -59,7 +59,7 @@ const ReportDialog = ({ reportId }: { reportId: string }) => {
         <div className="flex flex-col items-center p-3 gap-4 overflow-y-auto no-scrollbar max-h-[50vh]">
           {loading ? (
             <div className="flex items-center justify-center p-10">
-              <Loader2 className="h-8 w-8 animate-spin text-accent" />
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           ) : (
             <ResearchReport data={reportData} />
@@ -253,7 +253,7 @@ const MarketResearcherPage = () => {
                           <span className="text-red-500 text-xs font-bold">!</span>
                         </div>
                       ) : (
-                        <Loader2 className="h-6 w-6 text-accent animate-spin" />
+                        <Loader2 className="h-6 w-6 text-primary animate-spin" />
                       )}
                     </div>
 
@@ -306,7 +306,7 @@ const MarketResearcherPage = () => {
             <TableBody className="text-secondary-foreground">
               {researchReport.map((stock: any) => {
                 const change = calculateChangePercent(stock.price, stock.reference_price);
-                const priceColor = getPriceColorClass(stock.price, stock.reference_price);
+                const priceColor = getPriceClass({ price: stock.price, reference: stock.reference_price });
                 return (
                   <TableRow key={stock.id}>
                     <TableCell className={`font-bold ${priceColor}`}>{stock.ticker}</TableCell>

@@ -72,6 +72,31 @@ func NewManager(tools []*Tool) *Manager {
 // All returns every registered tool definition (for sending to LLM providers).
 func (m *Manager) All() []*Tool { return m.list }
 
+// Subset returns the named tools in the order given, so a specialist agent can be
+// offered only the tools it declares.
+//
+// Nil and empty mean different things, deliberately:
+//   - nil   → no restriction; returns All(). This is the zero value, so callers
+//     that don't care about scoping (the chat path) get every tool.
+//   - empty → exactly zero tools. An agent with no tools (a synthesizer that only
+//     reasons over prior findings) needs to express this, and "nil means all"
+//     leaves no other way to say it.
+//
+// Unknown names are skipped rather than erroring: a tool may legitimately be
+// absent, e.g. a bridged MCP server that failed to start.
+func (m *Manager) Subset(names []string) []*Tool {
+	if names == nil {
+		return m.All()
+	}
+	out := make([]*Tool, 0, len(names))
+	for _, name := range names {
+		if t, ok := m.tools[name]; ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // Execute calls the named tool with raw JSON args from the LLM.
 func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (string, error) {
 	t, ok := m.tools[name]

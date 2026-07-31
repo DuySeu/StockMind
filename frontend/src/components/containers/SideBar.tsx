@@ -103,18 +103,27 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
 
   return (
     <Sidebar className="border-none" collapsible="icon">
-      <SidebarHeader className="p-3">
-        <div className="flex items-center gap-2">
-          <div className="size-10 bg-primary rounded-lg flex items-center justify-center">
-            <TrendingUp className="size-5 text-primary-foreground" strokeWidth={3} />
-          </div>
-          <h2 className="text-2xl font-black tracking-tight">StockMind</h2>
+      <SidebarHeader className="gap-3 p-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary">
+            <TrendingUp
+              className="size-5 text-sidebar-primary-foreground"
+              strokeWidth={2.5}
+              aria-hidden="true"
+            />
+          </span>
+          <span className="truncate text-lg font-bold tracking-tight group-data-[collapsible=icon]:hidden">
+            StockMind
+          </span>
         </div>
+        {/* The one filled control on the rail. `text-background-dark` was a
+            token that does not exist, so this button had no text colour at all. */}
         <button
-          className="w-full bg-primary hover:bg-primary/90 text-background-dark font-bold py-3 px-4 rounded-full flex items-center justify-center gap-2 shadow-sm transition-all"
+          className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-sidebar-primary px-4 text-sm font-semibold text-sidebar-primary-foreground shadow-xs transition-colors hover:bg-sidebar-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring"
           onClick={() => navigate("/c")}
         >
-          <Plus className="h-6 w-6" /> New Chat
+          <Plus className="size-4 shrink-0" aria-hidden="true" />
+          <span className="group-data-[collapsible=icon]:hidden">New Chat</span>
         </button>
       </SidebarHeader>
       <SidebarContent className="overflow-hidden">
@@ -127,11 +136,19 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
                   <SidebarMenuItem key={item.id}>
                     <ContextMenu>
                       <ContextMenuTrigger asChild>
+                        {/* Active session is marked by a solid left rule plus a
+                            filled row, not colour alone. */}
                         <SidebarMenuButton
-                          className={`${id === item.id && "border-l-3 border-accent"}`}
+                          isActive={id === item.id}
+                          aria-current={id === item.id ? "page" : undefined}
+                          className={
+                            id === item.id
+                              ? "border-l-2 border-sidebar-primary pl-2 font-medium"
+                              : "border-l-2 border-transparent pl-2"
+                          }
                           onClick={() => navigate(`/c/${item.id}`)}
                         >
-                          <span className="truncate max-w-56">{item.title}</span>
+                          <span className="truncate">{item.title}</span>
                         </SidebarMenuButton>
                       </ContextMenuTrigger>
                       <ContextMenuContent className="w-40 border border-border">
@@ -153,11 +170,12 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
                 ))
               ) : (
                 <SidebarMenuItem>
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-1 items-center justify-between gap-1 min-w-0">
-                      <span className="truncate">No sessions</span>
-                    </div>
-                  </div>
+                  {/* `text-muted-foreground` is a light-mode grey and sits at
+                      roughly 3:1 on the dark rail — the sidebar has its own
+                      foreground token for exactly this. */}
+                  <p className="px-2 py-1.5 text-sm text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden">
+                    No conversations yet
+                  </p>
                 </SidebarMenuItem>
               )}
             </SidebarMenu>
@@ -175,9 +193,9 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
                 >
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">DuySeu</span>
-                    <span className="text-muted-foreground truncate text-xs">stockmind@admin.com</span>
+                    <span className="truncate text-xs text-sidebar-foreground/60">stockmind@admin.com</span>
                   </div>
-                  <EllipsisVertical />
+                  <EllipsisVertical aria-hidden="true" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
               <DropdownMenuContent

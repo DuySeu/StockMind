@@ -87,15 +87,14 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
           {/* Thinking blocks (assistant messages) */}
           {thinkingBlocks.map((block, idx) => (
             <div key={`think-${idx}`} className="mb-2 w-full">
-              <details
-                open={block.is_open}
-                className="group border border-border/50 rounded-lg overflow-hidden"
-              >
-                <summary className="flex items-center gap-2 p-2 text-xs font-medium select-none cursor-pointer text-muted-foreground hover:bg-muted/50 transition-colors">
-                  <Brain className="h-3 w-3" />
-                  <span>Thought Process</span>
+              <details open={block.is_open} className="glass group overflow-hidden rounded-lg">
+                <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+                  <Brain className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span>Thought process</span>
                 </summary>
-                <div className="p-3 pt-0 text-xs text-muted-foreground/80 leading-relaxed border-t border-border/20">
+                {/* Full muted-foreground, not /80: at 80% over the page
+                    background this text dropped under 4.5:1. */}
+                <div className="border-t border-border p-3 text-xs leading-relaxed text-muted-foreground">
                   <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                     {block.thinking}
                   </Markdown>
@@ -107,42 +106,47 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
           {/* Tool call indicator */}
           {hasToolCalls && (
             <span
-              className={`text-xs px-1 flex items-center gap-1 mb-1 ${
-                isUsingTool ? "text-muted-foreground" : "text-accent"
+              className={`mb-1 flex items-center gap-1.5 px-1 text-xs font-medium ${
+                isUsingTool ? "text-muted-foreground" : "text-primary"
               }`}
             >
               {isUsingTool ? (
                 <>
-                  <LoaderCircle className="h-3 w-3 animate-spin" />
-                  Using tool...
+                  <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+                  Using tool…
                 </>
               ) : (
                 <>
-                  <Check className="h-4 w-4" />
+                  <Check className="size-3.5 shrink-0" aria-hidden="true" />
                   Tool used
                 </>
               )}
             </span>
           )}
 
-          {/* Tool call details */}
-          {toolCalls.map((tc, idx) => (
-            <div
-              key={`tc-${idx}`}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1 px-1"
-            >
-              <Wrench className="h-3 w-3" />
-              <span className="font-mono">{tc.name}</span>
+          {/* Tool call details — chips, so a run of three tools reads as three
+              discrete steps rather than a paragraph of grey text. */}
+          {toolCalls.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {toolCalls.map((tc, idx) => (
+                <span
+                  key={`tc-${idx}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  <Wrench className="size-3 shrink-0" aria-hidden="true" />
+                  <span className="font-mono">{tc.name}</span>
+                </span>
+              ))}
             </div>
-          ))}
+          )}
 
           {/* Main text content */}
           {message.content ? (
             <div
-              className={`px-4 py-2 text-sm md:text-base leading-relaxed ${
+              className={`text-sm leading-relaxed md:text-[15px] ${
                 isUser
-                  ? "rounded-2xl rounded-tr-sm shadow-sm bg-primary text-primary-foreground"
-                  : "text-card-foreground"
+                  ? "rounded-xl rounded-tr-sm bg-primary px-4 py-2.5 text-primary-foreground shadow-xs"
+                  : "text-foreground"
               }`}
             >
               <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
@@ -152,16 +156,14 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
           ) : (
             // Show loading indicator for empty assistant messages (still streaming)
             !isUser && (
-              <>
-                <span className="text-xs text-muted-foreground mb-1 px-1">Thinking</span>
-                <div className="px-4 py-2 text-sm md:text-base leading-relaxed text-card-foreground">
-                  <div className="flex items-center space-x-1">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-primary delay-0"></span>
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-primary delay-150"></span>
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-primary delay-300"></span>
-                  </div>
-                </div>
-              </>
+              <div className="flex items-center gap-2 py-1" role="status" aria-label="Generating response">
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                </span>
+                <span className="text-xs text-muted-foreground">Thinking…</span>
+              </div>
             )
           )}
         </div>

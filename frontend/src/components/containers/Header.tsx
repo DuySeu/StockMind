@@ -25,40 +25,60 @@ const Header = ({ shouldAnimate, title, setTitle }: HeaderProps) => {
   };
 
   return (
-    <header className="flex justify-between items-center py-3 px-4">
-      <div className="flex items-center gap-2">
-        <MessageSquareText className="text-primary-foreground w-6 h-6" />
+    <header className="flex shrink-0 items-center gap-3 border-b border-border bg-muted/50 px-4 py-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <MessageSquareText className="size-5 shrink-0 text-muted-foreground" aria-hidden="true" />
         {isEditing ? (
           <>
-            <Input type="text" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full" />
-            <Button variant="secondary" size="icon-sm" onClick={handleSave}>
-              <Check />
+            <Input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              aria-label="Conversation title"
+              autoFocus
+              className="h-8 max-w-sm"
+            />
+            <Button variant="default" size="icon-sm" onClick={handleSave} aria-label="Save title">
+              <Check aria-hidden="true" />
             </Button>
-            <Button variant="destructive" size="icon-sm" onClick={handleCancel}>
-              <X />
+            <Button variant="ghost" size="icon-sm" onClick={handleCancel} aria-label="Cancel renaming">
+              <X aria-hidden="true" />
             </Button>
           </>
         ) : (
-          <span
-            className={`${
-              shouldAnimate && "animate-fade-right"
-            } font-semibold text-md text-primary-foreground hidden md:block truncate max-w-[150px] md:max-w-[200px] lg:max-w-[300px]`}
+          <h1
+            className={`truncate text-sm font-semibold text-foreground ${shouldAnimate ? "animate-fade-right" : ""}`}
           >
             {title}
-          </span>
+          </h1>
         )}
         {title !== "StockMind" && !isEditing && (
-          <Button variant="outline" size="icon-sm" onClick={handleEdit}>
-            <PenLine />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleEdit}
+            aria-label="Rename conversation"
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+          >
+            <PenLine aria-hidden="true" />
           </Button>
         )}
       </div>
-      <div className="flex items-center gap-2 text-primary">
-        <Button size="sm" className="hover:text-card-foreground/60">
-          <Upload /> Share
+
+      {/* Secondary actions stay quiet: the send button is the only filled
+          control on this screen, so it keeps its emphasis. */}
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+          <Upload aria-hidden="true" />
+          <span className="hidden sm:inline">Share</span>
         </Button>
-        <Button size="icon-sm" className="hover:text-card-foreground/60">
-          <Ellipsis />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="More options"
+          className="text-muted-foreground hover:text-foreground"
+        >
+          <Ellipsis aria-hidden="true" />
         </Button>
       </div>
     </header>

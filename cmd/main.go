@@ -12,12 +12,15 @@ import (
 	"syscall"
 	"time"
 
+	"stockmind/internal/agents"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
 	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
+	"stockmind/internal/llm/prompts"
 	"stockmind/internal/llm/tools"
 	"stockmind/internal/mcp"
+	"stockmind/internal/orchestration"
 	"stockmind/internal/server"
 	"stockmind/internal/service"
 	"stockmind/internal/storage"
@@ -161,13 +164,20 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 		return nil, nil, fmt.Errorf("failed to init LLM service: %w", err)
 	}
 
+	// Multi-agent pipeline: specialist agent roster + planner + sequential executor.
+	agentDeps := agents.Deps{LLM: agent, Prompts: prompts.NewPromptLoader()}
+	agentRegistry := agents.NewRegistry(agentDeps)
+	orchestrator := orchestration.New(agents.NewPlanner(agentDeps), agentRegistry)
+	slog.Info("agent pipeline ready", "agents", agentRegistry.Names())
+
 	// Create HTTP server
 	srv := server.NewServer(server.ServerDeps{
-		DBPool:      dbPool,
-		Agent:       agent,
-		KBStore:     kbBase.Store,
-		ObjectStore: objectStore,
-		Services:    services,
+		DBPool:       dbPool,
+		Agent:        agent,
+		KBStore:      kbBase.Store,
+		ObjectStore:  objectStore,
+		Services:     services,
+		Orchestrator: orchestrator,
 	}, port)
 
 	runContext, cancel := context.WithCancel(ctx)

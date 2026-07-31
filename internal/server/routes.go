@@ -73,6 +73,12 @@ func (s *Server) RegisterRoutes() http.Handler {
 			// r.Delete("/{id}", s.DeleteAgentFlowHandler)
 		})
 
+		// Multi-agent pipeline: plan a goal, then run the plan's steps in order.
+		r.Route("/agent", func(r chi.Router) {
+			r.Post("/pipeline", s.AgentPipelineHandler)
+			r.Post("/pipeline/stream", s.AgentPipelineStreamHandler)
+		})
+
 		// Stock
 		r.Route("/stock", func(r chi.Router) {
 			r.Get("/price-board", s.GetPriceBoardHandler)
