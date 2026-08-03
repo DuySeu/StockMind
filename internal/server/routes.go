@@ -15,6 +15,10 @@ import (
 func (s *Server) RegisterRoutes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
+	// Backstop for the whole tree: without it a panic in any handler closes the
+	// connection with no response at all, which the browser reports only as an
+	// opaque "Failed to fetch".
+	r.Use(middleware.Recoverer)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
@@ -51,7 +55,7 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Get("/", s.GetSessionsHandler)
 			r.Get("/{id}", s.GetMessagesBySessionIdHandler)
 			// r.Post("/", s.CreateSessionHandler)
-			// r.Put("/{id}", s.UpdateSessionHandler)
+			r.Patch("/{id}", s.UpdateSessionTitleHandler)
 			r.Delete("/{id}", s.DeleteSessionHandler)
 		})
 

@@ -37,9 +37,30 @@ func SSEEvent(eventType database.StreamEventType, data any) map[string]any {
 	return map[string]any{"type": eventType, "data": data}
 }
 
-// WriteSSE JSON-encodes v and writes it as a single `data:` SSE frame, then flushes.
-func WriteSSE(w http.ResponseWriter, v any) {
-	data, _ := json.Marshal(v)
-	fmt.Fprintf(w, "data: %s\n\n", data)
+// WriteSSE JSON-encodes v and writes it as a single `data:` SSE frame, then
+// flushes. The returned error is the write error: once the client is gone every
+// subsequent write fails, and a relay loop that ignores that keeps generating
+// into a dead socket.
+func WriteSSE(w http.ResponseWriter, v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return err
+	}
 	FlushSSE(w)
+	return nil
+}
+
+// WriteSSEComment emits an SSE comment frame (`: text`). A comment carries no
+// `data:` line, so clients ignore it; it exists purely so an idle connection
+// keeps producing bytes and isn't reaped by a proxy, load balancer, or browser
+// idle timeout while the model reasons or a slow tool runs.
+func WriteSSEComment(w http.ResponseWriter, text string) error {
+	if _, err := fmt.Fprintf(w, ": %s\n\n", text); err != nil {
+		return err
+	}
+	FlushSSE(w)
+	return nil
 }

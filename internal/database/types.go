@@ -51,6 +51,18 @@ type Metadata struct {
 	Tool        []Tool       `json:"tools,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
 	Sources     []Source     `json:"sources,omitempty"`
+	Error       *TurnError   `json:"error,omitempty"`
+}
+
+// TurnError records why an assistant turn failed. Persisting it is what keeps a
+// failed turn from reading as a silent gap after a reload: without it the user's
+// question was stored and the reply simply never appeared.
+//
+// Message is client-safe prose — the underlying cause is logged server-side, not
+// sent — and Code is a stable identifier the UI can branch on.
+type TurnError struct {
+	Message string `json:"message"`
+	Code    string `json:"code,omitempty"`
 }
 
 type Tool struct {

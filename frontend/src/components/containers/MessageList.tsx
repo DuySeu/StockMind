@@ -1,5 +1,6 @@
-import type { Message, ThinkingContent, ToolCall, ImageContent } from "@/types/message";
-import { Brain, Check, LoaderCircle, Wrench } from "lucide-react";
+import type { Message } from "@/types/message";
+import { isImage, isThinking, isToolCall, isTurnError } from "@/types/message";
+import { Brain, Check, LoaderCircle, RotateCcw, TriangleAlert, Wrench, X } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -53,22 +54,62 @@ const markdownComponents = {
   h3: (props: React.ComponentProps<"h3">) => <h3 className="text-sm font-bold mt-2 mb-1" {...props} />,
 };
 
-const MessageList = ({ messages }: { messages: Message[] }) => {
+/** Icon + colour for a single tool's outcome. */
+const toolStatusStyle = {
+  running: {
+    Icon: LoaderCircle,
+    iconClass: "size-3 shrink-0 animate-spin",
+    chipClass: "border-border bg-muted text-muted-foreground",
+    label: "running",
+  },
+  success: {
+    Icon: Check,
+    iconClass: "size-3 shrink-0",
+    // Explicit greens rather than a theme token: `success` is not in the
+    // palette, and the chip has to read the same in light and dark.
+    chipClass:
+      "border-emerald-600/30 bg-emerald-500/10 text-emerald-800 dark:border-emerald-400/30 dark:text-emerald-300",
+    label: "succeeded",
+  },
+  error: {
+    Icon: X,
+    iconClass: "size-3 shrink-0",
+    chipClass:
+      "border-red-600/30 bg-red-500/10 text-red-800 dark:border-red-400/30 dark:text-red-300",
+    label: "failed",
+  },
+} as const;
+
+interface MessageListProps {
+  messages: Message[];
+  /** Re-sends the question that produced a failed turn. Omit to hide Retry. */
+  onRetry?: (content: string) => void;
+  /** Retry is pointless while another turn is already streaming. */
+  retryDisabled?: boolean;
+}
+
+const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => {
   return messages.map((message, index) => {
     const isUser = message.role === "user";
 
-    // Extract metadata parts
-    const images = (message.metadata?.filter((m) => "type" in m && m.type === "image_url") ?? []) as ImageContent[];
-    const thinkingBlocks = (message.metadata?.filter(
-      (m) => "type" in m && m.type === "thinking",
-    ) ?? []) as ThinkingContent[];
-    const toolCalls = (message.metadata?.filter(
-      (m) => "name" in m && "id" in m,
-    ) ?? []) as ToolCall[];
+    // Extract metadata parts. Discriminated on `type`, so a streamed entry and
+    // a replayed one are indistinguishable here.
+    const images = message.metadata?.filter(isImage) ?? [];
+    const thinkingBlocks = message.metadata?.filter(isThinking) ?? [];
+    const toolCalls = message.metadata?.filter(isToolCall) ?? [];
+
+    const turnErrors = message.metadata?.filter(isTurnError) ?? [];
 
     const hasToolCalls = toolCalls.length > 0;
-    // Tool is "in progress" if there's no content yet after tool calls
-    const isUsingTool = hasToolCalls && !message.content;
+    const runningCount = toolCalls.filter((t) => t.status === "running").length;
+    const failedCount = toolCalls.filter((t) => t.status === "error").length;
+
+    // The question this turn was answering, so Retry has something to re-send.
+    const previous = index > 0 ? messages[index - 1] : undefined;
+    const retryContent = previous?.role === "user" ? previous.content : undefined;
+    // Driven by the tools' own statuses now, not by "assistant hasn't written
+    // any text yet" — that heuristic reported success for tools that had failed.
+    const isUsingTool = runningCount > 0;
 
     return (
       <div key={index} className={`flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"} items-end`}>
@@ -103,42 +144,101 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
             </div>
           ))}
 
-          {/* Tool call indicator */}
+          {/* Tool run summary */}
           {hasToolCalls && (
             <span
               className={`mb-1 flex items-center gap-1.5 px-1 text-xs font-medium ${
-                isUsingTool ? "text-muted-foreground" : "text-primary"
+                isUsingTool
+                  ? "text-muted-foreground"
+                  : failedCount > 0
+                    ? "text-red-700 dark:text-red-400"
+                    : "text-primary"
               }`}
             >
               {isUsingTool ? (
                 <>
                   <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
-                  Using tool…
+                  Using {runningCount > 1 ? `${runningCount} tools` : "tool"}…
+                </>
+              ) : failedCount > 0 ? (
+                <>
+                  <X className="size-3.5 shrink-0" aria-hidden="true" />
+                  {failedCount} of {toolCalls.length} {toolCalls.length > 1 ? "tools" : "tool"} failed
                 </>
               ) : (
                 <>
                   <Check className="size-3.5 shrink-0" aria-hidden="true" />
-                  Tool used
+                  {toolCalls.length > 1 ? `${toolCalls.length} tools used` : "Tool used"}
                 </>
               )}
             </span>
           )}
 
-          {/* Tool call details — chips, so a run of three tools reads as three
-              discrete steps rather than a paragraph of grey text. */}
-          {toolCalls.length > 0 && (
-            <div className="mb-1.5 flex flex-wrap gap-1.5">
-              {toolCalls.map((tc, idx) => (
-                <span
-                  key={`tc-${idx}`}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                >
-                  <Wrench className="size-3 shrink-0" aria-hidden="true" />
-                  <span className="font-mono">{tc.name}</span>
-                </span>
-              ))}
+          {/* Tool call details — chips in call order, so a run of three tools
+              reads as three discrete steps rather than a paragraph of grey text.
+              Each carries its own outcome: a failed tool must not look like a
+              successful one. */}
+          {hasToolCalls && (
+            <div className="mb-1.5 flex w-full flex-col gap-1">
+              <div className="flex flex-wrap gap-1.5">
+                {toolCalls.map((tc, idx) => {
+                  const { Icon, iconClass, chipClass, label } = toolStatusStyle[tc.status];
+                  return (
+                    <span
+                      key={tc.id || `tc-${idx}`}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${chipClass}`}
+                      title={tc.arguments ? `${tc.name}(${tc.arguments})` : tc.name}
+                    >
+                      <Wrench className="size-3 shrink-0 opacity-60" aria-hidden="true" />
+                      <span className="font-mono">{tc.name}</span>
+                      <Icon className={iconClass} aria-hidden="true" />
+                      {/* Colour alone can't carry the outcome. */}
+                      <span className="sr-only">{label}</span>
+                    </span>
+                  );
+                })}
+              </div>
+
+              {/* Why a tool failed is the one tool output worth showing inline —
+                  it's short, and it explains an answer that would otherwise look
+                  arbitrarily incomplete. */}
+              {toolCalls
+                .filter((tc) => tc.status === "error" && tc.result)
+                .map((tc, idx) => (
+                  <p
+                    key={`tc-err-${tc.id || idx}`}
+                    className="px-1 text-xs leading-relaxed text-red-700 dark:text-red-400"
+                  >
+                    <span className="font-mono">{tc.name}</span>: {tc.result}
+                  </p>
+                ))}
             </div>
           )}
+
+          {/* Turn failure — rendered where the reply would have been, so the
+              question never sits there looking merely unanswered. */}
+          {turnErrors.map((failure, idx) => (
+            <div
+              key={`err-${idx}`}
+              className="mb-1.5 flex w-full flex-col items-start gap-2 rounded-lg border border-red-600/30 bg-red-500/10 px-3 py-2.5"
+            >
+              <p className="flex items-start gap-2 text-sm leading-relaxed text-red-800 dark:text-red-300">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <span>{failure.message}</span>
+              </p>
+              {onRetry && retryContent && (
+                <button
+                  type="button"
+                  onClick={() => onRetry(retryContent)}
+                  disabled={retryDisabled}
+                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-red-600/40 px-2.5 text-xs font-medium text-red-800 transition-colors hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/40 dark:text-red-300"
+                >
+                  <RotateCcw className="size-3.5 shrink-0" aria-hidden="true" />
+                  Try again
+                </button>
+              )}
+            </div>
+          ))}
 
           {/* Main text content */}
           {message.content ? (
@@ -154,8 +254,10 @@ const MessageList = ({ messages }: { messages: Message[] }) => {
               </Markdown>
             </div>
           ) : (
-            // Show loading indicator for empty assistant messages (still streaming)
-            !isUser && (
+            // Show loading indicator for empty assistant messages (still
+            // streaming). A turn that already failed is not still streaming.
+            !isUser &&
+            turnErrors.length === 0 && (
               <div className="flex items-center gap-2 py-1" role="status" aria-label="Generating response">
                 <span className="flex items-center gap-1" aria-hidden="true">
                   <span className="size-1.5 animate-pulse rounded-full bg-muted-foreground [animation-delay:0ms]" />

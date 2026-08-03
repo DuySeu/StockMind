@@ -1,5 +1,4 @@
 import api from "./index";
-import type { Message } from "@/types/message";
 
 export interface ChatMessage {
   content: string;
@@ -11,6 +10,40 @@ export type ChatEventType = "start" | "thinking" | "text" | "tool_call" | "tool_
 export interface ChatEvent {
   type: ChatEventType;
   data?: unknown;
+}
+
+/**
+ * A failed `/chat` request, carrying the message the server actually sent.
+ * Handlers write `{"error": "..."}` for every 4xx/5xx, and throwing away that
+ * body left the UI showing a generic "an error occurred" for causes as
+ * different as an unknown session and an unsupported Content-Type.
+ */
+export class ChatRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ChatRequestError";
+    this.status = status;
+  }
+}
+
+/** Pull `{"error": "..."}` out of a non-2xx response, falling back to the status. */
+async function readErrorBody(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return `Chat request failed (${response.status})`;
+    try {
+      const parsed = JSON.parse(text) as { error?: string; message?: string };
+      const message = parsed.error ?? parsed.message;
+      if (message) return message;
+    } catch {
+      // Not JSON (e.g. a proxy error page) — fall through to the raw text.
+    }
+    return text.slice(0, 300);
+  } catch {
+    return `Chat request failed (${response.status})`;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -74,10 +107,10 @@ export const sendChatMessage = async (
     });
 
     if (!response.ok) {
-      throw new Error(`Chat request failed: ${response.status}`);
+      throw new ChatRequestError(response.status, await readErrorBody(response));
     }
     if (!response.body) {
-      throw new Error("Response body is null");
+      throw new ChatRequestError(response.status, "Server returned an empty response body");
     }
 
     const reader = response.body.getReader();
@@ -112,19 +145,7 @@ export const sendChatMessage = async (
   }
 };
 
-/* -------------------------------------------------------------------------- */
-/*  GET /sessions/:id — fetch persisted messages for a session                */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Normalize a raw message from the backend into the frontend Message type.
- */
-function normalizeMessage(raw: any): Message {
-  const role = raw.role as Message["role"];
-  return { role, content: raw.content, metadata: raw.tool_calls };
-}
-
-export const getMessages = async (sessionId: string): Promise<Message[]> => {
-  const response = await api.get(`/sessions/${sessionId}`);
-  return (response.data as any[]).map(normalizeMessage);
-};
+// `getMessages`/`normalizeMessage` used to live here, reading `raw.tool_calls` —
+// a field the backend has never sent. Session messages are loaded by
+// `getSessionMessages` in ./sessions, which is the paginated shape the API
+// actually returns.

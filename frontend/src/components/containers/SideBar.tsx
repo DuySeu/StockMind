@@ -1,4 +1,4 @@
-import { deleteSession, getSessions } from "@/api/sessions";
+import { deleteSession, errorMessage, getSessions, updateSessionTitle } from "@/api/sessions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,8 +21,9 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2, TrendingUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { toast } from "sonner";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -36,13 +37,17 @@ type Session = {
   id: string;
   title: string;
   updated_at: string;
-  [key: string]: unknown;
+  created_at: Date;
 };
 
-const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; setTitle: (title: string) => void; sessionVersion?: number }) => {
+const SideBar = ({ setTitle, sessionVersion }: { setTitle: (title: string) => void; sessionVersion?: number }) => {
   const navigate = useNavigate();
   const { id } = useParams();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const fetchSession = async () => {
     try {
@@ -65,7 +70,7 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
         setTitle(activeItem.title);
       }
     }
-  }, [id, sessions]);
+  }, [id, sessions, setTitle]);
 
   // Theme management
   const toggleTheme = () => {
@@ -89,6 +94,45 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
     }
   }, []);
 
+  const startRename = (session: Session) => {
+    setRenamingId(session.id);
+    setDraft(session.title);
+  };
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setDraft("");
+  };
+
+  const commitRename = async (sessionId: string) => {
+    if (isSaving) return;
+    const next = draft.trim();
+    const previous = sessions.find((s) => s.id === sessionId)?.title;
+    if (!next || next === previous) {
+      cancelRename();
+      return;
+    }
+
+    setIsSaving(true);
+    // Optimistic: the row updates immediately and rolls back if the PATCH fails.
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: next } : s)));
+    try {
+      const saved = await updateSessionTitle(sessionId, next);
+      setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, title: saved } : s)));
+      // Keep the header in step when renaming the conversation that's open.
+      if (id === sessionId) setTitle(saved);
+      cancelRename();
+    } catch (error) {
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId && previous !== undefined ? { ...s, title: previous } : s)),
+      );
+      toast.error(errorMessage(error, "Could not rename this conversation"));
+      renameInputRef.current?.focus();
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleDeleteSession = async (sessionId: string) => {
     try {
       await deleteSession(sessionId);
@@ -106,11 +150,7 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
       <SidebarHeader className="gap-3 p-3">
         <div className="flex items-center gap-2.5">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary">
-            <TrendingUp
-              className="size-5 text-sidebar-primary-foreground"
-              strokeWidth={2.5}
-              aria-hidden="true"
-            />
+            <TrendingUp className="size-5 text-sidebar-primary-foreground" strokeWidth={2.5} aria-hidden="true" />
           </span>
           <span className="truncate text-lg font-bold tracking-tight group-data-[collapsible=icon]:hidden">
             StockMind
@@ -132,42 +172,69 @@ const SideBar = ({ title: _title, setTitle, sessionVersion }: { title: string; s
           <SidebarGroupContent className="flex-1 min-h-0 flex flex-col px-2">
             <SidebarMenu className="flex-1 min-h-0 flex flex-col">
               {sessions.length > 0 ? (
-                sessions.map((item: any) => (
-                  <SidebarMenuItem key={item.id}>
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        {/* Active session is marked by a solid left rule plus a
-                            filled row, not colour alone. */}
-                        <SidebarMenuButton
-                          isActive={id === item.id}
-                          aria-current={id === item.id ? "page" : undefined}
-                          className={
-                            id === item.id
-                              ? "border-l-2 border-sidebar-primary pl-2 font-medium"
-                              : "border-l-2 border-transparent pl-2"
+                sessions.map((item: Session) =>
+                  renamingId === item.id ? (
+                    // Renaming in place, so the row you right-clicked is the row
+                    // you edit — no dialog, no navigation.
+                    <SidebarMenuItem key={item.id}>
+                      <input
+                        ref={renameInputRef}
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                            e.preventDefault();
+                            void commitRename(item.id);
+                          } else if (e.key === "Escape") {
+                            e.preventDefault();
+                            cancelRename();
                           }
-                          onClick={() => navigate(`/c/${item.id}`)}
-                        >
-                          <span className="truncate">{item.title}</span>
-                        </SidebarMenuButton>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="w-40 border border-border">
-                        <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
-                          Created at {new Date(item.updated_at).toLocaleDateString()}
-                        </ContextMenuLabel>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem>
-                          <SquarePen className="h-4 w-4" />
-                          Rename
-                        </ContextMenuItem>
-                        <ContextMenuItem variant="destructive" onClick={() => handleDeleteSession(item.id)}>
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  </SidebarMenuItem>
-                ))
+                        }}
+                        onBlur={() => void commitRename(item.id)}
+                        disabled={isSaving}
+                        maxLength={120}
+                        aria-label={`Rename ${item.title}`}
+                        autoFocus
+                        className="ml-2 h-8 w-[calc(100%-0.5rem)] rounded-md border border-sidebar-primary bg-sidebar px-2 text-sm text-sidebar-foreground outline-none disabled:opacity-60"
+                      />
+                    </SidebarMenuItem>
+                  ) : (
+                    <SidebarMenuItem key={item.id}>
+                      <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                          {/* Active session is marked by a solid left rule plus a
+                              filled row, not colour alone. */}
+                          <SidebarMenuButton
+                            isActive={id === item.id}
+                            aria-current={id === item.id ? "page" : undefined}
+                            className={
+                              id === item.id
+                                ? "border-l-2 border-sidebar-primary pl-2 font-medium"
+                                : "border-l-2 border-transparent pl-2"
+                            }
+                            onClick={() => navigate(`/c/${item.id}`)}
+                          >
+                            <span className="truncate">{item.title}</span>
+                          </SidebarMenuButton>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent className="w-40 border border-border">
+                          <ContextMenuLabel className="text-xs font-normal text-muted-foreground">
+                            Created at {new Date(item.created_at).toLocaleDateString()}
+                          </ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem onSelect={() => startRename(item)}>
+                            <SquarePen className="h-4 w-4" />
+                            Rename
+                          </ContextMenuItem>
+                          <ContextMenuItem variant="destructive" onClick={() => handleDeleteSession(item.id)}>
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    </SidebarMenuItem>
+                  ),
+                )
               ) : (
                 <SidebarMenuItem>
                   {/* `text-muted-foreground` is a light-mode grey and sits at

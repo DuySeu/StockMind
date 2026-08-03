@@ -7,7 +7,7 @@ import {
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ArrowUp, AudioLines, FileText, Image, Paperclip, X, Zap } from "lucide-react";
+import { ArrowUp, AudioLines, FileText, Image, Paperclip, Square, X, Zap } from "lucide-react";
 import { useRef, useState } from "react";
 import { useForm, type FieldValues } from "react-hook-form";
 import { toast } from "sonner";
@@ -20,9 +20,11 @@ const MAX_COMPOSER_HEIGHT = 200;
 interface ChatInputProps {
   onSend: (message: string, attachment: File | null, maxMode: boolean) => void;
   isStreaming?: boolean;
+  /** Aborts the in-flight stream. Omit to hide the stop affordance. */
+  onStop?: () => void;
 }
 
-const ChatInput = ({ onSend, isStreaming = false }: ChatInputProps) => {
+const ChatInput = ({ onSend, isStreaming = false, onStop }: ChatInputProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -181,15 +183,21 @@ const ChatInput = ({ onSend, isStreaming = false }: ChatInputProps) => {
 
               <div className="flex items-center gap-1">
                 {form.watch("input")?.trim() ? (
-                  <button
-                    type="submit"
-                    disabled={isStreaming || !form.watch("input")?.trim()}
-                    className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs transition-all hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ArrowUp className="size-5" aria-hidden="true" />
-                    <span className="sr-only">Send message</span>
-                  </button>
-                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="submit"
+                        disabled={isStreaming || !form.watch("input")?.trim()}
+                        className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs transition-all hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ArrowUp className="size-5" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Send message</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : !isStreaming ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
@@ -202,6 +210,23 @@ const ChatInput = ({ onSend, isStreaming = false }: ChatInputProps) => {
                     </TooltipTrigger>
                     <TooltipContent>
                       <p>Dictate</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={onStop}
+                        disabled={!onStop}
+                        aria-label="Stop generating"
+                        className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs transition-all hover:bg-primary/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Square className="size-4 fill-current" aria-hidden="true" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Stop generating</p>
                     </TooltipContent>
                   </Tooltip>
                 )}
