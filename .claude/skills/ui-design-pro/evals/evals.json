@@ -1,0 +1,71 @@
+{
+  "skill_name": "ui-design-pro",
+  "evals": [
+    {
+      "id": 0,
+      "name": "greenfield-full-brief",
+      "prompt": "I'm starting a new app called Pulse — it's an analytics dashboard for indie SaaS founders to track MRR, churn and trials. Vite + React 19 + Tailwind 4, no component library yet. Our brand colour is #4F46E5. I really like how Linear looks — the density and the calm. Yes I want it to feel animated. Set up the design.",
+      "expected_output": "A greenfield planning phase that ends at Gate 1: docs/design/ui-options.html plus 3-5 option-tokens/*.css, every option contrast-clean, options genuinely distinct on surface kit and font pairing, names rewritten from the generated style-row names into editorial ones, brand hex pinned as --primary in every option, and a closing message asking the user to name a letter. No UI-PLAN.md, no scaffold, no app code.",
+      "files": [],
+      "assertions": [
+        "Produced a tabbed option preview HTML under docs/design/",
+        "Seeded 3-5 named directions rather than proposing a single theme",
+        "Used the skill's seed-options.py generator instead of hand-authoring palettes",
+        "Every option token file clears contrast-check.mjs with zero FAILs",
+        "No option carries a WARN on --ring (an invisible focus indicator ships as an accessibility bug)",
+        "Every option pins the user's brand colour #4F46E5 as --primary",
+        "No two options share the same --surface-* kit, so the set is not hue variants",
+        "No two options share the same font pairing",
+        "Motion personalities are spread across the set rather than repeating one or two",
+        "No option previews as 'still' when the user asked for animation",
+        "Every option ships a derived dark theme alongside light",
+        "Option names read as directions, not as raw style-row technique names like 'Neumorphism'",
+        "The preview renders the dashboard archetype, matching the analytics-console brief",
+        "The Linear reference the user pasted is carried into the preview brief",
+        "Gate 2 held: no app scaffold, no src/ tree, no index.css written before plan approval",
+        "Gate 1 held: no UI-PLAN.md written before the user named an option",
+        "The closing message asks the user to pick a direction by letter"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "themed-app-refresh-gate",
+      "prompt": "our dashboard theme feels dated, can you make it look better? we're staying on react and tailwind.",
+      "expected_output": "Probe run against the existing React 19 / Tailwind 4 app, THEMED verdict reported naming src/index.css and the 5 components in src/components/ui, detected versions stated back for confirmation, and the refresh-vs-replacement question asked. src/index.css byte-identical, no options seeded before the answer exists.",
+      "files": [
+        "project/ (React 19.2.8 + Tailwind 4.3.3 app with a themed src/index.css, 5 ui components, and prior docs/design/ work)"
+      ],
+      "assertions": [
+        "Ran the context probe before asking the user anything",
+        "Reported the THEMED verdict rather than treating the app as unthemed",
+        "Named the existing token file src/index.css in the report",
+        "Named the component directory src/components/ui and its file count",
+        "Stated the detected React and Tailwind versions back for confirmation",
+        "Asked refresh vs replacement, spelling out what each one means",
+        "Left src/index.css byte-identical",
+        "Left the entire project untouched — no file added, modified, or removed",
+        "Read the existing screen files for layout conventions worth preserving",
+        "Seeded no options and wrote no plan before the refresh/replacement answer exists"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "underspecified-no-inference",
+      "prompt": "make my landing page look good, im using react",
+      "expected_output": "An interview turn only. Runs the probe, then asks the three stack questions (FE framework, UI framework offered from the React-valid row of the matrix, styling engine + major) and either asks or explicitly defers the four concept questions — the skill sends the stack group together and the concept questions one at a time after it. Asks nothing about fonts, radius, density, mood or light-vs-dark. No shadcn install, no colours chosen, no token or component file written.",
+      "files": [],
+      "assertions": [
+        "Ran the context probe before asking the user anything",
+        "Asked which UI/component framework rather than inferring one from 'react'",
+        "Offered only React-compatible UI frameworks from the compatibility matrix",
+        "Asked the styling engine and its major version",
+        "Did not treat shadcn/ui as settled just because the stack is React",
+        "Asked nothing about fonts, corner radius, density, spacing, mood, or light-vs-dark",
+        "Either asked the four concept questions or explicitly deferred them — not skipped",
+        "Chose no colours and wrote no token file, component, or CSS",
+        "Seeded no options before the concept answers exist",
+        "Did not silently default the stack or proceed on an assumed answer"
+      ]
+    }
+  ]
+}

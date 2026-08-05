@@ -12,6 +12,7 @@ type GetNewsInput struct {
 	Query string `json:"query" jsonschema:"Query related to stock news"`
 }
 
+// HandleGetNews searches the configured news domains for the query.
 func HandleGetNews(ctx context.Context, tavily tavily.Client, input GetNewsInput) (any, error) {
 	if input.Query == "" {
 		return nil, fmt.Errorf("query is required")

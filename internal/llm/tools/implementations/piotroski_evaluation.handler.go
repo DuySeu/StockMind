@@ -12,6 +12,8 @@ import (
 	"stockmind/internal/common"
 )
 
+const piotroskiQuery = "fragment Ratios on CompanyFinancialRatio { ticker yearReport revenue revenueGrowth netProfit roa currentRatio grossMargin at issueShare pe eps pcf de le __typename } query Query($ticker: String!, $period: String!) { CompanyFinancialRatio(ticker: $ticker, period: $period) { ratio { ...Ratios __typename } period __typename } }"
+
 // GraphQLPayload represents the GraphQL request payload
 type GraphQLPayload struct {
 	Query     string                 `json:"query"`
@@ -37,17 +39,18 @@ type Details struct {
 	AssetTurnoverRatio     bool `json:"asset_turnover_ratio"`
 }
 
-const piotroskiQuery = "fragment Ratios on CompanyFinancialRatio { ticker yearReport revenue revenueGrowth netProfit roa currentRatio grossMargin at issueShare pe eps pcf de le __typename } query Query($ticker: String!, $period: String!) { CompanyFinancialRatio(ticker: $ticker, period: $period) { ratio { ...Ratios __typename } period __typename } }"
-
 type PiotroskiInput struct {
 	Symbol string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
 }
 
+// GetPiotroskiEvaluation scores a symbol on the nine Piotroski F-score signals,
+// comparing the latest quarter against the same quarter a year earlier.
 func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, PiotroskiEvaluation, error) {
 	if input.Symbol == "" {
 		return nil, PiotroskiEvaluation{}, fmt.Errorf("symbol is required")
 	}
 
+	// Fetch the quarterly financial ratios.
 	payload := GraphQLPayload{
 		Query: piotroskiQuery,
 		Variables: map[string]interface{}{
@@ -92,6 +95,7 @@ func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, Pio
 		return nil, PiotroskiEvaluation{}, err
 	}
 
+	// Unwrap the GraphQL envelope.
 	data, ok := result["data"].(map[string]interface{})
 	if !ok {
 		return nil, PiotroskiEvaluation{}, fmt.Errorf("invalid response format: data field missing")
@@ -129,6 +133,7 @@ func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, Pio
 		return 0.0
 	}
 
+	// Score the nine signals.
 	netIncome := getFloat(current, "netProfit")
 	scoreNetIncome := netIncome > 0
 
@@ -179,6 +184,7 @@ func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, Pio
 	atPrev := getFloat(prevYear, "at")
 	scoreAT := atCurr > atPrev
 
+	// Sum the signals that passed.
 	score := 0
 	if scoreNetIncome {
 		score++

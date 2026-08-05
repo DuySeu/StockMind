@@ -13,6 +13,8 @@ import (
 	openai "github.com/openai/openai-go/v3"
 )
 
+// DBToAnthropicMessages maps stored conversation rows into Anthropic message params,
+// merging consecutive same-role messages as the API requires.
 func DBToAnthropicMessages(messages []database.Message) ([]anthropic.MessageParam, error) {
 	var result []anthropic.MessageParam
 
@@ -102,6 +104,8 @@ func DBToAnthropicMessages(messages []database.Message) ([]anthropic.MessagePara
 	return merged, nil
 }
 
+// DBToOpenAIMessages maps stored conversation rows into OpenAI chat message params,
+// emitting a tool message after each assistant round that called tools.
 func DBToOpenAIMessages(messages []database.Message) ([]openai.ChatCompletionMessageParamUnion, error) {
 	var result []openai.ChatCompletionMessageParamUnion
 
@@ -170,6 +174,7 @@ func DBToOpenAIMessages(messages []database.Message) ([]openai.ChatCompletionMes
 	return result, nil
 }
 
+// DBToOpenRouterMessages maps stored conversation rows into OpenRouter chat messages.
 func DBToOpenRouterMessages(messages []database.Message) ([]components.ChatMessages, error) {
 	msgs := make([]components.ChatMessages, 0, len(messages))
 

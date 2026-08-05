@@ -1,10 +1,8 @@
 package agents
 
 // NewSynthesizerAgent builds the final agent, which merges the findings of earlier
-// steps into the single answer the user reads.
-//
-// It has no tools: toolNames is non-nil but empty, which tools.Manager.Subset
-// reads as "exactly zero tools" (nil would mean "all of them").
+// steps into the single answer the user reads. toolNames is empty but non-nil: nil
+// would mean "all tools" to tools.Manager.Subset.
 func NewSynthesizerAgent(d Deps) Agent {
 	return &LLMAgent{
 		name: SynthesizerAgentName,

@@ -1,7 +1,6 @@
 package agents
 
-// NewMarketDataAgent builds the quantitative price and financial-statement
-// specialist.
+// NewMarketDataAgent builds the quantitative price and financial-statement specialist.
 func NewMarketDataAgent(d Deps) Agent {
 	return &LLMAgent{
 		name: "market_data",

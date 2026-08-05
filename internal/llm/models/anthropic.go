@@ -19,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+// AnthropicCompletionParams carries the per-call inputs shared by both Anthropic entry points.
 type AnthropicCompletionParams struct {
 	Context context.Context
 	Client  *anthropic.Client
@@ -32,6 +33,7 @@ type anthropicProvider struct {
 	model  string
 }
 
+// Completion streams a chat completion for the conversation history.
 func (p *anthropicProvider) Completion(ctx context.Context, history []database.Message, toolDefs []*tools.Tool, systemPrompt string) (<-chan database.StreamEvent, error) {
 	return AnthropicCompletion(AnthropicCompletionParams{
 		Context: ctx,
@@ -41,6 +43,7 @@ func (p *anthropicProvider) Completion(ctx context.Context, history []database.M
 	}, history, toolDefs)
 }
 
+// StructuredCompletion requests a single JSON completion and unmarshals it into result.
 func (p *anthropicProvider) StructuredCompletion(ctx context.Context, prompt string, result any) error {
 	return AnthropicStructuredCompletion(AnthropicCompletionParams{
 		Context: ctx,

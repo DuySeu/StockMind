@@ -5,6 +5,8 @@ Seed 3-5 design directions from the local database into the preview harness.
 
     python seed-options.py "<query>" [--count 5] [--brand "#RRGGBB"]
                            [--variance 1-10] [--density 1-10] [--motion 1-10]
+                           [--no-animation] [--archetype dashboard|landing|ecommerce|editorial]
+                           [--inspiration "Label=url=why"] [--concept "..."]
                            [--format hex|oklch]
                            [--out docs/design/ui-options.html]
                            [--token-dir docs/design/option-tokens/]
@@ -36,6 +38,15 @@ discovers one.
 
 Design dials are inferred from the query when not passed, because the concept
 of the product determines them: a dashboard is dense, a landing page is not.
+The same applies to `--archetype`, which decides WHICH miniature product the
+preview renders every option as -- a storefront judged as an admin console is
+the user judging the wrong screen.
+
+Each option also carries a MOTION personality (still / calm / crisp / springy /
+cinematic), spread around the motion dial the way surface kits are spread across
+the set. Colour and type are visible in a screenshot; how a screen arrives is
+not, and leaving it out of the option set decides it silently. `--no-animation`
+forces every option to `still` when the user said the product does not want it.
 
 Outputs the filled-in preview HTML plus one sidecar CSS file per option, so
 contrast-check.mjs runs against them unmodified.
@@ -703,6 +714,107 @@ def surface_for(style_row, slot, notes=None):
     return kit, bool(WASH_HINT.search(haystack))
 
 
+# ======================================================================
+# Motion: the fourth axis of a direction
+# ======================================================================
+
+# Colour, type, and surface are all visible in a screenshot. How a screen
+# arrives and how it answers a pointer is not -- and it is half of what makes a
+# launch page feel like a launch page. So an option carries a motion
+# personality the way it carries a surface kit, and the preview renders it.
+#
+# The five styles are complete feels, not speed settings: the entrance
+# distance, the easing curve, and the hover lift move together. `still` is what
+# every option becomes when the user said no to animation.
+MOTION_STYLES = ["still", "calm", "crisp", "springy", "cinematic"]
+
+MOTION_NOTES = {
+    "still": "state changes only, no entrance animation -- nothing moves that was not asked to",
+    "calm": "short cross-fades and a 1px hover lift -- motion that never interrupts a number being read",
+    "crisp": "fast, near-linear, no bounce -- the page behaves like print that happens to respond",
+    "springy": "slight overshoot on entrance and press -- the surfaces read as physical",
+    "cinematic": "long staggered reveals and a deep hover lift -- surfaces float in rather than appear",
+}
+
+
+def motion_style_for(tier):
+    """Tier 1-10 -> one of the five personalities."""
+    if tier <= 2:
+        return "still"
+    if tier <= 4:
+        return "calm"
+    if tier <= 6:
+        return "crisp"
+    if tier <= 8:
+        return "springy"
+    return "cinematic"
+
+
+# The same reason the surface kit varies per slot: five options that all move
+# identically have made the motion decision for the user instead of showing it.
+# The dial sets the centre, the ladder spreads the set around it.
+MOTION_OFFSETS = [0, 2, -2, 1, -1]
+
+
+def motion_for(tier_dial, index, animated, notes=None):
+    if not animated:
+        return {"tier": 1, "style": "still", "note": "animation was not requested for this product"}
+    # Clamped, deliberately not slid into range. Near an extreme the spread
+    # compresses and several options land on the same personality -- which is
+    # the honest answer: a trading terminal at dial 2 should not be offered a
+    # cinematic direction just so the tab strip looks varied. Sliding the window
+    # up would produce a tier-5 option for a product whose concept asked for 1.
+    tier = max(1, min(10, tier_dial + MOTION_OFFSETS[index % len(MOTION_OFFSETS)]))
+    style = motion_style_for(tier)
+    if notes is not None and tier != tier_dial:
+        notes.append(f"motion tier {tier} ({style}) for slot {index} -- spread around the "
+                     f"dial's {tier_dial} so the set offers a motion choice too")
+    return {"tier": tier, "style": style, "note": MOTION_NOTES[style]}
+
+
+# ======================================================================
+# Archetype: which product the options are demonstrated on
+# ======================================================================
+
+# The preview harness renders one miniature product, and it has to be the
+# user's. An option set for a storefront shown as an admin console is answering
+# a question nobody asked: the sidebar, the stat cards and the data table say
+# "dashboard" far louder than the palette says anything, so the user ends up
+# judging the wrong screen.
+ARCHETYPE_HINTS = [
+    ("ecommerce", r"e-?commerce|storefront|online store|\bshop\b|shopping|retail|checkout|"
+                  r"cart\b|catalog|product page|marketplace|boutique|fashion|apparel|"
+                  r"grocery|\bmenu\b|restaurant order"),
+    ("editorial", r"blog|magazine|editorial|publication|news\b|newsletter|article|essay|"
+                  r"journal|documentation site|knowledge base|content site|zine"),
+    ("landing", r"landing|marketing site|marketing page|homepage|home page|brochure|"
+                r"portfolio|agency|promo|campaign|launch|waitlist|pricing page|"
+                r"showcase|company site|website for|spa\b|salon|clinic site|hotel"),
+    ("dashboard", r"dashboard|admin|analytics|console|crm\b|erp\b|back.?office|portal|"
+                  r"internal tool|monitoring|trading|workspace|saas app|control panel|"
+                  r"inbox|ticket|report"),
+]
+
+ARCHETYPES = ["dashboard", "landing", "ecommerce", "editorial"]
+
+
+def infer_archetype(query, given, notes):
+    if given:
+        return given
+    q = query.lower()
+    # Ordered most-specific first: "e-commerce landing page" is a storefront
+    # whose landing page is one screen of it, and the storefront is the harder
+    # thing to get right.
+    for name, pattern in ARCHETYPE_HINTS:
+        m = re.search(pattern, q)
+        if m:
+            notes.append(f"--archetype {name} inferred from {m.group(0)!r} in the concept")
+            return name
+    notes.append("--archetype landing (the concept names no product type; a marketing page "
+                 "is the one every project has)")
+    return "landing"
+
+
 def shade(lch, dl, dc=1.0):
     """Same hue, moved in perceptual lightness. Used for shadow and sheen
     colours that have to stay in the theme's own family."""
@@ -1247,7 +1359,7 @@ def pick_options(colors, styles, typos, count, variance, brand=None, dark_ok=Fal
     return options, notes
 
 
-def build_option(raw, index, density_dial, brand=None):
+def build_option(raw, index, density_dial, brand=None, motion_dial=5, animated=True):
     """Turn a (style, palette, pairing) triple into a preview-ready option."""
     style_row, color_row, typo_row = raw["style"], raw["color"], raw["typo"]
     notes = []
@@ -1347,6 +1459,7 @@ def build_option(raw, index, density_dial, brand=None):
         "density": density_label(density_dial),
         "surface": kit,
         "surfaceNote": SURFACE_BLURB[kit] + (", tinted page" if wash and kit != "glass" else ""),
+        "motion": motion_for(motion_dial, index, animated, notes),
         "fonts": {
             "display": font_stack(heading, category),
             "body": font_stack(body, category),
@@ -1381,6 +1494,9 @@ def js_options_literal(options):
         out.append(f'    density: {json_module.dumps(o["density"])},')
         out.append(f'    surface: {json_module.dumps(o["surface"])},')
         out.append(f'    surfaceNote: {json_module.dumps(o["surfaceNote"])},')
+        m = o["motion"]
+        out.append(f'    motion: {{ tier: {m["tier"]}, style: {json_module.dumps(m["style"])}, '
+                   f'note: {json_module.dumps(m["note"])} }},')
         out.append(f'    role: {json_module.dumps(o["_role"])},')
         if o["_accent_strategy"]:
             out.append(f'    accent: {json_module.dumps(o["_accent_strategy"])},')
@@ -1413,7 +1529,21 @@ def google_fonts_link(options):
     return (link, families)
 
 
-def render_html(options, project):
+def js_inspiration_literal(refs):
+    """The reference sites, as the harness's INSPIRATION array."""
+    if not refs:
+        return "const INSPIRATION = [];"
+    out = ["const INSPIRATION = ["]
+    for r in refs:
+        parts = [f'label: {json_module.dumps(r["label"])}', f'url: {json_module.dumps(r["url"])}']
+        if r.get("note"):
+            parts.append(f'note: {json_module.dumps(r["note"])}')
+        out.append("  { " + ", ".join(parts) + " },")
+    out.append("];")
+    return "\n".join(out)
+
+
+def render_html(options, project, concept, archetype, animated, inspiration):
     template = TEMPLATE.read_text(encoding="utf-8")
 
     start = template.index("const OPTIONS = [")
@@ -1431,8 +1561,19 @@ def render_html(options, project):
 
     if project:
         html = re.sub(r'const PROJECT\s*=\s*"[^"]*"',
-                      f'const PROJECT = {json_module.dumps(project)}',
+                      lambda _m: f'const PROJECT = {json_module.dumps(project)}',
                       html, count=1)
+
+    # The brief and the answers that shape the preview, written in as literals
+    # so the file stays self-contained and hand-editable.
+    html = re.sub(r'const CONCEPT\s*=\s*"[^"]*";',
+                  lambda _m: f'const CONCEPT = {json_module.dumps(concept)};', html, count=1)
+    html = re.sub(r'const ARCHETYPE\s*=\s*"[^"]*";',
+                  lambda _m: f'const ARCHETYPE = {json_module.dumps(archetype)};', html, count=1)
+    html = re.sub(r'const ANIMATION\s*=\s*(?:true|false);',
+                  f'const ANIMATION = {"true" if animated else "false"};', html, count=1)
+    html = re.sub(r'const INSPIRATION = \[.*?\n\];',
+                  lambda _m: js_inspiration_literal(inspiration), html, count=1, flags=re.S)
     return html
 
 
@@ -1451,7 +1592,9 @@ def render_option_css(option, letter):
         f"   Fonts: display {option['fonts']['display'].split(',')[0]},"
         f" body {option['fonts']['body'].split(',')[0]}",
         f"   Surface: {option['_surface_label']} -- the --surface-* vars below carry it;"
-        f" port them with the colours or the style is gone */",
+        f" port them with the colours or the style is gone",
+        f"   Motion: {option['motion']['style']} (tier {option['motion']['tier']}) --"
+        f" {option['motion']['note']}. Not a token: it is the GSAP/transition pass */",
         "",
         ":root {",
     ]
@@ -1515,6 +1658,21 @@ def infer_dials(query, given, notes):
     return resolved
 
 
+def parse_inspiration(values):
+    """'url' | 'Label=url' | 'Label=url=why they like it' -> the harness's shape."""
+    refs = []
+    for raw in values:
+        parts = [p.strip() for p in raw.split("=", 2)]
+        if len(parts) == 1 or parts[0].lower().startswith(("http", "www.")):
+            url = raw.strip()
+            label = re.sub(r"^https?://(www\.)?|/$", "", url)
+            refs.append({"label": label, "url": url, "note": ""})
+            continue
+        label, url = parts[0], parts[1]
+        refs.append({"label": label, "url": url, "note": parts[2] if len(parts) > 2 else ""})
+    return refs
+
+
 def parse_brand(raw):
     """Accept '#4F46E5', '4f46e5', or the 3-digit short form."""
     if raw is None:
@@ -1545,8 +1703,21 @@ def main():
                     help="1=centered/minimal, 10=bold/asymmetric; biases the free slots. "
                          "Inferred from the concept when omitted")
     ap.add_argument("--motion", type=int, choices=range(1, 11), metavar="1-10",
-                    help="recorded for the later GSAP pass; does not affect tokens. "
-                         "Inferred from the concept when omitted")
+                    help="how much the product should move. Sets the centre of the motion "
+                         "personalities the options are spread across, and the later GSAP "
+                         "tier. Inferred from the concept when omitted")
+    ap.add_argument("--no-animation", dest="animated", action="store_false",
+                    help="the user said this product does not want animation. Every option "
+                         "previews at the `still` tier and the preview's motion controls are "
+                         "disabled -- nothing is sold that was not asked for")
+    ap.add_argument("--archetype", choices=ARCHETYPES, default=None,
+                    help="which miniature product the options are demonstrated on. Inferred "
+                         "from the concept when omitted")
+    ap.add_argument("--inspiration", action="append", default=[], metavar="URL",
+                    help="a reference site the user pointed at, repeatable. "
+                         "'https://linear.app' or 'Linear=https://linear.app' or "
+                         "'Linear=https://linear.app=the density'. Shown above the options, "
+                         "because a direction is only judgeable against the brief it answers")
     ap.add_argument("--density", type=int, choices=range(1, 11), metavar="1-10",
                     help="1=spacious, 10=dense/dashboard. Inferred from the concept when omitted")
     ap.add_argument("--out", "-o", default="docs/design/ui-options.html",
@@ -1554,6 +1725,9 @@ def main():
     ap.add_argument("--token-dir", "-t", default="docs/design/option-tokens",
                     help="where per-option CSS goes, for the contrast gate")
     ap.add_argument("--project", "-p", default=None, help="project name shown in the preview")
+    ap.add_argument("--concept", default=None,
+                    help="the brief shown above the options, in the user's words. "
+                         "Defaults to the query")
     ap.add_argument("--json", action="store_true", help="machine-readable summary on stdout")
     args = ap.parse_args()
 
@@ -1574,6 +1748,11 @@ def main():
                         {"density": args.density, "variance": args.variance,
                          "motion": args.motion},
                         dial_notes)
+    archetype = infer_archetype(args.query, args.archetype, dial_notes)
+    inspiration = parse_inspiration(args.inspiration)
+    if not args.animated:
+        dial_notes.append("animation was declined: every option previews at the `still` tier "
+                          "and the motion pass is skipped in the plan")
 
     ranked_colors = rows(search(args.query, "color", max(40, args.count * 8)))
     ranked_styles = rows(search(args.query, "style", max(20, args.count * 4)))
@@ -1602,7 +1781,8 @@ def main():
 
     options, dropped = [], []
     for i, raw in enumerate(raws):
-        opt, opt_notes = build_option(raw, i, dials["density"], brand)
+        opt, opt_notes = build_option(raw, i, dials["density"], brand,
+                                      dials["motion"], args.animated)
         notes.extend(opt_notes)
         if opt is None:
             dropped.append(raw["role"])
@@ -1619,7 +1799,10 @@ def main():
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(render_html(options, args.project), encoding="utf-8")
+    out_path.write_text(
+        render_html(options, args.project, args.concept or args.query,
+                    archetype, args.animated, inspiration),
+        encoding="utf-8")
 
     token_dir = Path(args.token_dir)
     token_dir.mkdir(parents=True, exist_ok=True)
@@ -1633,6 +1816,10 @@ def main():
     _, families = google_fonts_link(options)
     summary = {
         "query": args.query,
+        "concept": args.concept or args.query,
+        "archetype": archetype,
+        "animation": args.animated,
+        "inspiration": inspiration,
         "preview": str(out_path),
         "token_files": written,
         "google_fonts": families,
@@ -1643,7 +1830,8 @@ def main():
             {"letter": letters[i], "id": o["id"], "name": o["name"], "role": o["_role"],
              "thesis": o["thesis"], "primary": o["light"]["primary"], "hue": o["hue"],
              "density": o["density"], "radius": o["light"]["radius"], "fonts": o["_families"],
-             "accent_strategy": o["_accent_strategy"],
+             "accent_strategy": o["_accent_strategy"], "surface": o["surface"],
+             "motion": o["motion"],
              "seeded_from": {"style": o["_style"], "palette": o["_palette"], "pairing": o["_pairing"]}}
             for i, o in enumerate(options)
         ],
@@ -1664,11 +1852,23 @@ def main():
               "the set: the user picks a colour by picking a direction.")
     print(f"Dials: density {dials['density']}, variance {dials['variance']}, "
           f"motion {dials['motion']}  ({args.fmt} output)")
+    print(f"Archetype: {archetype} -- every option renders as that product, not as a "
+          f"generic screen.")
+    if args.animated:
+        print("Animation: on -- each option carries its own motion personality; the preview "
+              "plays it and can replay it.")
+    else:
+        print("Animation: off -- every option previews static, as asked.")
+    if inspiration:
+        print("Reference sites shown above the options: "
+              + ", ".join(r["label"] for r in inspiration))
     for i, o in enumerate(options):
         accent = f"accent {o['_accent_strategy']:<17}" if o["_accent_strategy"] else f"hue {o['hue']:>3}   "
         print(f"  {letters[i]}  {o['name']:<26} {o['light']['primary']:<9} {accent} "
               f"radius {o['light']['radius']:<7} {' + '.join(o['_families']) or 'system fonts'}")
         print(f"     {o['thesis']}")
+        print(f"     surface {o['surface']} · motion {o['motion']['style']} "
+              f"(tier {o['motion']['tier']})")
     print(f"\nToken files for the contrast gate ({len(written)}):")
     for w in written:
         print(f"  {w}")

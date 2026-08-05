@@ -25,10 +25,13 @@ func NewRegistry(d Deps) *Registry {
 	)
 }
 
-// NewRegistryFrom builds a registry from an explicit agent list. Tests use this
-// to install fakes.
+// NewRegistryFrom builds a registry from an explicit agent list. Tests use this to
+// install fakes.
 func NewRegistryFrom(list ...Agent) *Registry {
-	r := &Registry{byName: make(map[string]Agent, len(list))}
+	r := &Registry{
+		byName: make(map[string]Agent, len(list)),
+		names:  make([]string, 0, len(list)),
+	}
 	for _, a := range list {
 		r.byName[a.Name()] = a
 		r.names = append(r.names, a.Name())
@@ -71,12 +74,12 @@ func (r *Registry) Roster() []AgentInfo {
 func RenderRoster(roster []AgentInfo) string {
 	var sb strings.Builder
 	for _, a := range roster {
-		sb.WriteString(fmt.Sprintf("- %s: %s\n", a.Name, a.Description))
-		if len(a.Tools) > 0 {
-			sb.WriteString(fmt.Sprintf("  tools: %s\n", strings.Join(a.Tools, ", ")))
-		} else {
+		fmt.Fprintf(&sb, "- %s: %s\n", a.Name, a.Description)
+		if len(a.Tools) == 0 {
 			sb.WriteString("  tools: none (reasons over the outputs of earlier steps)\n")
+			continue
 		}
+		fmt.Fprintf(&sb, "  tools: %s\n", strings.Join(a.Tools, ", "))
 	}
 	return sb.String()
 }

@@ -15,6 +15,7 @@ Task tool (general-purpose):
 
     **Chosen direction:** [OPTION_NAME] — [ONE_LINE_THESIS]
     **Surface kit:** [flat|outlined|elevated|soft|glass|hard] — [WHAT_IT_DRAWS]
+    **Motion:** [still|calm|crisp|springy|cinematic] at tier [N] — or "declined; state transitions only"
     **Approved plan:** [PATH_TO_UI-PLAN.md] — read it first; it is the agreed scope
     **Brand colour:** [HEX_OR_"none — the direction proposed its own"]
     **Token file:** [TOKEN_FILE_PATH]
@@ -36,7 +37,7 @@ Task tool (general-purpose):
     | Token completeness | Every token in the set defined in BOTH light and dark blocks; no key present in one and missing from the other |
     | Token syntax | One colour form throughout the token file — hex (the default), `oklch()`, or Tailwind v3's bare HSL triplets. A wrapped value (`#hex` or `oklch(…)`) in a **v3** setup is a hard failure: `tailwind.config` wraps it in `hsl()` and the colour disappears. Mixed forms within one file is a defect even where both are legal |
     | Hardcoded values | Any hex, `rgb()`, `hsl()`, or named colour literal inside a **component** file — these break theming silently. Hex in the *token* file is expected, not a finding |
-    | Token file comments | Any `/* … */` in the CSS token file is a defect — including a ported `/* Option X - … */` header or a section banner. Values only; the reasoning belongs in `docs/design/DECISIONS.md`. This applies to CSS token files, not to JS theme objects or component files |
+    | Token file comments | Any `/* … */` in the CSS token file is a defect — including a ported `/* Option X - … */` header or a section banner. Values only; the reasoning belongs in the closing report in the chat. This applies to CSS token files, not to JS theme objects or component files |
     | Brand fidelity | If the user supplied a brand colour, `--primary` in light mode is exactly that hex. In dark mode it may be lightened for legibility, but the hue must be unchanged — an off-hue dark primary means the brand shifted |
     | Font wiring | Families loaded AND mapped to token variables; components reference the token, never a family name |
     | Dark mode | Dark values deliberately chosen, not a mechanical inversion; background lifted off pure black; cards distinguishable from background |
@@ -47,9 +48,10 @@ Task tool (general-purpose):
     | Fidelity | Implementation actually matches the chosen direction's thesis (a "bold editorial" pick that shipped as default grey is a failure) |
     | Surface kit ported | All seven `--surface-*` variables present in BOTH modes, and components consuming them (`var(--surface-shadow)`, `var(--surface-border-width)`) rather than hardcoding their own shadows and 1px borders. Colours ported without the kit is a headline failure, not a detail: it ships a flat app in the right palette, which is not the option the user picked |
     | Surface kit honoured | The rendered treatment matches the kit. `glass` needs a translucent `card` (an opaque hex means the blur does nothing) plus `backdrop-filter` and the page wash; `soft` needs borderless surfaces and debossed inputs; `hard` needs the heavy border in the ink colour on controls too, not just on cards |
+    | Motion fidelity | The motion the plan names is what shipped. `cinematic` with 120ms fades is not cinematic; `still` with staggered entrance animations is animation the user declined. If the plan says animation was declined, no entrance, scroll, or hover-transform motion exists anywhere — state-change transitions are fine and expected |
     | Framework fit | Theme written against the INSTALLED major version's API |
     | Scope | Exactly the components in the plan's scope table — nothing missing, no unrequested extras. An addition is as much a finding as an omission |
-    | Plan fidelity | Stack, default colour mode, font load method, and file paths match what `UI-PLAN.md` says. A justified deviation must be recorded in `DECISIONS.md`; an unrecorded one is a finding |
+    | Plan fidelity | Stack, default colour mode, font load method, and file paths match what `UI-PLAN.md` says. Deviations are allowed but must be reported back to the user; a silent one is a finding |
 
     ## What to Check — Professional Polish
 

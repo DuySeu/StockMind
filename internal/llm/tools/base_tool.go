@@ -22,6 +22,12 @@ type Tool struct {
 	Execute     func(ctx context.Context, rawArgs json.RawMessage) (json.RawMessage, error)
 }
 
+// Manager holds initialized tools. Safe for concurrent reads after creation.
+type Manager struct {
+	tools map[string]*Tool
+	list  []*Tool
+}
+
 // NewTool creates a Tool with type-safe handler. Schema is inferred from struct tags,
 // or from SchemaProvider interface if implemented.
 func NewTool[In any](name, description string, h func(ctx context.Context, input In) (any, error)) *Tool {
@@ -49,14 +55,6 @@ func NewTool[In any](name, description string, h func(ctx context.Context, input
 			return json.Marshal(result)
 		},
 	}
-}
-
-// ──────── Manager ────────
-
-// Manager holds initialized tools. Safe for concurrent reads after creation.
-type Manager struct {
-	tools map[string]*Tool
-	list  []*Tool
 }
 
 // NewManager builds a Manager from the given tools.
@@ -110,10 +108,9 @@ func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (str
 	return string(result), nil
 }
 
-// ──────── Schema Inference (fallback) ────────
-
-// schemaFrom generates a JSON Schema object from struct tags.
-// Uses `json` tag for field name/required, `jsonschema` tag for description.
+// schemaFrom generates a JSON Schema object from struct tags, using `json` for the
+// field name and required-ness and `jsonschema` for the description.
+// style: keep — inlining this into NewTool pushes that constructor past ~60 lines, and it shares no locals with it.
 func schemaFrom(v any) map[string]any {
 	t := reflect.TypeOf(v)
 	if t.Kind() == reflect.Ptr {
@@ -131,7 +128,18 @@ func schemaFrom(v any) map[string]any {
 		}
 		name := strings.Split(tag, ",")[0]
 
-		prop := map[string]any{"type": goTypeToJSON(f.Type.Kind())}
+		// Map the Go kind onto a JSON Schema type.
+		jsonType := "string"
+		switch f.Type.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			jsonType = "integer"
+		case reflect.Float32, reflect.Float64:
+			jsonType = "number"
+		case reflect.Bool:
+			jsonType = "boolean"
+		}
+
+		prop := map[string]any{"type": jsonType}
 		if desc := f.Tag.Get("jsonschema"); desc != "" {
 			prop["description"] = desc
 		}
@@ -146,17 +154,4 @@ func schemaFrom(v any) map[string]any {
 		schema["required"] = required
 	}
 	return schema
-}
-
-func goTypeToJSON(k reflect.Kind) string {
-	switch k {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return "integer"
-	case reflect.Float32, reflect.Float64:
-		return "number"
-	case reflect.Bool:
-		return "boolean"
-	default:
-		return "string"
-	}
 }

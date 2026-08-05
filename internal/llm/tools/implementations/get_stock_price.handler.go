@@ -19,6 +19,8 @@ type GetStockPriceInput struct {
 	CountBack int    `json:"count_back,omitempty"`
 }
 
+// Schema declares the tool's input contract, including the time-frame enum and
+// count-back bounds.
 func (GetStockPriceInput) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",
@@ -45,6 +47,8 @@ func (GetStockPriceInput) Schema() map[string]any {
 	}
 }
 
+// HandleGetStockPrice fetches OHLCV candles for a symbol and returns them with
+// human-readable timestamps.
 func HandleGetStockPrice(ctx context.Context, input GetStockPriceInput) (any, error) {
 	if input.Symbol == "" {
 		return nil, fmt.Errorf("symbol is required")
@@ -58,6 +62,7 @@ func HandleGetStockPrice(ctx context.Context, input GetStockPriceInput) (any, er
 		countBack = 10
 	}
 
+	// Request the candles from the trading chart endpoint.
 	reqBody, _ := json.Marshal(map[string]any{
 		"timeFrame": timeFrame,
 		"symbols":   []string{input.Symbol},
@@ -116,6 +121,7 @@ func HandleGetStockPrice(ctx context.Context, input GetStockPriceInput) (any, er
 		Volume int64   `json:"volume"`
 	}
 
+	// Shift non-daily candles into UTC+7 and format each timestamp.
 	prices := make([]priceItem, 0, len(data.Time))
 	for i := range data.Time {
 		unixTime, err := strconv.ParseInt(data.Time[i], 10, 64)

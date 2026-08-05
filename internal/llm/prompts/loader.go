@@ -73,15 +73,6 @@ func NewPromptLoader() *PromptLoader {
 	return &PromptLoader{}
 }
 
-// render executes a named template with the given data and returns the result.
-func (p *PromptLoader) render(name string, data any) (string, error) {
-	var buf bytes.Buffer
-	if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
-		return "", fmt.Errorf("failed to render prompt %s: %w", name, err)
-	}
-	return buf.String(), nil
-}
-
 // GetResearchPrompt renders the research prompt with the given params.
 func (p *PromptLoader) GetResearchPrompt(params ResearchParams) (string, error) {
 	return p.render("research_prompt.txt", params)
@@ -97,7 +88,7 @@ func (p *PromptLoader) GetSummarizationPrompt(params SummarizationParams) (strin
 	return p.render("summarization_prompt.txt", params)
 }
 
-// GetSummaryPrompt renders the summary prompt with the given params.
+// GetSystemPrompt renders the system prompt with the given params.
 func (p *PromptLoader) GetSystemPrompt(params SystemParams) (string, error) {
 	params.Date = time.Now().Format("2006-01-02")
 	return p.render("system_prompt.txt", params)
@@ -119,4 +110,15 @@ func (p *PromptLoader) GetPlanPrompt(params PlanParams) (string, error) {
 // .txt file but no new loader method.
 func (p *PromptLoader) GetAgentPrompt(tplName string) (string, error) {
 	return p.render(tplName, AgentPromptParams{Date: time.Now().Format("2006-01-02")})
+}
+
+// render executes a named template with the given data and returns the result.
+//
+// style: keep — called by every Get*Prompt method in this file.
+func (p *PromptLoader) render(name string, data any) (string, error) {
+	var buf bytes.Buffer
+	if err := templates.ExecuteTemplate(&buf, name, data); err != nil {
+		return "", fmt.Errorf("failed to render prompt %s: %w", name, err)
+	}
+	return buf.String(), nil
 }

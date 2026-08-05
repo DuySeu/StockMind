@@ -1,10 +1,10 @@
 # Scaffolding the App — full recipe
 
-Read this at **step 12** — the first action of Phase 2, so only after the user approved
-`docs/design/UI-PLAN.md` — and only on a greenfield project. On a project that already
-has a `package.json` there is nothing here for you: skip to step 13.
+Read this at **step 11** — the first action of the implementation phase, so only after the
+user approved `docs/design/UI-PLAN.md` — and only on a greenfield project. On a project
+that already has a `package.json` there is nothing here for you: skip to step 12.
 
-Skim it once earlier, at step 11, for one reason only: the plan's Stack section names the
+Skim it once earlier, at step 10, for one reason only: the plan's Stack section names the
 exact scaffold command and template, and the user approves that command by approving the
 plan. Naming it is not running it.
 
@@ -96,8 +96,8 @@ bare-HSL-triplet token form, not hex. Install the major the user confirmed, not 
 you remember.
 
 Then the UI framework, if they chose one — `npx shadcn@latest init` is allowed *here*,
-at step 12, because the framework was confirmed at step 2, the direction was picked at
-step 9, and the plan naming this install was approved at step 11. It is a Red Flag at
+at step 11, because the framework was confirmed at step 2, the direction was picked at
+step 9, and the plan naming this install was approved at step 10. It is a Red Flag at
 any earlier point. On a fresh Vite app it also needs the
 `@/*` path alias in **both** `tsconfig.json` and `tsconfig.app.json`, and a matching
 `resolve.alias` in `vite.config.ts`, or it fails on the alias check.
@@ -108,4 +108,4 @@ Confirm the app runs before touching the theme:
 npm run build
 ```
 
-Once it builds, `src/index.css` is the token file and step 13 continues normally.
+Once it builds, `src/index.css` is the token file and step 12 continues normally.

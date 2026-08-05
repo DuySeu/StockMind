@@ -17,6 +17,21 @@ type LLMService struct {
 	provider models.Provider
 }
 
+// LLMOptions holds optional parameters for LLMChat.
+type LLMOptions struct {
+	SystemPrompt string
+	// Tools restricts this turn to the named tools. Nil (the zero value) means
+	// every registered tool, which is what the chat path wants; a non-nil slice
+	// means exactly those tools, and a non-nil empty slice means none at all.
+	// See tools.Manager.Subset.
+	Tools []string
+	// StreamThinking forwards the model's reasoning deltas to the caller. A
+	// reasoning model routinely puts a whole round in that channel and leaves
+	// `content` empty, so a caller that drops it sees a turn that produced nothing.
+	StreamThinking bool
+}
+
+// NewLLMService builds the service around the provider named in cfg.
 func NewLLMService(ctx context.Context, cfg common.LLM, toolMgr *tools.Manager) (*LLMService, error) {
 	provider, err := models.NewProvider(ctx, cfg)
 	if err != nil {
@@ -34,61 +49,12 @@ func (s *LLMService) StructuredCompletion(ctx context.Context, prompt string, re
 	return s.provider.StructuredCompletion(ctx, prompt, result)
 }
 
-// ──────── Agentic Tool Loop ────────
-
-// runToolRound runs each tool in order, streams ToolResult events, and appends
-// one assistant history row containing every tool call/output pair.
-func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- database.StreamEvent, history []database.Message, pending []database.Tool) []database.Message {
-	assembled := make([]database.Tool, 0, len(pending))
-	for _, tc := range pending {
-		result, execErr := s.tools.Execute(ctx, tc.Name, tc.Arguments)
-		isError := "false"
-		if execErr != nil {
-			result = execErr.Error()
-			isError = "true"
-		}
-		tr := database.Tool{ID: tc.ID, Result: result, IsError: isError}
-		outputCh <- database.StreamEvent{Type: database.EventToolResult, Data: tr}
-		// Preserve Name + Arguments so the next provider round can reconstruct a
-		// valid assistant tool_call message (an empty function name is rejected
-		// by OpenRouter/OpenAI/Anthropic, breaking the follow-up completion).
-		assembled = append(assembled, database.Tool{
-			ID:        tc.ID,
-			Name:      tc.Name,
-			Arguments: tc.Arguments,
-			Result:    tr.Result,
-			IsError:   tr.IsError,
-		})
-	}
-	meta := []database.Metadata{{Tool: assembled}}
-	return append(history, database.Message{Role: "assistant", Metadata: meta})
-}
-
-// LLMOptions holds optional parameters for LLMChat.
-type LLMOptions struct {
-	SystemPrompt string
-	// Tools restricts this turn to the named tools. Nil (the zero value) means
-	// every registered tool, which is what the chat path wants; a non-nil slice
-	// means exactly those tools, and a non-nil empty slice means none at all.
-	// See tools.Manager.Subset.
-	Tools []string
-	// StreamThinking forwards the model's reasoning deltas to the caller.
-	//
-	// Both callers set it, for the same underlying reason: a reasoning model
-	// routinely puts a whole round in that channel and leaves `content` empty. An
-	// agent that only reads text then reports "produced no output" while discarding
-	// work it had already done, and a chat turn produces nothing at all — which the
-	// server declines to persist, so the turn disappears on reload.
-	StreamThinking bool
-}
-
 // LLMChat runs the agentic tool loop: call LLM → execute tool calls → append results → repeat until done.
 // It has no database interactions or session management.
 func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, opts ...LLMOptions) (<-chan database.StreamEvent, error) {
 	outputCh := make(chan database.StreamEvent, 4)
 
-	// Options are variadic, so callers may omit them entirely — take the first if
-	// present and otherwise fall back to the zero value (all tools, no system prompt).
+	// Fall back to the zero value when the caller omits options: all tools, no system prompt.
 	var opt LLMOptions
 	if len(opts) > 0 {
 		opt = opts[0]
@@ -113,6 +79,7 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 			var pendingTools []database.Tool
 			var textLen, thinkingLen int // diagnostic: bytes streamed this round
 
+			// Forward provider deltas, collecting any tool calls for this round.
 			for event := range streamCh {
 				switch event.Type {
 				case database.EventText:
@@ -121,9 +88,6 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 
 				case database.EventThinking:
 					thinkingLen += len(event.Content)
-					// Forwarded only on request: a reasoning model can put an entire
-					// answer here with nothing in `content`, and a caller that drops it
-					// is left with a round that produced nothing.
 					if opt.StreamThinking {
 						outputCh <- event
 					}
@@ -163,4 +127,33 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 	}()
 
 	return outputCh, nil
+}
+
+// runToolRound runs each tool in order, streams ToolResult events, and appends one
+// assistant history row containing every tool call/output pair.
+// style: keep — two call sites in LLMChat (EventDone and stream-closed-early); inlining duplicates the body.
+func (s *LLMService) runToolRound(ctx context.Context, outputCh chan<- database.StreamEvent, history []database.Message, pending []database.Tool) []database.Message {
+	assembled := make([]database.Tool, 0, len(pending))
+	for _, tc := range pending {
+		result, execErr := s.tools.Execute(ctx, tc.Name, tc.Arguments)
+		isError := "false"
+		if execErr != nil {
+			result = execErr.Error()
+			isError = "true"
+		}
+		tr := database.Tool{ID: tc.ID, Result: result, IsError: isError}
+		outputCh <- database.StreamEvent{Type: database.EventToolResult, Data: tr}
+
+		// Preserve Name + Arguments: providers reject an assistant tool_call message
+		// with an empty function name.
+		assembled = append(assembled, database.Tool{
+			ID:        tc.ID,
+			Name:      tc.Name,
+			Arguments: tc.Arguments,
+			Result:    tr.Result,
+			IsError:   tr.IsError,
+		})
+	}
+	meta := []database.Metadata{{Tool: assembled}}
+	return append(history, database.Message{Role: "assistant", Metadata: meta})
 }

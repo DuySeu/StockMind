@@ -8,7 +8,7 @@
 <!--
   HOW TO USE THIS FILE
   1. Copy it to <project>/docs/design/ui-options.html
-  2. Replace PROJECT below with the product name.
+  2. Replace PROJECT, CONCEPT, INSPIRATION, ARCHETYPE and ANIMATION below.
   3. Replace the OPTIONS array with your 3-5 directions. Keep the token names —
      they are the shadcn vocabulary, so the winner ports to code by copy.
   4. Update the Google Fonts <link> to the families your options actually use.
@@ -19,10 +19,16 @@
   the same form the sidecar CSS files use, so a value can be moved between the
   two by copy. chart-1..5 are derived from `hue` when not set explicitly.
 
+  A direction is four things, and all four are previewed here: colour, type,
+  surface treatment (the --surface-* kit), and motion (the `motion` field).
+  ARCHETYPE decides WHICH product the four are demonstrated on — an option set
+  for a storefront that previews as an admin console is answering a question
+  nobody asked.
+
   One option is shown at a time and the tab bar switches between them: the
   comparison that matters is "does THIS screen work", and a stacked page
-  answers "how do these five differ" instead. Arrow keys and 1-5 also switch;
-  `d` toggles dark mode.
+  answers "how do these five differ" instead. Arrow keys and 1-5 switch;
+  `d` toggles dark mode, `r` replays the entrance animation.
 -->
 
 <!-- FONTS: edit to match the OPTIONS below -->
@@ -55,6 +61,21 @@
   header.page { border-bottom: 1px solid var(--ui-line); padding-bottom: 24px; margin-bottom: 28px; }
   header.page h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.02em; }
   header.page p { margin: 0; color: var(--ui-dim); max-width: 68ch; }
+
+  /* The brief, restated on the page the decision is made on. An option set is
+     only judgeable against what it was seeded for — "is this right?" needs the
+     "for what" in the same viewport. */
+  .concept {
+    margin-top: 16px; padding: 12px 14px; border: 1px solid var(--ui-line);
+    border-left: 3px solid var(--ui-accent); border-radius: 10px; background: var(--ui-panel);
+    font-size: 13.5px;
+  }
+  .concept .k { color: var(--ui-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .concept .refs { margin-top: 7px; display: flex; gap: 8px; flex-wrap: wrap; font-size: 12.5px; }
+  .concept .refs a { display: inline-flex; gap: 6px; align-items: center; padding: 2px 9px; border: 1px solid var(--ui-line); border-radius: 999px; text-decoration: none; }
+  .concept .refs a:hover { border-color: var(--ui-accent); }
+  .rm-note { display: none; margin-top: 10px; font-size: 12.5px; color: #f0c274; }
+  @media (prefers-reduced-motion: reduce) { .rm-note { display: block; } }
 
   .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 18px; }
   .ctl {
@@ -118,16 +139,21 @@
   .app {
     --d: 1;                                  /* density multiplier */
     --r: var(--radius, 8px);
-    display: grid; grid-template-columns: 188px 1fr; min-height: 470px;
+    display: block; min-height: 470px;
     background-color: var(--background); background-image: var(--surface-wash, none);
     color: var(--foreground);
     font-family: var(--font-body); font-size: calc(13.5px * var(--d));
   }
+  /* Only the dashboard archetype has a persistent sidebar; a landing page, a
+     storefront, and an article are all full-bleed columns. */
+  .app.arch-dashboard { display: grid; grid-template-columns: 188px 1fr; }
+  /* The rail and the specimen sit under the whole app, not beside the sidebar. */
+  .app.arch-dashboard > .rail, .app.arch-dashboard > .type-specimen { grid-column: 1 / -1; }
   .app.compact { --d: 0.9; }
   .app.spacious { --d: 1.1; }
-  @media (max-width: 720px) { .app { grid-template-columns: 1fr; } .app aside { display: none; } }
+  @media (max-width: 720px) { .app.arch-dashboard { grid-template-columns: 1fr; } .app.arch-dashboard > aside { display: none; } }
 
-  .app aside {
+  .app.arch-dashboard > aside {
     background: var(--sidebar, var(--card)); color: var(--sidebar-foreground, var(--card-foreground));
     border-right: var(--surface-border-width, 1px) solid var(--border);
     padding: calc(14px * var(--d));
@@ -287,7 +313,7 @@
   .kit-soft .search, .kit-soft .input { border: 0; background: var(--background); box-shadow: var(--surface-shadow-inset); }
   .kit-soft .icon-btn { border: 0; box-shadow: var(--surface-shadow-raised); }
   /* Glass chrome is frosted too — an opaque sidebar next to glass cards reads as a bug. */
-  .kit-glass aside { background-color: var(--card); backdrop-filter: blur(var(--surface-blur)); -webkit-backdrop-filter: blur(var(--surface-blur)); }
+  .kit-glass.arch-dashboard > aside { background-color: var(--card); backdrop-filter: blur(var(--surface-blur)); -webkit-backdrop-filter: blur(var(--surface-blur)); }
   .kit-glass .search, .kit-glass .input { background: var(--card); }
   /* Flat and outlined keep controls quiet: no borrowed elevation on buttons. */
   .kit-flat .btn, .kit-outlined .btn { box-shadow: none; }
@@ -301,6 +327,195 @@
   .type-specimen .body { font-family: var(--font-body); color: var(--muted-foreground);
     margin: 6px 0 0; max-width: 62ch; font-size: calc(13px * var(--d)); }
   .type-specimen .stack { font-family: var(--font-mono); font-size: 11px; color: var(--muted-foreground); margin-top: 9px; }
+
+  /* ---- motion: the axis a still mockup cannot show ----
+     Colour, type, and surface are all visible in a screenshot. How a screen
+     ARRIVES and how it answers a pointer is not — and it is half of what makes
+     a launch page feel like a launch page and a trading console feel like a
+     trading console. So each option carries a motion personality and renders
+     it here. Every value below reads from a --mo-* variable set per option in
+     tokenStyle(), which is why two options can share a palette and still feel
+     nothing alike. */
+  .app {
+    --mo-in: 220ms;                          /* entrance duration */
+    --mo-dur: 150ms;                         /* state-change duration */
+    --mo-ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+    --mo-rise: 10px;
+    --mo-scale: 1;
+    --mo-stagger: 45ms;
+    --mo-lift: -2px;
+  }
+  .app .card, .app .btn, .app .prod, .app .nav-item, .app .chip, .app .site-nav a {
+    transition: transform var(--mo-dur) var(--mo-ease),
+                box-shadow var(--mo-dur) var(--mo-ease),
+                background-color var(--mo-dur) var(--mo-ease),
+                border-color var(--mo-dur) var(--mo-ease),
+                color var(--mo-dur) var(--mo-ease);
+  }
+  body[data-anim="on"] .app .reveal {
+    animation: reveal var(--mo-in) var(--mo-ease) both;
+    animation-delay: calc(var(--i, 0) * var(--mo-stagger));
+  }
+  @keyframes reveal {
+    from { opacity: 0; transform: translateY(var(--mo-rise)) scale(var(--mo-scale)); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* Hover is a transform on the element itself, never on its container, so
+     nothing around it reflows — the same rule the reviewer checks for. */
+  body[data-anim="on"] .app .card:hover,
+  body[data-anim="on"] .app .prod:hover {
+    transform: translateY(var(--mo-lift)); box-shadow: var(--surface-shadow-raised, none);
+  }
+  body[data-anim="on"] .app .btn:hover { transform: translateY(calc(var(--mo-lift) * 0.5)); }
+  body[data-anim="on"] .app .nav-item:hover,
+  body[data-anim="on"] .app .site-nav a:hover { color: var(--foreground); }
+  /* Not negotiable, and it is also what the shipped app has to do. The banner
+     in the header says so out loud, because a silently static preview reads as
+     a broken file rather than as a respected OS setting. */
+  @media (prefers-reduced-motion: reduce) {
+    body[data-anim="on"] .app .reveal { animation: none; }
+    .app *, .app *::before, .app *::after { transition-duration: 1ms !important; }
+  }
+
+  /* ---- archetype: landing ---- */
+  .topbar.site { gap: calc(18px * var(--d)); }
+  .site-nav { display: flex; gap: calc(16px * var(--d)); font-size: calc(12.5px * var(--d)); color: var(--muted-foreground); }
+  .site-nav a { text-decoration: none; color: inherit; }
+  .topbar.site .btn { margin: 0; }
+  .topbar.site .brand { margin-bottom: 0; }
+  .hero {
+    padding: calc(46px * var(--d)) calc(24px * var(--d)) calc(34px * var(--d));
+    text-align: center; display: flex; flex-direction: column; align-items: center;
+    gap: calc(13px * var(--d));
+  }
+  .hero h1 {
+    font-family: var(--font-display); font-weight: 700; margin: 0;
+    font-size: calc(42px * var(--d)); line-height: 1.06; letter-spacing: -0.035em;
+    max-width: 17ch;
+  }
+  .hero p { margin: 0; color: var(--muted-foreground); max-width: 54ch; font-size: calc(14.5px * var(--d)); }
+  .hero-cta { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .hero-cta .btn { padding: calc(10px * var(--d)) calc(20px * var(--d)); font-size: calc(13.5px * var(--d)); }
+  .logos { display: flex; gap: calc(24px * var(--d)); flex-wrap: wrap; justify-content: center; margin-top: calc(10px * var(--d)); opacity: 0.55; }
+  .logos span { font-family: var(--font-display); font-weight: 700; font-size: calc(13px * var(--d)); letter-spacing: -0.02em; }
+  .section { padding: 0 calc(24px * var(--d)) calc(28px * var(--d)); }
+  .section-head { text-align: center; margin-bottom: calc(16px * var(--d)); }
+  .section-head h4 { font-family: var(--font-display); font-size: calc(22px * var(--d)); letter-spacing: -0.025em; margin: 0; font-weight: 700; }
+  .section-head p { margin: 4px 0 0; color: var(--muted-foreground); font-size: calc(12.5px * var(--d)); }
+  .feat .ficon {
+    width: calc(30px * var(--d)); height: calc(30px * var(--d)); border-radius: calc(var(--r) * 0.8);
+    background: var(--accent); color: var(--accent-foreground); display: grid; place-items: center;
+    font-weight: 700; font-size: calc(13px * var(--d)); margin-bottom: calc(9px * var(--d));
+  }
+  .feat h5 { margin: 0 0 4px; font-family: var(--font-display); font-size: calc(14.5px * var(--d)); font-weight: 700; letter-spacing: -0.015em; }
+  .feat p { margin: 0; color: var(--muted-foreground); font-size: calc(12.5px * var(--d)); }
+  .plan .plan-name { font-size: calc(12px * var(--d)); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted-foreground); }
+  .plan .plan-price { font-family: var(--font-display); font-size: calc(30px * var(--d)); font-weight: 700; letter-spacing: -0.03em; margin: 4px 0 2px; }
+  .plan .plan-price small { font-size: calc(12px * var(--d)); font-weight: 400; color: var(--muted-foreground); letter-spacing: 0; }
+  .plan ul { list-style: none; margin: calc(10px * var(--d)) 0; padding: 0; display: flex; flex-direction: column; gap: 5px; font-size: calc(12.5px * var(--d)); color: var(--muted-foreground); }
+  .plan .btn { width: 100%; }
+  .plan.featured { box-shadow: var(--surface-shadow-raised, none); border-color: var(--primary); }
+  .plan.featured .plan-price { color: var(--primary); }
+  .cta-band {
+    margin: 0 calc(24px * var(--d)) calc(24px * var(--d)); padding: calc(26px * var(--d));
+    border-radius: var(--r); background: var(--primary); color: var(--primary-foreground);
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .cta-band h4 { margin: 0; font-family: var(--font-display); font-size: calc(22px * var(--d)); letter-spacing: -0.025em; }
+  .cta-band p { margin: 0; opacity: 0.85; font-size: calc(12.5px * var(--d)); }
+  .cta-band .btn { background: var(--primary-foreground); color: var(--primary); border-color: transparent; }
+
+  /* ---- archetype: e-commerce ---- */
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: calc(13px * var(--d)) calc(18px * var(--d)) 0; }
+  .chip {
+    border-radius: 999px; padding: calc(5px * var(--d)) calc(12px * var(--d));
+    font-size: calc(12px * var(--d)); border: var(--surface-border-width, 1px) solid var(--border);
+    color: var(--muted-foreground);
+  }
+  .chip.on { background: var(--primary); color: var(--primary-foreground); border-color: transparent; }
+  .shop { display: grid; grid-template-columns: 168px 1fr; gap: calc(14px * var(--d)); padding: calc(14px * var(--d)) calc(18px * var(--d)); }
+  @media (max-width: 720px) { .shop { grid-template-columns: 1fr; } .shop .filters { display: none; } }
+  .filters { display: flex; flex-direction: column; gap: calc(13px * var(--d)); font-size: calc(12.5px * var(--d)); }
+  .filters h6 { margin: 0 0 6px; font-size: calc(11px * var(--d)); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted-foreground); }
+  .filters .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; color: var(--muted-foreground); }
+  .filters .box { width: 14px; height: 14px; flex: none; border-radius: calc(var(--r) * 0.4); border: var(--surface-border-width, 1px) solid var(--border); }
+  .filters .box.on { background: var(--primary); border-color: var(--primary); }
+  .sizes { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sizes i {
+    font-style: normal; width: calc(28px * var(--d)); height: calc(28px * var(--d));
+    display: grid; place-items: center; border-radius: calc(var(--r) * 0.6);
+    border: var(--surface-border-width, 1px) solid var(--border); font-size: calc(11px * var(--d));
+  }
+  .sizes i.on { background: var(--foreground); color: var(--background); border-color: var(--foreground); }
+  .prods { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(12px * var(--d)); }
+  @media (max-width: 620px) { .prods { grid-template-columns: repeat(2, 1fr); } }
+  .prod {
+    background-color: var(--card); color: var(--card-foreground); background-image: var(--surface-gradient, none);
+    border: var(--surface-border-width, 1px) solid var(--border); border-radius: var(--r);
+    box-shadow: var(--surface-shadow, none); overflow: hidden;
+    backdrop-filter: blur(var(--surface-blur, 0px)); -webkit-backdrop-filter: blur(var(--surface-blur, 0px));
+  }
+  .prod .thumb { height: calc(96px * var(--d)); position: relative; }
+  .prod .thumb .badge { position: absolute; top: 8px; left: 8px; }
+  .prod .body { padding: calc(10px * var(--d)); }
+  .prod .ptitle { font-size: calc(12.5px * var(--d)); font-weight: 500; }
+  .prod .pmeta { font-size: calc(11px * var(--d)); color: var(--muted-foreground); margin-top: 1px; }
+  .prod .prow { display: flex; align-items: center; gap: 8px; margin-top: calc(8px * var(--d)); }
+  .prod .price { font-family: var(--font-display); font-weight: 700; font-size: calc(15px * var(--d)); letter-spacing: -0.02em; }
+  .prod .price s { font-family: var(--font-body); font-weight: 400; font-size: calc(11.5px * var(--d)); color: var(--muted-foreground); margin-left: 5px; }
+  .prod .prow .btn { margin-left: auto; }
+  .cart-wrap { position: relative; margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+  /* ---- archetype: editorial ---- */
+  .masthead { font-family: var(--font-display); font-weight: 700; font-size: calc(17px * var(--d)); letter-spacing: -0.02em; }
+  .article { padding: calc(26px * var(--d)) calc(24px * var(--d)) calc(20px * var(--d)); }
+  .article .kicker { font-size: calc(11px * var(--d)); text-transform: uppercase; letter-spacing: 0.1em; color: var(--primary); font-weight: 600; }
+  .article h1 {
+    font-family: var(--font-display); font-weight: 700; margin: calc(7px * var(--d)) 0 0;
+    font-size: calc(38px * var(--d)); line-height: 1.1; letter-spacing: -0.03em; max-width: 22ch;
+  }
+  .byline { display: flex; align-items: center; gap: 10px; margin-top: calc(13px * var(--d)); padding-bottom: calc(14px * var(--d)); border-bottom: var(--surface-border-width, 1px) solid var(--border); font-size: calc(12px * var(--d)); color: var(--muted-foreground); }
+  .byline .avatar { margin-left: 0; }
+  .cols { display: grid; grid-template-columns: 1fr 232px; gap: calc(26px * var(--d)); margin-top: calc(16px * var(--d)); }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } }
+  .prose p { margin: 0 0 calc(12px * var(--d)); font-size: calc(14px * var(--d)); line-height: 1.68; }
+  .prose p.lede { font-size: calc(16px * var(--d)); color: var(--foreground); }
+  .prose p:not(.lede) { color: var(--muted-foreground); }
+  .pullquote {
+    margin: calc(16px * var(--d)) 0; padding: calc(4px * var(--d)) 0 calc(4px * var(--d)) calc(16px * var(--d));
+    border-left: calc(3px * var(--d)) solid var(--primary);
+    font-family: var(--font-display); font-size: calc(19px * var(--d)); line-height: 1.35;
+    letter-spacing: -0.02em;
+  }
+  .figure { border-radius: var(--r); overflow: hidden; margin: calc(16px * var(--d)) 0; border: var(--surface-border-width, 1px) solid var(--border); }
+  .figure .bandstrip { display: flex; height: calc(84px * var(--d)); }
+  .figure .bandstrip i { flex: 1; }
+  .figure figcaption { padding: calc(8px * var(--d)) calc(10px * var(--d)); background: var(--muted); color: var(--muted-foreground); font-size: calc(11.5px * var(--d)); }
+  .related { display: flex; flex-direction: column; gap: calc(10px * var(--d)); }
+  .related .r { display: flex; gap: 10px; align-items: flex-start; font-size: calc(12.5px * var(--d)); }
+  .related .r span { width: 34px; height: 34px; flex: none; border-radius: calc(var(--r) * 0.6); }
+  .related .r em { font-style: normal; color: var(--muted-foreground); font-size: calc(11px * var(--d)); display: block; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: calc(12px * var(--d)); }
+
+  /* ---- the component rail ----
+     The dashboard exercises buttons, badges, inputs, a table, a chart, and an
+     open overlay just by being a dashboard. A landing page, a storefront, and
+     an article do not — and an option whose popover was never rendered is an
+     option whose elevation and blur were never seen. So the other three
+     archetypes get the same vocabulary appended as a strip, and the token
+     coverage stays identical no matter which layout the concept selected. */
+  .rail {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+    gap: calc(14px * var(--d)); padding: calc(16px * var(--d)) calc(18px * var(--d));
+    border-top: var(--surface-border-width, 1px) solid var(--border);
+    background-color: var(--card); color: var(--card-foreground);
+  }
+  .rail-group { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; position: relative; }
+  .rail-label { font-size: calc(10px * var(--d)); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted-foreground); }
+  .rail-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .rail .pop { position: static; width: 100%; }
+  .rail .chart { height: calc(44px * var(--d)); margin-top: 0; width: 100%; }
+  .rail .field { margin-bottom: 0; width: 100%; }
 
   footer.picker {
     position: fixed; left: 0; right: 0; bottom: 0; background: var(--ui-panel);
@@ -320,10 +535,18 @@
       and toggle light/dark — both modes matter. Pick a letter, or say which parts of which options
       to combine.
     </p>
+    <div class="concept" id="concept" hidden></div>
     <div class="controls">
       <button class="ctl" id="mode" aria-pressed="false">Dark mode: off</button>
       <button class="ctl" id="focus" aria-pressed="false">Show focus states: off</button>
-      <span class="hint-key"><kbd>←</kbd> <kbd>→</kbd> switch · <kbd>1</kbd>–<kbd>5</kbd> jump · <kbd>d</kbd> dark</span>
+      <button class="ctl" id="anim" aria-pressed="true">Motion: on</button>
+      <button class="ctl" id="replay">↻ Replay motion</button>
+      <span class="hint-key"><kbd>←</kbd> <kbd>→</kbd> switch · <kbd>1</kbd>–<kbd>5</kbd> jump · <kbd>d</kbd> dark · <kbd>r</kbd> replay</span>
+    </div>
+    <div class="rm-note">
+      Your system is set to “reduce motion”, so the previews are rendering static. That is
+      correct behaviour and the shipped app will do the same — turn the OS setting off
+      temporarily if you want to judge the motion in each direction.
     </div>
   </header>
 
@@ -345,6 +568,25 @@
 
 const PROJECT = "Acme Analytics";
 
+// The brief, shown above the options: they can only be judged against it.
+const CONCEPT = "A revenue and account-health console for the finance team at a B2B SaaS company.";
+
+// Sites the user pointed at as reference, in their own words. [] when none were given.
+const INSPIRATION = [
+  // { label: "linear.app", url: "https://linear.app", note: "the density and the calm" },
+];
+
+// Which miniature product every option renders as. One of:
+//   dashboard | landing | ecommerce | editorial
+// It comes from the concept, not from taste — an option set for a storefront
+// that previews as an admin console is answering a question nobody asked.
+const ARCHETYPE = "dashboard";
+
+// Did the user ask for animation? false renders every option at the `still`
+// tier and disables the motion controls, so nothing is sold that was not asked
+// for. Per-option personality lives in each option's `motion` field.
+const ANIMATION = true;
+
 const OPTIONS = [
   {
     id: "slate",
@@ -354,6 +596,7 @@ const OPTIONS = [
     density: "comfortable",
     surface: "elevated",
     surfaceNote: "hairline border, diffuse shadow",
+    motion: { tier: 4, style: "calm", note: "short cross-fades, 1px hover lift — motion that never interrupts a number being read" },
     fonts: {
       display: "'Inter', ui-sans-serif, system-ui, sans-serif",
       body: "'Inter', ui-sans-serif, system-ui, sans-serif",
@@ -428,6 +671,7 @@ const OPTIONS = [
     density: "spacious",
     surface: "outlined",
     surfaceNote: "2px rule, no shadow",
+    motion: { tier: 3, style: "crisp", note: "fast, linear, no bounce — the page behaves like print that happens to respond" },
     fonts: {
       display: "'Source Serif 4', ui-serif, Georgia, serif",
       body: "'Inter', ui-sans-serif, system-ui, sans-serif",
@@ -502,6 +746,7 @@ const OPTIONS = [
     density: "compact",
     surface: "glass",
     surfaceNote: "translucent surfaces, backdrop blur, lit top edge",
+    motion: { tier: 8, style: "cinematic", note: "long staggered reveals, deep hover lift — surfaces float in rather than appear" },
     fonts: {
       display: "'Inter', ui-sans-serif, system-ui, sans-serif",
       body: "'Inter', ui-sans-serif, system-ui, sans-serif",
@@ -576,6 +821,7 @@ const OPTIONS = [
     density: "spacious",
     surface: "soft",
     surfaceNote: "borderless, dual soft shadow, debossed inputs",
+    motion: { tier: 7, style: "springy", note: "slight overshoot on entrance and press — the surfaces read as physical" },
     fonts: {
       display: "'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif",
       body: "'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif",
@@ -650,6 +896,7 @@ const OPTIONS = [
     density: "compact",
     surface: "flat",
     surfaceNote: "hairline border, no shadow",
+    motion: { tier: 1, style: "still", note: "state changes only, no entrance animation — nothing moves that was not asked to" },
     fonts: {
       display: "'Public Sans', ui-sans-serif, system-ui, sans-serif",
       body: "'Public Sans', ui-sans-serif, system-ui, sans-serif",
@@ -727,6 +974,7 @@ let mode = "light";
 let showFocus = false;
 let picked = null;
 let active = 0;
+let animOn = true;
 
 /** OKLCH -> #RRGGBB, so every colour on the page is in one form (Ottosson). */
 function oklchHex(L, C, H) {
@@ -762,6 +1010,25 @@ function charts(opt, m) {
   return [0, 42, 84, -42, -84].map((d) => oklchHex(L, 0.15, (opt.hue + d + 360) % 360));
 }
 
+/** Motion personalities. Each is a complete feel, not a speed setting: the
+ *  entrance distance, the easing curve, and the hover lift move together,
+ *  because 700ms with a linear curve is sluggish while 700ms with an ease-out
+ *  is cinematic. `still` is what an option renders as when the user said no to
+ *  animation — state changes only, which every UI needs regardless. */
+const MOTION_SPECS = {
+  still:     { in: "1ms",   dur: "110ms", rise: "0px",  scale: "1",     stagger: "0ms",   lift: "0px",  ease: "linear" },
+  calm:      { in: "300ms", dur: "180ms", rise: "6px",  scale: "1",     stagger: "40ms",  lift: "-1px", ease: "cubic-bezier(0.4, 0, 0.2, 1)" },
+  crisp:     { in: "200ms", dur: "140ms", rise: "10px", scale: "1",     stagger: "40ms",  lift: "-2px", ease: "cubic-bezier(0.2, 0.8, 0.3, 1)" },
+  springy:   { in: "420ms", dur: "220ms", rise: "16px", scale: "0.97",  stagger: "70ms",  lift: "-4px", ease: "cubic-bezier(0.34, 1.56, 0.64, 1)" },
+  cinematic: { in: "760ms", dur: "300ms", rise: "28px", scale: "0.985", stagger: "120ms", lift: "-6px", ease: "cubic-bezier(0.16, 1, 0.3, 1)" },
+};
+
+/** The style an option actually renders at, after the global answer. */
+function motionOf(opt) {
+  if (!ANIMATION || !animOn) return { tier: 1, style: "still", note: "animation not requested" };
+  return opt.motion || { tier: 5, style: "crisp", note: "" };
+}
+
 function tokenStyle(opt) {
   const t = opt[mode];
   const decl = Object.entries(t).map(([k, v]) => `--${k}:${v}`);
@@ -769,6 +1036,10 @@ function tokenStyle(opt) {
   decl.push(`--font-display:${opt.fonts.display}`);
   decl.push(`--font-body:${opt.fonts.body}`);
   decl.push(`--font-mono:${opt.fonts.mono}`);
+  const m = MOTION_SPECS[motionOf(opt).style] || MOTION_SPECS.crisp;
+  decl.push(`--mo-in:${m.in}`, `--mo-dur:${m.dur}`, `--mo-rise:${m.rise}`,
+            `--mo-scale:${m.scale}`, `--mo-stagger:${m.stagger}`,
+            `--mo-lift:${m.lift}`, `--mo-ease:${m.ease}`);
   return decl.join(";");
 }
 
@@ -784,7 +1055,297 @@ const ROWS = [
 
 const BARS = [38, 62, 45, 78, 54, 91, 68, 82, 47, 73, 88, 60];
 
-function appMarkup(opt) {
+const FEATURES = [
+  ["01", "One source of truth", "Every number on the page traces back to the same ledger, so nobody reconciles twice."],
+  ["02", "Built for the close", "Period locks, approvals, and an audit trail that survives a real audit."],
+  ["03", "Answers, not exports", "Ask in plain language; get a figure you can defend in the meeting."],
+];
+
+const PLANS = [
+  ["Starter", "$0", "/mo", ["1 workspace", "Up to 3 seats", "Community support"], false, "Start free"],
+  ["Growth", "$49", "/seat/mo", ["Unlimited workspaces", "Approvals & audit log", "Priority support"], true, "Choose Growth"],
+  ["Scale", "Custom", "", ["SSO & SCIM", "Dedicated environment", "Named success lead"], false, "Talk to sales"],
+];
+
+const PRODUCTS = [
+  ["Linen Overshirt", "Oat · 4 colours", "$128", "$160", "Sale", "bad"],
+  ["Wide-Leg Trouser", "Ink · 6 colours", "$145", "", "New", "ok"],
+  ["Merino Crew", "Fog · 3 colours", "$96", "", "", ""],
+  ["Canvas Weekender", "Sand · 2 colours", "$210", "", "Low stock", "muted"],
+  ["Suede Derby", "Cocoa · 3 colours", "$185", "$230", "Sale", "bad"],
+  ["Ribbed Beanie", "Slate · 5 colours", "$42", "", "", ""],
+];
+
+const RELATED = [
+  ["The quiet case for slower software", "8 min read"],
+  ["What a design system owes its users", "12 min read"],
+  ["Against the dashboard", "6 min read"],
+];
+
+/** The component vocabulary, appended to every archetype that does not already
+ *  render it inline. See the .rail comment in the stylesheet for why. */
+function railMarkup(opt) {
+  const c = charts(opt, mode);
+  return `
+  <div class="rail">
+    <div class="rail-group">
+      <span class="rail-label">Actions</span>
+      <div class="rail-row">
+        <button class="btn primary${showFocus ? " ring" : ""}">Primary</button>
+        <button class="btn secondary">Secondary</button>
+      </div>
+      <div class="rail-row">
+        <button class="btn outline">Outline</button>
+        <button class="btn ghost">Ghost</button>
+        <button class="btn destructive">Delete</button>
+      </div>
+    </div>
+    <div class="rail-group">
+      <span class="rail-label">Status</span>
+      <div class="rail-row">
+        <span class="badge ok">Active</span>
+        <span class="badge muted">Draft</span>
+        <span class="badge bad">Failed</span>
+      </div>
+      <span class="hint">Colour is never the only signal — each carries a word.</span>
+    </div>
+    <div class="rail-group">
+      <span class="rail-label">Input</span>
+      <div class="field">
+        <label>Email</label>
+        <input class="input${showFocus ? " focused" : ""}" value="finance@acme.io">
+        <span class="hint">Receipts go here.</span>
+      </div>
+    </div>
+    <div class="rail-group">
+      <span class="rail-label">Overlay</span>
+      <div class="pop">
+        <b>Sort by</b>
+        <i class="on">Recommended</i>
+        <i>Newest</i>
+        <i>Price</i>
+      </div>
+    </div>
+    <div class="rail-group">
+      <span class="rail-label">Data colours</span>
+      <div class="chart">${c.map((h, i) => `<i style="height:${[64, 88, 46, 72, 55][i]}%;background:${h}"></i>`).join("")}</div>
+    </div>
+  </div>`;
+}
+
+function typeSpecimen(opt) {
+  const mo = motionOf(opt);
+  return `
+  <div class="type-specimen">
+    <p class="display">${opt.name}</p>
+    <p class="body">
+      The quick brown fox jumps over the lazy dog. Body copy at reading size, on the
+      surface it will actually sit on — this is where a font choice succeeds or fails.
+    </p>
+    <p class="stack">display: ${opt.fonts.display.split(",")[0]} &nbsp;·&nbsp; body: ${opt.fonts.body.split(",")[0]} &nbsp;·&nbsp; radius: ${opt[mode].radius} &nbsp;·&nbsp; density: ${opt.density} &nbsp;·&nbsp; surface: ${opt.surface || "flat"}${opt.surfaceNote ? ` (${opt.surfaceNote})` : ""} &nbsp;·&nbsp; motion: ${mo.style}</p>
+  </div>`;
+}
+
+function layoutLanding(opt) {
+  const brand = PROJECT.split(" ")[0];
+  const feats = FEATURES.map(([n, h, p], i) => `
+    <div class="card feat reveal" style="--i:${i + 5}">
+      <div class="ficon">${n}</div>
+      <h5>${h}</h5>
+      <p>${p}</p>
+    </div>`).join("");
+  const plans = PLANS.map(([name, price, per, lines, featured, cta], i) => `
+    <div class="card plan${featured ? " featured" : ""} reveal" style="--i:${i + 8}">
+      ${featured ? '<span class="badge ok">Most chosen</span>' : ""}
+      <div class="plan-name">${name}</div>
+      <div class="plan-price">${price}<small>${per}</small></div>
+      <ul>${lines.map((l) => `<li>— ${l}</li>`).join("")}</ul>
+      <button class="btn ${featured ? "primary" : "outline"}">${cta}</button>
+    </div>`).join("");
+
+  return `
+    <div class="main">
+      <div class="topbar site">
+        <div class="brand"><span class="dot"></span>${brand}</div>
+        <nav class="site-nav"><a href="#">Product</a><a href="#">Pricing</a><a href="#">Customers</a><a href="#">Docs</a></nav>
+        <button class="btn ghost">Sign in</button>
+        <button class="btn primary${showFocus ? " ring" : ""}">Get started</button>
+      </div>
+
+      <section class="hero">
+        <span class="badge ok reveal" style="--i:0">New · Close the books in half the time</span>
+        <h1 class="reveal" style="--i:1">${PROJECT} makes the month-end close boring again</h1>
+        <p class="reveal" style="--i:2">
+          One ledger, one set of numbers, and approvals that leave a trail. Finance teams stop
+          reconciling spreadsheets and start closing on the third.
+        </p>
+        <div class="hero-cta reveal" style="--i:3">
+          <button class="btn primary">Start free — no card</button>
+          <button class="btn outline">Book a 20-min demo</button>
+        </div>
+        <div class="logos reveal" style="--i:4">
+          <span>NORTHWIND</span><span>Calder &amp; Co.</span><span>MERIDIAN</span><span>Ostrom</span><span>Verity</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h4>Everything the close needs</h4><p>And nothing it does not.</p></div>
+        <div class="grid3">${feats}</div>
+      </section>
+
+      <section class="section">
+        <div class="section-head"><h4>Pricing that scales with the team</h4><p>Month to month. Cancel whenever.</p></div>
+        <div class="grid3">${plans}</div>
+      </section>
+
+      <div class="cta-band reveal" style="--i:11">
+        <h4>Close your next month on ${PROJECT}</h4>
+        <p>Set up in an afternoon. Import last quarter and see the difference.</p>
+        <button class="btn">Start free</button>
+      </div>
+    </div>`;
+}
+
+function layoutEcommerce(opt) {
+  const c = charts(opt, mode);
+  const brand = PROJECT.split(" ")[0];
+  const prods = PRODUCTS.map(([title, meta, price, was, badge, tone], i) => `
+    <div class="prod reveal" style="--i:${i + 3}">
+      <div class="thumb" style="background:linear-gradient(150deg, ${c[i % 5]}, ${c[(i + 2) % 5]})">
+        ${badge ? `<span class="badge ${tone}">${badge}</span>` : ""}
+      </div>
+      <div class="body">
+        <div class="ptitle">${title}</div>
+        <div class="pmeta">${meta}</div>
+        <div class="prow">
+          <span class="price">${price}${was ? `<s>${was}</s>` : ""}</span>
+          <button class="btn ${i === 0 ? "primary" : "outline"}">Add</button>
+        </div>
+      </div>
+    </div>`).join("");
+
+  return `
+    <div class="main">
+      <div class="topbar site">
+        <div class="brand"><span class="dot"></span>${brand}</div>
+        <nav class="site-nav"><a href="#">New in</a><a href="#">Women</a><a href="#">Men</a><a href="#">Sale</a></nav>
+        <div class="search">Search the store…</div>
+        <div class="cart-wrap">
+          <div class="icon-btn">♡</div>
+          <div class="avatar">3</div>
+          <div class="pop">
+            <b>Your bag · 3</b>
+            <i class="on">Linen Overshirt — $128</i>
+            <i>Merino Crew — $96</i>
+            <i>Ribbed Beanie — $42</i>
+          </div>
+        </div>
+      </div>
+
+      <div class="chips reveal" style="--i:0">
+        <span class="chip on">All</span><span class="chip">New in</span><span class="chip">Knitwear</span>
+        <span class="chip">Trousers</span><span class="chip">Shoes</span><span class="chip">Sale</span>
+      </div>
+
+      <div class="shop">
+        <div class="filters reveal" style="--i:1">
+          <div>
+            <h6>Category</h6>
+            <div class="row"><span class="box on"></span>Outerwear</div>
+            <div class="row"><span class="box"></span>Knitwear</div>
+            <div class="row"><span class="box"></span>Trousers</div>
+          </div>
+          <div>
+            <h6>Size</h6>
+            <div class="sizes"><i>XS</i><i class="on">S</i><i>M</i><i>L</i><i>XL</i></div>
+          </div>
+          <div>
+            <h6>Price</h6>
+            <div class="field"><input class="input${showFocus ? " focused" : ""}" value="$40 – $220"></div>
+          </div>
+          <button class="btn outline">Clear all</button>
+        </div>
+
+        <div>
+          <div class="page-head" style="margin-bottom:calc(12px * var(--d))">
+            <div><h3>New in</h3><p>${PRODUCTS.length} pieces · updated Thursday</p></div>
+          </div>
+          <div class="prods">${prods}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function layoutEditorial(opt) {
+  const c = charts(opt, mode);
+  const brand = PROJECT.split(" ")[0];
+  const related = RELATED.map(([t, m], i) => `
+    <div class="r"><span style="background:${c[i % 5]}"></span><div>${t}<em>${m}</em></div></div>`).join("");
+
+  return `
+    <div class="main">
+      <div class="topbar site">
+        <div class="masthead">${brand}</div>
+        <nav class="site-nav"><a href="#">Essays</a><a href="#">Interviews</a><a href="#">Archive</a><a href="#">About</a></nav>
+        <button class="btn primary${showFocus ? " ring" : ""}">Subscribe</button>
+      </div>
+
+      <article class="article">
+        <div class="kicker reveal" style="--i:0">Essay · Craft</div>
+        <h1 class="reveal" style="--i:1">The interface that gets out of the way is the one that took the longest</h1>
+        <div class="byline reveal" style="--i:2">
+          <span class="avatar">DN</span>
+          <span>Dana Ng</span> · <span>14 March</span> · <span>9 min read</span>
+          <span class="badge ok" style="margin-left:auto">Members</span>
+        </div>
+
+        <div class="cols">
+          <div class="prose reveal" style="--i:3">
+            <p class="lede">
+              Every product that reads as effortless is carrying a decision someone refused to
+              hand back to the reader. Restraint is expensive; it just does not look it.
+            </p>
+            <p>
+              The temptation is to add an option. An option is cheap to build and it settles an
+              argument in the room, which is why it wins. It also moves the cost onto every
+              person who opens the screen afterwards, forever, and none of them are in the room.
+            </p>
+            <blockquote class="pullquote">
+              A choice you hand to the user is a decision you were paid to make.
+            </blockquote>
+            <p>
+              The work is deciding, then holding the decision when it is questioned — which it
+              will be, by someone reasonable, on a Tuesday.
+            </p>
+            <figure class="figure">
+              <div class="bandstrip">${c.map((h) => `<i style="background:${h}"></i>`).join("")}</div>
+              <figcaption>The palette this piece was set in — five steps, one hue family.</figcaption>
+            </figure>
+            <p>
+              What survives is not the feature list. It is whether the page felt like it was
+              written by someone who had read it back.
+            </p>
+          </div>
+
+          <aside class="reveal" style="--i:4">
+            <h6 class="rail-label">Keep reading</h6>
+            <div class="related">${related}</div>
+            <div class="card" style="margin-top:calc(16px * var(--d))">
+              <div class="stat-label">The weekly</div>
+              <p class="hint" style="margin:6px 0 9px">One essay, Thursday mornings. No roundups.</p>
+              <div class="field"><input class="input${showFocus ? " focused" : ""}" value="you@example.com"></div>
+              <button class="btn primary" style="width:100%">Subscribe</button>
+            </div>
+            <div class="tags">
+              <span class="badge muted">craft</span><span class="badge muted">design</span><span class="badge muted">restraint</span>
+            </div>
+          </aside>
+        </div>
+      </article>
+    </div>`;
+}
+
+function layoutDashboard(opt) {
   const c = charts(opt, mode);
   const bars = BARS.map((h, i) => `<i style="height:${h}%;background:${c[i % 5]}"></i>`).join("");
   const rows = ROWS.map(
@@ -798,7 +1359,6 @@ function appMarkup(opt) {
   ).join("");
 
   return `
-  <div class="app ${opt.density} kit-${opt.surface || "flat"}">
     <aside>
       <div class="brand"><span class="dot"></span>${PROJECT.split(" ")[0]}</div>
       <div class="nav-item on"><span class="ic"></span>Overview</div>
@@ -835,17 +1395,17 @@ function appMarkup(opt) {
         </div>
 
         <div class="grid3">
-          <div class="card">
+          <div class="card reveal" style="--i:0">
             <div class="stat-label">Revenue</div>
             <div class="stat-value">$96.5k</div>
             <div class="stat-delta"><b>+12.4%</b> vs last month</div>
           </div>
-          <div class="card">
+          <div class="card reveal" style="--i:1">
             <div class="stat-label">Active accounts</div>
             <div class="stat-value">1,284</div>
             <div class="stat-delta"><b>+38</b> this week</div>
           </div>
-          <div class="card">
+          <div class="card reveal" style="--i:2">
             <div class="stat-label">Churn</div>
             <div class="stat-value">2.1%</div>
             <div class="stat-delta">−0.3pp vs last month</div>
@@ -853,11 +1413,11 @@ function appMarkup(opt) {
         </div>
 
         <div class="split">
-          <div class="card">
+          <div class="card reveal" style="--i:3">
             <div class="stat-label">Monthly recurring revenue</div>
             <div class="chart">${bars}</div>
           </div>
-          <div class="card">
+          <div class="card reveal" style="--i:4">
             <div class="field">
               <label>Workspace name</label>
               <input class="input${showFocus ? " focused" : ""}" value="Acme Analytics">
@@ -875,7 +1435,7 @@ function appMarkup(opt) {
           </div>
         </div>
 
-        <div class="card">
+        <div class="card reveal" style="--i:5">
           <table>
             <thead>
               <tr><th>Account</th><th>Plan</th><th>Status</th><th style="text-align:right">MRR</th></tr>
@@ -884,21 +1444,56 @@ function appMarkup(opt) {
           </table>
         </div>
       </div>
+    </div>`;
+}
 
-      <div class="type-specimen">
-        <p class="display">${opt.name}</p>
-        <p class="body">
-          The quick brown fox jumps over the lazy dog. Body copy at reading size, on the
-          surface it will actually sit on — this is where a font choice succeeds or fails.
-        </p>
-        <p class="stack">display: ${opt.fonts.display.split(",")[0]} &nbsp;·&nbsp; body: ${opt.fonts.body.split(",")[0]} &nbsp;·&nbsp; radius: ${opt[mode].radius} &nbsp;·&nbsp; density: ${opt.density} &nbsp;·&nbsp; surface: ${opt.surface || "flat"}${opt.surfaceNote ? ` (${opt.surfaceNote})` : ""}</p>
-      </div>
-    </div>
+const LAYOUTS = {
+  dashboard: layoutDashboard,
+  landing: layoutLanding,
+  ecommerce: layoutEcommerce,
+  editorial: layoutEditorial,
+};
+
+// The dashboard already renders every component the rail would; the other three
+// archetypes do not, so they get it appended.
+const RAIL_ARCHETYPES = ["landing", "ecommerce", "editorial"];
+
+function appMarkup(opt) {
+  const arch = LAYOUTS[ARCHETYPE] ? ARCHETYPE : "dashboard";
+  return `
+  <div class="app arch-${arch} ${opt.density} kit-${opt.surface || "flat"}">
+    ${LAYOUTS[arch](opt)}
+    ${RAIL_ARCHETYPES.includes(arch) ? railMarkup(opt) : ""}
+    ${typeSpecimen(opt)}
   </div>`;
+}
+
+const ARCHETYPE_LABEL = {
+  dashboard: "an internal console",
+  landing: "a marketing site",
+  ecommerce: "a storefront",
+  editorial: "a publication",
+};
+
+/** The brief and the reference links, rendered once. */
+function renderConcept() {
+  const el = document.getElementById("concept");
+  if (!CONCEPT && !INSPIRATION.length) return;
+  el.hidden = false;
+  const refs = INSPIRATION.length
+    ? `<div class="refs">${INSPIRATION.map((r) =>
+        `<a href="${r.url}" target="_blank" rel="noreferrer noopener">↗ ${r.label || r.url}${
+          r.note ? ` — ${r.note}` : ""}</a>`).join("")}</div>`
+    : "";
+  el.innerHTML = `
+    <div class="k">Designed for</div>
+    <div>${CONCEPT || "—"}</div>
+    ${refs}`;
 }
 
 function render() {
   document.getElementById("title").textContent = `UI directions — ${PROJECT}`;
+  document.body.dataset.anim = ANIMATION && animOn ? "on" : "off";
 
   document.getElementById("tabs").innerHTML = OPTIONS.map((o, i) => `
     <button class="tab" role="tab" id="tab-${i}" aria-selected="${i === active}"
@@ -906,7 +1501,7 @@ function render() {
       <span class="letter">${LETTERS[i]}</span>
       <span class="tab-text">
         <span class="tab-name">${o.name}</span>
-        <span class="tab-sub">${[o.surface, o[mode].radius].filter(Boolean).join(" · ")}</span>
+        <span class="tab-sub">${[o.surface, o[mode].radius, motionOf(o).style].filter(Boolean).join(" · ")}</span>
       </span>
       <span class="sw" style="${tokenStyle(o)}">
         ${SWATCHES.map((s) => `<i style="background:var(--${s})" title="${s}"></i>`).join("")}
@@ -914,6 +1509,7 @@ function render() {
     </button>`).join("");
 
   const o = OPTIONS[active];
+  const mo = motionOf(o);
   const isPicked = picked === o.id;
   document.getElementById("board").innerHTML = `
     <section class="option" id="opt-${o.id}" data-id="${o.id}">
@@ -927,9 +1523,11 @@ function render() {
           ${o.surfaceNote ? `<code>${o.surfaceNote}</code><br>` : ""}
           <code>radius ${o[mode].radius} · ${o.density}</code><br>
           ${o.accent ? `<code>accent ${o.accent}</code><br>` : ""}
+          <code>motion ${mo.style}${mo.tier ? ` (tier ${mo.tier})` : ""}</code><br>
           <code>primary ${o[mode].primary}</code>
         </div>
       </div>
+      ${mo.note ? `<p class="dim" style="margin:-4px 0 12px;font-size:12.5px">Motion — ${mo.note}</p>` : ""}
       <div class="frame" style="${tokenStyle(o)}">${appMarkup(o)}</div>
       <div class="pickrow">
         <button class="ctl pickbtn" aria-pressed="${isPicked}" onclick="pick('${o.id}')">
@@ -979,12 +1577,26 @@ document.getElementById("focus").addEventListener("click", (e) => {
   render();
 });
 
+// Motion is a comparison, not a decoration: seeing the same screen with it on
+// and off is how a user decides whether they want it at all.
+document.getElementById("anim").addEventListener("click", (e) => {
+  animOn = !animOn;
+  e.target.textContent = `Motion: ${animOn ? "on" : "off"}`;
+  e.target.setAttribute("aria-pressed", String(animOn));
+  render();
+});
+
+// Entrance animations play once per mount, and re-rendering the board remounts
+// it — so "replay" is just a redraw.
+document.getElementById("replay").addEventListener("click", render);
+
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "ArrowRight") switchTo(active + 1);
   else if (e.key === "ArrowLeft") switchTo(active - 1);
   else if (/^[1-9]$/.test(e.key) && +e.key <= OPTIONS.length) switchTo(+e.key - 1);
   else if (e.key === "d" || e.key === "D") document.getElementById("mode").click();
+  else if (e.key === "r" || e.key === "R") document.getElementById("replay").click();
   else return;
   e.preventDefault();
 });
@@ -992,6 +1604,28 @@ document.addEventListener("keydown", (e) => {
 const fromHash = LETTERS.indexOf((location.hash || "").slice(1, 2).toUpperCase());
 if (fromHash >= 0 && fromHash < OPTIONS.length) active = fromHash;
 
+// Animation was not asked for: the controls stay visible but inert, so the
+// preview does not silently imply a motion decision nobody made.
+if (!ANIMATION) {
+  animOn = false;
+  for (const id of ["anim", "replay"]) {
+    const el = document.getElementById(id);
+    el.disabled = true;
+    el.style.opacity = "0.45";
+    el.style.cursor = "not-allowed";
+  }
+  const a = document.getElementById("anim");
+  a.textContent = "Motion: not requested";
+  a.setAttribute("aria-pressed", "false");
+  a.title = "You said this product does not need animation, so every option renders static.";
+}
+
+document.getElementById("subtitle").textContent =
+  `The same screen — ${ARCHETYPE_LABEL[ARCHETYPE] || "a miniature app"} — rendered with a different ` +
+  `design direction per tab. Switch tabs to compare, toggle light/dark (both modes matter), and watch ` +
+  `how each one moves. Pick a letter, or say which parts of which options to combine.`;
+
+renderConcept();
 render();
 </script>
 </body>

@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -13,7 +12,7 @@ import (
 // planRepairAttempts is how many times the planner re-prompts after a validation
 // failure. One is deliberate: the active provider offers no JSON-Schema
 // enforcement, so a single corrective round-trip is worth it, but a model that
-// fails twice with the errors spelled out is not going to succeed on a third try.
+// fails twice with the errors spelled out will not succeed on a third try.
 const planRepairAttempts = 1
 
 // Planner turns a natural-language goal into a validated Plan.
@@ -29,8 +28,10 @@ func NewPlanner(d Deps) *Planner {
 	return &Planner{deps: d}
 }
 
+// Name returns the planner's identifier.
 func (p *Planner) Name() string { return "planner" }
 
+// Description returns what the planner does.
 func (p *Planner) Description() string {
 	return "Decomposes a goal into an ordered list of steps delegated to specialist agents."
 }
@@ -51,6 +52,7 @@ func (p *Planner) Plan(ctx context.Context, goal string, roster []AgentInfo) (Pl
 	var lastErr error
 
 	for attempt := 0; attempt <= planRepairAttempts; attempt++ {
+		// Feed the previous attempt's validation errors back into the prompt.
 		var errText string
 		if lastErr != nil {
 			errText = lastErr.Error()
@@ -65,10 +67,10 @@ func (p *Planner) Plan(ctx context.Context, goal string, roster []AgentInfo) (Pl
 			return Plan{}, fmt.Errorf("planner: render prompt: %w", err)
 		}
 
+		// A transport or parse failure is not something the repair prompt can fix —
+		// the model never produced a plan to correct.
 		var plan Plan
 		if err := p.deps.LLM.StructuredCompletion(ctx, prompt, &plan); err != nil {
-			// A transport or parse failure is not something the repair prompt can
-			// fix — the model never produced a plan to correct. Fail fast.
 			return Plan{}, fmt.Errorf("planner: completion (attempt %d): %w", attempt+1, err)
 		}
 
@@ -88,13 +90,3 @@ func (p *Planner) Plan(ctx context.Context, goal string, roster []AgentInfo) (Pl
 
 	return Plan{}, fmt.Errorf("planner: no valid plan after %d attempts: %w", planRepairAttempts+1, lastErr)
 }
-
-// planJSONExample is the contract shown in plan_prompt.txt. It is unmarshalled in
-// a test to guarantee the documented example stays parseable into a Plan — the
-// prompt is the only schema the model gets, so it must not drift from the struct.
-var planJSONExample = json.RawMessage(`{
-  "goal": "one sentence",
-  "steps": [
-    {"id": "s1", "agent": "market_data", "task": "…", "reason": "…", "use_output_of": []}
-  ]
-}`)

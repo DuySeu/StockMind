@@ -16,6 +16,7 @@ import (
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 )
 
+// OpenRouterCompletionParams carries the per-call inputs shared by both OpenRouter entry points.
 type OpenRouterCompletionParams struct {
 	Context context.Context
 	Client  *openrouter.OpenRouter
@@ -29,6 +30,7 @@ type openRouterProvider struct {
 	model  string
 }
 
+// Completion streams a chat completion for the conversation history.
 func (p *openRouterProvider) Completion(ctx context.Context, history []database.Message, toolDefs []*tools.Tool, systemPrompt string) (<-chan database.StreamEvent, error) {
 	return OpenRouterCompletion(OpenRouterCompletionParams{
 		Context: ctx,
@@ -38,6 +40,7 @@ func (p *openRouterProvider) Completion(ctx context.Context, history []database.
 	}, history, toolDefs)
 }
 
+// StructuredCompletion requests a single JSON completion and unmarshals it into result.
 func (p *openRouterProvider) StructuredCompletion(ctx context.Context, prompt string, result any) error {
 	return OpenRouterStructuredCompletion(OpenRouterCompletionParams{
 		Context: ctx,

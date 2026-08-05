@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
@@ -15,6 +14,7 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
+// OpenAICompletionParams carries the per-call inputs shared by both OpenAI entry points.
 type OpenAICompletionParams struct {
 	Context context.Context
 	Client  *openai.Client
@@ -28,6 +28,7 @@ type openAIProvider struct {
 	model  string
 }
 
+// Completion streams a chat completion for the conversation history.
 func (p *openAIProvider) Completion(ctx context.Context, history []database.Message, toolDefs []*tools.Tool, systemPrompt string) (<-chan database.StreamEvent, error) {
 	return OpenAICompletion(OpenAICompletionParams{
 		Context: ctx,
@@ -37,6 +38,7 @@ func (p *openAIProvider) Completion(ctx context.Context, history []database.Mess
 	}, history, toolDefs)
 }
 
+// StructuredCompletion requests a single JSON completion and unmarshals it into result.
 func (p *openAIProvider) StructuredCompletion(ctx context.Context, prompt string, result any) error {
 	return OpenAIStructuredCompletion(OpenAICompletionParams{
 		Context: ctx,
@@ -57,24 +59,12 @@ func NewOpenAIClient(config common.OpenAI) (*openai.Client, error) {
 		option.WithHTTPClient(common.SharedHTTPClient),
 	}
 
-	if strings.Contains(config.BaseURL, "openrouter.ai") {
-		opts = append(opts, option.WithBaseURL(config.BaseURL))
-	} else if config.BaseURL != "" {
+	if config.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(config.BaseURL))
 	}
 
 	client := openai.NewClient(opts...)
 	return &client, nil
-}
-
-// emitTextDeltas forwards visible assistant text from a stream delta directly onto ch.
-func emitTextDeltas(ch chan<- database.StreamEvent, delta openai.ChatCompletionChunkChoiceDelta) {
-	if delta.Content != "" {
-		ch <- database.StreamEvent{Type: database.EventText, Content: delta.Content}
-	}
-	if delta.Refusal != "" {
-		ch <- database.StreamEvent{Type: database.EventText, Content: delta.Refusal}
-	}
 }
 
 // OpenAICompletion sends messages to an OpenAI-compatible endpoint and returns a streaming event channel.
@@ -130,8 +120,15 @@ func OpenAICompletion(params OpenAICompletionParams, messages []database.Message
 			choice := chunk.Choices[0]
 			delta := choice.Delta
 
-			emitTextDeltas(ch, delta)
+			// Forward visible assistant text.
+			if delta.Content != "" {
+				ch <- database.StreamEvent{Type: database.EventText, Content: delta.Content}
+			}
+			if delta.Refusal != "" {
+				ch <- database.StreamEvent{Type: database.EventText, Content: delta.Refusal}
+			}
 
+			// Accumulate tool call fragments by stream index.
 			for _, tc := range delta.ToolCalls {
 				idx := int(tc.Index)
 				existing, ok := pendingToolCalls[idx]

@@ -4,7 +4,7 @@ Where the theme lives and what to write, per UI framework. Design the option in 
 
 > **Version gate.** Every API below changed across a recent major. Read the installed version from `package.json` and confirm the syntax against that version's docs before writing. If the installed major does not match what is documented here, trust `package.json` and the library's own docs — not this file, and not memory.
 >
-> On a **new project** there is no `package.json` to read until step 12 has run. Scaffold first (`references/scaffolding.md`), then read the majors the scaffolder actually installed — they are frequently newer than what you expected to get.
+> On a **new project** there is no `package.json` to read until step 11 has run. Scaffold first (`references/scaffolding.md`), then read the majors the scaffolder actually installed — they are frequently newer than what you expected to get.
 
 > **No comments in the CSS token file.** `index.css`, `app.css`, `globals.css`, `styles.css` — values only, zero `/* … */`, including the header on the ported option CSS. Explanatory comments in the examples below are documentation of this file, not something to copy into the project. The rule covers CSS token files only; the JS theme objects on this page (`createTheme`, `definePreset`, `ConfigProvider`) follow the project's normal conventions.
 

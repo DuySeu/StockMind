@@ -1,5 +1,5 @@
 // Package agents defines the specialist agents a plan can delegate to, plus the
-// plan contract itself. One file per agent; agent.go holds the shared base.
+// plan contract itself. One file per agent; base.go holds the shared base.
 //
 // The orchestrator (internal/orchestration) depends on this package, never the
 // reverse — which is why Plan lives here rather than there.
@@ -19,15 +19,12 @@ import (
 
 // Input is what the orchestrator hands an agent for one plan step.
 type Input struct {
-	// Task is the planner's instruction for this step.
 	Task string
-	// Goal is the user's original request, passed through unmodified. Agents need
-	// it for grounding the planner cannot supply: most importantly the user's
-	// language, since the planner routinely rewrites tasks into English and an
-	// agent working from the task alone would answer in the wrong language.
+	// Goal is the user's original request, unmodified. Agents need it to answer in
+	// the user's language, which the planner's rewritten task loses.
 	Goal string
-	// Context holds the outputs of the earlier steps this step's UseOutputOf
-	// named, keyed by step ID.
+	// Context holds the outputs of the earlier steps this step's UseOutputOf named,
+	// keyed by step ID.
 	Context map[string]string
 }
 
@@ -38,20 +35,16 @@ type Output struct {
 	Tools []database.Tool
 }
 
-// Emit lets an agent stream partial progress out through the orchestrator while
-// it works. kind is an orchestration event type ("tool_call", "step_text", …);
-// content carries text deltas and data carries structured payloads.
+// Emit lets an agent stream partial progress out through the orchestrator while it
+// works. kind is an orchestration event type ("tool_call", "step_text", …).
 type Emit func(kind string, content string, data any)
 
-// Agent is one specialist in the pipeline.
-//
-// Run is on the interface rather than Agent being pure metadata so that an agent
-// can be entirely custom — a deterministic API call with no LLM, say — without
-// the orchestrator needing to know.
+// Agent is one specialist in the pipeline. Run is on the interface so an agent can
+// be entirely custom — a deterministic API call with no LLM — transparently.
 type Agent interface {
 	Name() string
-	// Description tells the planner what this agent is for. It goes verbatim into
-	// the planning prompt, so it must be written for an LLM audience.
+	// Description goes verbatim into the planning prompt, so it must be written for
+	// an LLM audience.
 	Description() string
 	// Tools names the registered tools this agent may use. Nil means none.
 	Tools() []string
@@ -71,11 +64,9 @@ type AgentInfo struct {
 	Tools       []string `json:"tools"`
 }
 
-// ──────── LLMAgent — the shared base implementation ────────
-
-// LLMAgent implements Agent by running the standard agentic tool loop with a
-// fixed role prompt and a fixed tool subset. Every specialist in this package is
-// one of these; each agent file is then just a constructor.
+// LLMAgent implements Agent by running the standard agentic tool loop with a fixed
+// role prompt and a fixed tool subset. Every specialist in this package is one of
+// these; each agent file is then just a constructor.
 type LLMAgent struct {
 	name      string
 	desc      string
@@ -84,14 +75,18 @@ type LLMAgent struct {
 	deps      Deps
 }
 
-func (a *LLMAgent) Name() string        { return a.name }
+// Name returns the agent's registry key.
+func (a *LLMAgent) Name() string { return a.name }
+
+// Description returns the planner-facing summary of what this agent is for.
 func (a *LLMAgent) Description() string { return a.desc }
 
+// Tools returns the names of the registered tools this agent may use.
 func (a *LLMAgent) Tools() []string { return a.toolNames }
 
 // Run renders the role prompt, sends the step's task (plus any routed prior
-// outputs) as a single user message, and drains the agentic loop — accumulating
-// the assistant text while forwarding tool activity through emit.
+// outputs) as a single user message, and drains the agentic loop — accumulating the
+// assistant text while forwarding tool activity through emit.
 func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error) {
 	systemPrompt, err := a.deps.Prompts.GetAgentPrompt(a.promptTpl)
 	if err != nil {
@@ -100,10 +95,8 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 
 	history := []database.Message{{Role: "user", Content: renderTask(in)}}
 
-	// toolNames must be non-nil even when empty: nil would mean "every tool" to
-	// LLMChat, whereas a toolless agent genuinely wants none. Constructors in this
-	// package always supply a non-nil slice; this guards against a zero-value
-	// LLMAgent silently inheriting the full tool set.
+	// Guard a zero-value LLMAgent: nil would mean "every tool" to LLMChat, whereas a
+	// toolless agent wants none.
 	toolNames := a.toolNames
 	if toolNames == nil {
 		toolNames = []string{}
@@ -124,6 +117,7 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 		calls    []database.Tool
 	)
 
+	// Drain the stream, forwarding text and tool activity as it arrives.
 	for ev := range streamCh {
 		switch ev.Type {
 		case database.EventText:
@@ -131,13 +125,9 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 			emit("step_text", ev.Content, nil)
 
 		case database.EventThinking:
-			// Kept, not emitted: it is a fallback for an empty answer, not progress
-			// the reader should see twice.
 			thinking.WriteString(ev.Content)
 
 		case database.EventToolCall:
-			// Data is typed any; assert defensively so a provider quirk degrades
-			// into a dropped event rather than panicking this goroutine.
 			if tc, ok := ev.Data.(database.Tool); ok {
 				emit("tool_call", "", tc)
 			}
@@ -154,59 +144,35 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 		}
 	}
 
-	// A context deadline kills the provider stream, which closes the channel with
-	// no error event — surface it rather than returning a silently empty result.
+	// Prefer written text, fall back to reasoning, then to raw tool output: a
+	// reasoning model regularly answers with content empty and everything in the
+	// reasoning channel.
+	content := strings.TrimSpace(text.String())
+	if content == "" {
+		content = strings.TrimSpace(thinking.String())
+	}
+	if content == "" {
+		content = renderToolResults(calls)
+	}
+
+	// A context deadline kills the provider stream, which closes the channel with no
+	// error event.
 	if err := ctx.Err(); err != nil {
-		return Output{Content: bestEffortContent(text.String(), thinking.String(), calls), Tools: calls},
-			fmt.Errorf("agent %s: %w", a.name, err)
+		return Output{Content: content, Tools: calls}, fmt.Errorf("agent %s: %w", a.name, err)
 	}
 
-	out := Output{Content: bestEffortContent(text.String(), thinking.String(), calls), Tools: calls}
-	if out.Content == "" {
-		return out, fmt.Errorf("agent %s: produced no output", a.name)
+	if content == "" {
+		return Output{Tools: calls}, fmt.Errorf("agent %s: produced no output", a.name)
 	}
 
-	slog.Info("agent completed", "agent", a.name, "text_len", len(out.Content), "tool_calls", len(calls))
-	return out, nil
-}
-
-// bestEffortContent picks the best answer the round actually produced.
-//
-// The straightforward reading — "the assistant's text is the answer" — loses whole
-// steps with the current provider: a reasoning model regularly returns an answer
-// with `content` empty and everything in the reasoning channel, and an agent that
-// then reports nothing also throws away the tool results it paid for. Preference
-// order is written text, then reasoning, then the raw tool output, so a downstream
-// step gets something real to work from in every case but a completely silent round.
-func bestEffortContent(text, thinking string, calls []database.Tool) string {
-	if out := strings.TrimSpace(text); out != "" {
-		return out
-	}
-	if out := strings.TrimSpace(thinking); out != "" {
-		return out
-	}
-	return renderToolResults(calls)
-}
-
-// renderToolResults is the last resort: the tool output as retrieved, labelled so a
-// later agent can tell it is raw data rather than an analysis.
-func renderToolResults(calls []database.Tool) string {
-	var sb strings.Builder
-	for _, c := range calls {
-		if strings.TrimSpace(c.Result) == "" {
-			continue
-		}
-		if sb.Len() == 0 {
-			sb.WriteString("Raw tool output (the agent returned no written summary):\n")
-		}
-		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", c.Name, c.Result)
-	}
-	return strings.TrimSpace(sb.String())
+	slog.Info("agent completed", "agent", a.name, "text_len", len(content), "tool_calls", len(calls))
+	return Output{Content: content, Tools: calls}, nil
 }
 
 // renderTask builds the single user message an agent receives: the user's goal for
 // grounding, its own task, then the outputs of whichever earlier steps were routed
 // to it.
+// style: keep — inlining this and renderToolResults puts Run past 110 lines; neither shares locals with it.
 func renderTask(in Input) string {
 	var sb strings.Builder
 
@@ -223,8 +189,7 @@ func renderTask(in Input) string {
 		return sb.String()
 	}
 
-	// Sort keys so the prompt is deterministic across runs — map iteration order
-	// would otherwise reshuffle the context on every call.
+	// Sort the step IDs so the prompt is deterministic across runs.
 	ids := make([]string, 0, len(in.Context))
 	for id := range in.Context {
 		ids = append(ids, id)
@@ -236,4 +201,21 @@ func renderTask(in Input) string {
 		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", id, in.Context[id])
 	}
 	return sb.String()
+}
+
+// renderToolResults formats the tool output as retrieved, labelled so a later agent
+// can tell it is raw data rather than an analysis.
+// style: keep — see renderTask; both stay out of Run to keep the stream loop readable.
+func renderToolResults(calls []database.Tool) string {
+	var sb strings.Builder
+	for _, c := range calls {
+		if strings.TrimSpace(c.Result) == "" {
+			continue
+		}
+		if sb.Len() == 0 {
+			sb.WriteString("Raw tool output (the agent returned no written summary):\n")
+		}
+		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", c.Name, c.Result)
+	}
+	return strings.TrimSpace(sb.String())
 }

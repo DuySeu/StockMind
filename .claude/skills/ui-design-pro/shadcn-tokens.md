@@ -2,7 +2,7 @@
 
 The shadcn variable vocabulary is the lingua franca for this skill: design every option in these names, then map them onto whatever the target framework actually uses (see `framework-recipes.md`).
 
-> **The shipped token file carries no comments.** `index.css` (or `app.css` / `globals.css` / `styles.css`) is declarations only — no `/* … */`, no section banners, and not the `/* Option B - … */` header that `seed-options.py` writes onto the option CSS you port from. Comments in the examples below annotate *this reference*; they do not travel into the project. Reasoning about values lives in `docs/design/DECISIONS.md`.
+> **The shipped token file carries no comments.** `index.css` (or `app.css` / `globals.css` / `styles.css`) is declarations only — no `/* … */`, no section banners, and not the `/* Option B - … */` header that `seed-options.py` writes onto the option CSS you port from. Comments in the examples below annotate *this reference*; they do not travel into the project. Reasoning about values goes in the closing report in the chat, not into a file.
 
 ## The Token Set
 
@@ -296,7 +296,7 @@ Derive a full palette from one seed by holding `C` and `H` and walking `L`; adju
 | `--surface-gradient` | `background-image` on a surface | `none` | sheen | soft convexity | `none` |
 | `--surface-wash` | `background-image` on the page | `none` | tinted, so the blur has something to sample | `none` | `none` |
 
-Six kits: `flat`, `outlined`, `elevated`, `soft`, `glass`, `hard`. The kit name is recorded in `DECISIONS.md`; the values are in the token file.
+Six kits: `flat`, `outlined`, `elevated`, `soft`, `glass`, `hard`. The kit name is recorded in `UI-PLAN.md` → Direction; the values are in the token file.
 
 Two of them change the *colour* tokens as well, which is why they cannot be bolted on afterwards:
 

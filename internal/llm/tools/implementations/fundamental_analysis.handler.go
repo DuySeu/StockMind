@@ -16,23 +16,10 @@ import (
 	"stockmind/internal/common"
 )
 
-// ──────── Tool I/O types ────────
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 
 type FundamentalAnalysisInput struct {
 	Symbol string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
-}
-
-func (FundamentalAnalysisInput) Schema() map[string]any {
-	return map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"symbol": map[string]any{
-				"type":        "string",
-				"description": "Stock symbol, e.g., HPG",
-			},
-		},
-		"required": []string{"symbol"},
-	}
 }
 
 type Output struct {
@@ -49,8 +36,7 @@ type Overview struct {
 	Ecosystem            map[string]any `json:"ecosystem,omitempty"`
 }
 
-// ──────── VietCap iq-insight-service response shapes ────────
-
+// companyDetails and the types below it mirror VietCap iq-insight-service responses.
 type companyDetails struct {
 	Ticker              string  `json:"ticker"`
 	ViOrganName         string  `json:"viOrganName"`
@@ -89,7 +75,19 @@ type relationship struct {
 	Subsidiaries []relatedOrg `json:"subsidiaries"`
 }
 
-// ──────── Handler ────────
+// Schema declares the tool's input contract.
+func (FundamentalAnalysisInput) Schema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"symbol": map[string]any{
+				"type":        "string",
+				"description": "Stock symbol, e.g., HPG",
+			},
+		},
+		"required": []string{"symbol"},
+	}
+}
 
 // HandleFundamentalAnalysis builds a hybrid fundamental analysis: factual fields
 // (overview, shareholder structure, ecosystem) are fetched from VietCap's
@@ -165,10 +163,9 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 	return output, nil
 }
 
-// ──────── Helpers ────────
-
 // fetchIQ performs a GET against the VietCap iq-insight-service, decompresses the
 // response, and unwraps the standard {status, data} envelope into T.
+// style: keep — called for all three iq-insight endpoints.
 func fetchIQ[T any](ctx context.Context, path string) (T, error) {
 	var env struct {
 		Successful bool `json:"successful"`
@@ -205,8 +202,9 @@ func fetchIQ[T any](ctx context.Context, path string) (T, error) {
 	return env.Data, nil
 }
 
-// buildEcosystem maps subsidiaries/affiliates into a serializable structure.
-// Returns nil when no relationships exist (field is omitempty).
+// buildEcosystem maps subsidiaries/affiliates into a serializable structure, and
+// returns nil when no relationships exist (the field is omitempty).
+// style: keep — inlining it puts HandleFundamentalAnalysis past 80 lines and forces a temp out of the output literal.
 func buildEcosystem(rel relationship) map[string]any {
 	if len(rel.Subsidiaries) == 0 && len(rel.Affiliates) == 0 {
 		return nil
@@ -228,9 +226,8 @@ func buildEcosystem(rel relationship) map[string]any {
 	}
 }
 
-var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
-
 // stripHTML removes HTML tags, decodes entities, and collapses whitespace.
+// style: keep — applied to both the Vietnamese and English profile in one expression.
 func stripHTML(s string) string {
 	if s == "" {
 		return ""
@@ -241,6 +238,7 @@ func stripHTML(s string) string {
 }
 
 // firstNonEmpty returns the first non-empty string from the arguments.
+// style: keep — used for the name, industry, brief and ecosystem entries.
 func firstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {
