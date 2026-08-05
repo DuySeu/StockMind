@@ -8,7 +8,7 @@
 
 [] Add Customize chunking base on the documents(Legal document, table document,...)
 
-[] Create MAX mode for chat api(MAX -> multi-agent) toogle in chat panel
+[x] Create MAX mode for chat api(MAX -> multi-agent) toogle in chat panel
 
 [] Add gruadrail for system
 
@@ -16,7 +16,7 @@
 
 ## Optimize code & Enhance performance
 
-[] Enhance mcp client
+[x] Enhance mcp client
 
 [] Enhance processing document process
 

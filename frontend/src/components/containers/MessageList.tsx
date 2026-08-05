@@ -1,6 +1,6 @@
-import type { Message } from "@/types/message";
-import { isImage, isThinking, isToolCall, isTurnError } from "@/types/message";
-import { Brain, Check, LoaderCircle, RotateCcw, TriangleAlert, Wrench, X } from "lucide-react";
+import type { Message, ToolCallContent } from "@/types/message";
+import { isImage, isQuotaError, isThinking, isToolCall, isTurnError } from "@/types/message";
+import { BatteryWarning, Brain, Check, LoaderCircle, RotateCcw, TriangleAlert, Workflow, Wrench, X } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -80,6 +80,41 @@ const toolStatusStyle = {
   },
 } as const;
 
+/**
+ * Panel styling for a failed turn. Red is for something that went wrong; amber is
+ * for a spent quota, which is a limit being enforced rather than a fault — and
+ * the same reason it never raises a toast. Explicit palette colours rather than
+ * theme tokens, matching the tool chips above: neither shade is in the palette
+ * and both have to hold up in light and dark.
+ */
+const turnErrorStyle = {
+  failure: {
+    Icon: TriangleAlert,
+    panelClass: "border-red-600/30 bg-red-500/10",
+    textClass: "text-red-800 dark:text-red-300",
+    buttonClass:
+      "border-red-600/40 text-red-800 hover:bg-red-500/15 dark:border-red-400/40 dark:text-red-300",
+    label: "Error",
+  },
+  quota: {
+    Icon: BatteryWarning,
+    panelClass: "border-amber-600/30 bg-amber-500/10",
+    textClass: "text-amber-800 dark:text-amber-300",
+    buttonClass:
+      "border-amber-600/40 text-amber-800 hover:bg-amber-500/15 dark:border-amber-400/40 dark:text-amber-300",
+    label: "Quota exhausted",
+  },
+} as const;
+
+/**
+ * A max-mode turn streams its pipeline steps down the same `tool_call` channel as
+ * the model's own tools, namespaced by id. Without telling them apart, an agent
+ * step (`market_data`) rendered identically to a tool (`get_stock_price`) and the
+ * run summary counted four steps as four extra tools.
+ */
+const STEP_ID_PREFIX = "step:";
+const isPipelineStep = (tc: ToolCallContent) => tc.id.startsWith(STEP_ID_PREFIX);
+
 interface MessageListProps {
   messages: Message[];
   /** Re-sends the question that produced a failed turn. Omit to hide Retry. */
@@ -103,6 +138,8 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
     const hasToolCalls = toolCalls.length > 0;
     const runningCount = toolCalls.filter((t) => t.status === "running").length;
     const failedCount = toolCalls.filter((t) => t.status === "error").length;
+    const stepCount = toolCalls.filter(isPipelineStep).length;
+    const plainToolCount = toolCalls.length - stepCount;
 
     // The question this turn was answering, so Retry has something to re-send.
     const previous = index > 0 ? messages[index - 1] : undefined;
@@ -158,12 +195,19 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
               {isUsingTool ? (
                 <>
                   <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
-                  Using {runningCount > 1 ? `${runningCount} tools` : "tool"}…
+                  {stepCount > 0 ? "Running pipeline…" : `Using ${runningCount > 1 ? `${runningCount} tools` : "tool"}…`}
                 </>
               ) : failedCount > 0 ? (
                 <>
                   <X className="size-3.5 shrink-0" aria-hidden="true" />
-                  {failedCount} of {toolCalls.length} {toolCalls.length > 1 ? "tools" : "tool"} failed
+                  {failedCount} of {toolCalls.length} {stepCount > 0 ? "actions" : toolCalls.length > 1 ? "tools" : "tool"}{" "}
+                  failed
+                </>
+              ) : stepCount > 0 ? (
+                <>
+                  <Check className="size-3.5 shrink-0" aria-hidden="true" />
+                  {stepCount} agent {stepCount > 1 ? "steps" : "step"}
+                  {plainToolCount > 0 && `, ${plainToolCount} ${plainToolCount > 1 ? "tools" : "tool"}`}
                 </>
               ) : (
                 <>
@@ -183,17 +227,23 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
               <div className="flex flex-wrap gap-1.5">
                 {toolCalls.map((tc, idx) => {
                   const { Icon, iconClass, chipClass, label } = toolStatusStyle[tc.status];
+                  const isStep = isPipelineStep(tc);
+                  const Kind = isStep ? Workflow : Wrench;
                   return (
                     <span
                       key={tc.id || `tc-${idx}`}
                       className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${chipClass}`}
                       title={tc.arguments ? `${tc.name}(${tc.arguments})` : tc.name}
                     >
-                      <Wrench className="size-3 shrink-0 opacity-60" aria-hidden="true" />
-                      <span className="font-mono">{tc.name}</span>
+                      <Kind className="size-3 shrink-0 opacity-60" aria-hidden="true" />
+                      {/* A step is an agent, not a callable — monospace would read
+                          as a function name. */}
+                      <span className={isStep ? "font-medium" : "font-mono"}>{tc.name}</span>
                       <Icon className={iconClass} aria-hidden="true" />
                       {/* Colour alone can't carry the outcome. */}
-                      <span className="sr-only">{label}</span>
+                      <span className="sr-only">
+                        {isStep ? "agent step" : "tool"} {label}
+                      </span>
                     </span>
                   );
                 })}
@@ -216,29 +266,39 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
           )}
 
           {/* Turn failure — rendered where the reply would have been, so the
-              question never sits there looking merely unanswered. */}
-          {turnErrors.map((failure, idx) => (
-            <div
-              key={`err-${idx}`}
-              className="mb-1.5 flex w-full flex-col items-start gap-2 rounded-lg border border-red-600/30 bg-red-500/10 px-3 py-2.5"
-            >
-              <p className="flex items-start gap-2 text-sm leading-relaxed text-red-800 dark:text-red-300">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                <span>{failure.message}</span>
-              </p>
-              {onRetry && retryContent && (
-                <button
-                  type="button"
-                  onClick={() => onRetry(retryContent)}
-                  disabled={retryDisabled}
-                  className="inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border border-red-600/40 px-2.5 text-xs font-medium text-red-800 transition-colors hover:bg-red-500/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-400/40 dark:text-red-300"
-                >
-                  <RotateCcw className="size-3.5 shrink-0" aria-hidden="true" />
-                  Try again
-                </button>
-              )}
-            </div>
-          ))}
+              question never sits there looking merely unanswered. A spent quota
+              is the one failure shown *only* here (no toast), so it carries its
+              own amber styling: nothing crashed, the account simply has nothing
+              left to spend. */}
+          {turnErrors.map((failure, idx) => {
+            const style = isQuotaError(failure.code) ? turnErrorStyle.quota : turnErrorStyle.failure;
+            const { Icon } = style;
+            return (
+              <div
+                key={`err-${idx}`}
+                className={`mb-1.5 flex w-full flex-col items-start gap-2 rounded-lg border px-3 py-2.5 ${style.panelClass}`}
+              >
+                <p className={`flex items-start gap-2 text-sm leading-relaxed ${style.textClass}`}>
+                  <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                  <span>
+                    <span className="sr-only">{style.label}: </span>
+                    {failure.message}
+                  </span>
+                </p>
+                {onRetry && retryContent && (
+                  <button
+                    type="button"
+                    onClick={() => onRetry(retryContent)}
+                    disabled={retryDisabled}
+                    className={`inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50 ${style.buttonClass}`}
+                  >
+                    <RotateCcw className="size-3.5 shrink-0" aria-hidden="true" />
+                    Try again
+                  </button>
+                )}
+              </div>
+            );
+          })}
 
           {/* Main text content */}
           {message.content ? (

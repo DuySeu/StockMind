@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// GET /v1/news - Get today's market news, fetching from Tavily when the DB has none
 func (s *Server) GetNewsHandler(w http.ResponseWriter, r *http.Request) {
 	currentDate := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	latestNews, err := s.queries.GetLatestNews(r.Context(), currentDate)

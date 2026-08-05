@@ -72,6 +72,14 @@ type LLMOptions struct {
 	// means exactly those tools, and a non-nil empty slice means none at all.
 	// See tools.Manager.Subset.
 	Tools []string
+	// StreamThinking forwards the model's reasoning deltas to the caller.
+	//
+	// Both callers set it, for the same underlying reason: a reasoning model
+	// routinely puts a whole round in that channel and leaves `content` empty. An
+	// agent that only reads text then reports "produced no output" while discarding
+	// work it had already done, and a chat turn produces nothing at all — which the
+	// server declines to persist, so the turn disappears on reload.
+	StreamThinking bool
 }
 
 // LLMChat runs the agentic tool loop: call LLM → execute tool calls → append results → repeat until done.
@@ -112,9 +120,13 @@ func (s *LLMService) LLMChat(ctx context.Context, history []database.Message, op
 					outputCh <- event
 
 				case database.EventThinking:
-					// NOTE: the loop does not forward thinking deltas today; we only
-					// count them here to see if a round's answer arrives as reasoning.
 					thinkingLen += len(event.Content)
+					// Forwarded only on request: a reasoning model can put an entire
+					// answer here with nothing in `content`, and a caller that drops it
+					// is left with a round that produced nothing.
+					if opt.StreamThinking {
+						outputCh <- event
+					}
 
 				case database.EventToolCall:
 					tc := event.Data.(database.Tool)

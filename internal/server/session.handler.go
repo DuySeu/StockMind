@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -20,52 +19,8 @@ import (
 // Vietnamese title isn't truncated mid-character.
 const maxTitleRunes = 120
 
-// ──────── Session ID guards ────────
-
-// parseSessionID reads the {id} URL param and parses it as a UUID, answering
-// with 400 on a malformed value. The previous `uuid.Must(uuid.Parse(...))`
-// panicked on any non-UUID path segment, which closed the connection without a
-// response instead of returning an error the client could read.
-func parseSessionID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	raw := chi.URLParam(r, "id")
-	if raw == "" {
-		common.WriteJSONError(w, http.StatusBadRequest, "Session ID is required")
-		return uuid.Nil, false
-	}
-	id, err := uuid.Parse(raw)
-	if err != nil {
-		common.WriteJSONError(w, http.StatusBadRequest, "Invalid session ID: expected a UUID")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-// conversationExists reports whether a conversation row is present. A missing
-// row is not an error — it's the `false` case.
-func (s *Server) conversationExists(ctx context.Context, id uuid.UUID) (bool, error) {
-	if _, err := s.queries.GetConversationByID(ctx, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-// requireConversation guarantees the session exists before a handler reads or
-// writes anything under it, so callers never surface a raw driver error like
-// "no rows in result set". Writes 404 / 500 and returns false when it doesn't.
-func (s *Server) requireConversation(w http.ResponseWriter, r *http.Request, id uuid.UUID) bool {
-	ok, err := s.conversationExists(r.Context(), id)
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to look up session: "+err.Error())
-		return false
-	}
-	if !ok {
-		common.WriteJSONError(w, http.StatusNotFound, "Session not found")
-		return false
-	}
-	return true
+type updateSessionRequest struct {
+	Title string `json:"title"`
 }
 
 // GET /v1/sessions - Get sessions
@@ -79,6 +34,7 @@ func (s *Server) GetSessionsHandler(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, sessions)
 }
 
+// GET /v1/sessions/{id} - Get one conversation's messages, newest page first
 func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Request) {
 	convID, ok := parseSessionID(w, r)
 	if !ok {
@@ -128,6 +84,7 @@ func (s *Server) GetMessagesBySessionIdHandler(w http.ResponseWriter, r *http.Re
 	})
 }
 
+// DELETE /v1/sessions/{id} - Delete a conversation
 func (s *Server) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID, ok := parseSessionID(w, r)
 	if !ok {
@@ -143,11 +100,7 @@ func (s *Server) DeleteSessionHandler(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, map[string]string{"message": "Session deleted successfully"})
 }
 
-type updateSessionRequest struct {
-	Title string `json:"title"`
-}
-
-// PATCH /v1/sessions/{id} - Rename a conversation.
+// PATCH /v1/sessions/{id} - Rename a conversation
 func (s *Server) UpdateSessionTitleHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID, ok := parseSessionID(w, r)
 	if !ok {
@@ -183,4 +136,38 @@ func (s *Server) UpdateSessionTitleHandler(w http.ResponseWriter, r *http.Reques
 	// Echo the stored title back: the server may have truncated it, and the
 	// client should render what was actually saved.
 	common.WriteJSON(w, http.StatusOK, map[string]string{"id": sessionID.String(), "title": title})
+}
+
+// parseSessionID reads the {id} URL param and parses it as a UUID, answering
+// with 400 on a malformed value. The previous `uuid.Must(uuid.Parse(...))`
+// panicked on any non-UUID path segment, which closed the connection without a
+// response instead of returning an error the client could read.
+func parseSessionID(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
+	raw := chi.URLParam(r, "id")
+	if raw == "" {
+		common.WriteJSONError(w, http.StatusBadRequest, "Session ID is required")
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		common.WriteJSONError(w, http.StatusBadRequest, "Invalid session ID: expected a UUID")
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// requireConversation guarantees the session exists before a handler reads or
+// writes anything under it, so callers never surface a raw driver error like
+// "no rows in result set". Writes 404 / 500 and returns false when it doesn't.
+func (s *Server) requireConversation(w http.ResponseWriter, r *http.Request, id uuid.UUID) bool {
+	if _, err := s.queries.GetConversationByID(r.Context(), id); err != nil {
+		// A missing row is the 404 case, not a failure to look one up.
+		if errors.Is(err, pgx.ErrNoRows) {
+			common.WriteJSONError(w, http.StatusNotFound, "Session not found")
+			return false
+		}
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to look up session: "+err.Error())
+		return false
+	}
+	return true
 }

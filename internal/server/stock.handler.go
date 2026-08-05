@@ -14,23 +14,15 @@ import (
 	"time"
 )
 
-// ---------------------------------------------------------------------------
-// Request / response types
-// ---------------------------------------------------------------------------
+const vciHTTPTimeout = 10 * time.Second
 
 type AddSymbolInPriceBoardRequest struct {
 	Symbol string `json:"symbol"`
 }
 
-// ---------------------------------------------------------------------------
-// FetchStockPrice — shared VCI price board fetcher
-// ---------------------------------------------------------------------------
-
-const vciHTTPTimeout = 10 * time.Second
-
-// FetchStockPrice calls the VCI price board API for the given symbols and
-// returns the parsed JSON response. It is the single source of truth for
-// building the request, setting headers, and handling gzip decompression.
+// FetchStockPrice is the single source of truth for calling the VCI price board:
+// request shape, headers and gzip handling all live here rather than at each
+// call site.
 func FetchStockPrice(ctx context.Context, symbols []string) (interface{}, error) {
 	body, err := json.Marshal(struct {
 		Symbols []string `json:"symbols"`
@@ -77,15 +69,14 @@ func FetchStockPrice(ctx context.Context, symbols []string) (interface{}, error)
 	return result, nil
 }
 
-// GetLatestMatchPrice fetches the latest match price for a single ticker.
-// It navigates the VCI response at path: [0].matchPrice.matchPrice
+// GetLatestMatchPrice reads the price out of the VCI response at
+// [0].matchPrice.matchPrice — an untyped shape, hence the assertion per level.
 func GetLatestMatchPrice(ctx context.Context, ticker string) (float64, error) {
 	data, err := FetchStockPrice(ctx, []string{ticker})
 	if err != nil {
 		return 0, fmt.Errorf("fetch price for %s: %w", ticker, err)
 	}
 
-	// Response is an array: [{ matchPrice: { matchPrice: 170000, ... }, ... }]
 	items, ok := data.([]interface{})
 	if !ok || len(items) == 0 {
 		return 0, fmt.Errorf("unexpected response format for %s: not an array or empty", ticker)
@@ -109,10 +100,7 @@ func GetLatestMatchPrice(ctx context.Context, ticker string) (float64, error) {
 	return price, nil
 }
 
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
-
+// GET /v1/stock/price-board - Get live prices for every ticker on the watchlist
 func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 
@@ -154,6 +142,7 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, priceBoard)
 }
 
+// POST /v1/stock/add-symbol - Add a ticker to the watchlist
 func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 	var req AddSymbolInPriceBoardRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -171,6 +160,7 @@ func (s *Server) AddSymbolInPriceBoardHandler(w http.ResponseWriter, r *http.Req
 	common.WriteJSON(w, http.StatusCreated, "Symbol added to watchlist successfully")
 }
 
+// GET /v1/stock/watchlist - Get the watchlist
 func (s *Server) GetWatchlistHandler(w http.ResponseWriter, r *http.Request) {
 	watchlist, err := s.queries.GetWatchlist(r.Context(), 0)
 	if err != nil {

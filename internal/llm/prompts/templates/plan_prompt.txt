@@ -14,6 +14,7 @@ PLANNING RULES:
 3. Every step's "agent" MUST be one of the agent names listed above, spelled exactly.
 4. Give each step a short, unique, lowercase "id" (e.g. "s1", "price", "news").
 5. "task" is the concrete instruction that agent will receive. Be specific: name the ticker(s), the metric, the time range. The agent sees this task, the user's original goal, and the outputs you route to it — nothing else, so a task must stand on its own.
+   Never name another step by its id inside "task". The ids are internal plumbing, and an agent that repeats one prints it in the answer the user reads. "use_output_of" already routes the data, so describe the data itself: write "reconcile the closing price already retrieved with the fundamentals", never "combine the price from s1 with the analysis from s2".
 6. "use_output_of" lists the ids of EARLIER steps whose results this step needs. It may only reference steps that appear BEFORE this one. Leave it out or empty for steps that need no prior results.
 7. "reason" is one short sentence explaining why this step exists. It is shown to the user.
 8. The LAST step MUST use the "synthesizer" agent, and its "use_output_of" MUST list the ids of all the steps whose findings belong in the final answer.

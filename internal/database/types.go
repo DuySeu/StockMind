@@ -52,6 +52,10 @@ type Metadata struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 	Sources     []Source     `json:"sources,omitempty"`
 	Error       *TurnError   `json:"error,omitempty"`
+	// Thinking is the reasoning shown alongside a turn — for a max-mode turn, the
+	// plan and each step's prose. Stored so a reload shows the same turn the stream
+	// showed instead of dropping the explanation and keeping only the conclusion.
+	Thinking string `json:"thinking,omitempty"`
 }
 
 // TurnError records why an assistant turn failed. Persisting it is what keeps a

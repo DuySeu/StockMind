@@ -36,6 +36,17 @@ export type TurnErrorContent = {
   code?: string;
 };
 
+/**
+ * The server's code for an upstream quota or rate-limit refusal
+ * (`failQuota` in internal/server/chat.handler.go). It reads differently from
+ * every other failure: nothing is broken, retrying now changes nothing, and only
+ * the account owner can act on it — so it is shown in the thread and never as a
+ * toast.
+ */
+export const QUOTA_ERROR_CODE = "quota_exhausted";
+
+export const isQuotaError = (code?: string): boolean => code === QUOTA_ERROR_CODE;
+
 export type Metadata = ImageContent | ThinkingContent | ToolCallContent | TurnErrorContent;
 
 export type Message = {

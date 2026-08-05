@@ -21,11 +21,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// ---------------------------------------------------------------------------
-// Domain types (inbound request, shared across handlers)
-// ---------------------------------------------------------------------------
-
-// ResearchRequestPayload is the inbound payload for the research endpoint.
 type ResearchRequestPayload struct {
 	Tickers       []string `json:"tickers"        validate:"required,min=1,max=5"`
 	ResearchModel string   `json:"research_model" validate:"required,oneof=mini pro"`
@@ -74,28 +69,6 @@ type Outlook struct {
 	ExpansionPlans string   `json:"expansion_plans"`
 }
 
-// ---------------------------------------------------------------------------
-// Request validation (shared by both handlers)
-// ---------------------------------------------------------------------------
-
-func decodeAndValidateRequest(r *http.Request) (ResearchRequestPayload, error) {
-	var req ResearchRequestPayload
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return req, fmt.Errorf("Invalid JSON")
-	}
-	if len(req.Tickers) == 0 {
-		return req, fmt.Errorf("tickers must be a non-empty list")
-	}
-	if req.ResearchModel != "mini" && req.ResearchModel != "pro" {
-		return req, fmt.Errorf("research_model must be 'mini' or 'pro'")
-	}
-	return req, nil
-}
-
-// ---------------------------------------------------------------------------
-// SSE Progress types
-// ---------------------------------------------------------------------------
-
 type progressEvent struct {
 	Ticker   string `json:"ticker"`
 	Step     string `json:"step"`
@@ -103,11 +76,7 @@ type progressEvent struct {
 	Progress int    `json:"progress"` // 0-100 per ticker
 }
 
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
-
-// POST /v1/stock/fundamental-analysis  body: {"symbol": "HPG"}
+// POST /v1/stock/fundamental-analysis - Analyse one company's fundamentals
 func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Request) {
 	var input FundamentalAnalysisRequestPayload
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -122,7 +91,7 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 
 	ctx := r.Context()
 
-	// 1. Company details (required for grounding).
+	// Company details ground everything below, so this one is fatal.
 	details, err := faFetchIQ[faCompanyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("fetch company details for %s: %v", symbol, err))
@@ -133,7 +102,8 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// 2. Shareholders + relationships (best-effort, fetched concurrently).
+	// Shareholders and relationships are best-effort: a failure here leaves the
+	// zero value in place rather than failing the request.
 	var (
 		wg      sync.WaitGroup
 		holders faShareholderStructure
@@ -160,7 +130,6 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 	}()
 	wg.Wait()
 
-	// 3. Build authoritative factual fields.
 	result := FundamentalAnalysisOutput{
 		Overview: Overview{
 			CompanyName: faFirstNonEmpty(details.ViOrganName, details.EnOrganName),
@@ -178,8 +147,8 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 		},
 	}
 
-	// 4. LLM synthesis of analytical fields (non-fatal on failure). Factual
-	// fields stay authoritative; only the analytical narrative is merged in.
+	// Synthesis is non-fatal and never overwrites the factual fields above — only
+	// the analytical narrative is merged in.
 	if analysis, err := faSynthesizeAnalysis(ctx, s.agent, symbol, result.Overview, details); err != nil {
 		slog.Warn("fundamental_analysis: synthesis failed", "symbol", symbol, "error", err)
 	} else {
@@ -193,8 +162,7 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 	common.WriteJSON(w, http.StatusOK, result)
 }
 
-// MarketResearchHandler is the synchronous (non-streaming) research endpoint.
-// POST /v1/stock/research  body: {"tickers": ["HPG", "VNM"], "research_model": "mini"}
+// POST /v1/stock/research - Research tickers and return the whole result at once
 func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := decodeAndValidateRequest(r)
 	if err != nil {
@@ -207,8 +175,7 @@ func (s *Server) MarketResearchHandler(w http.ResponseWriter, r *http.Request) {
 	common.WriteJSON(w, http.StatusOK, response)
 }
 
-// MarketResearchStreamHandler is the SSE streaming research endpoint.
-// POST /v1/stock/research/stream  body: {"tickers": ["HPG", "VNM"], "research_model": "mini"}
+// POST /v1/stock/research/stream - Research tickers, streaming progress as SSE
 func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -230,23 +197,129 @@ func (s *Server) MarketResearchStreamHandler(w http.ResponseWriter, r *http.Requ
 	for evt := range progressCh {
 		common.WriteSSE(w, map[string]any{"type": "progress", "data": evt})
 
-		// Check if client disconnected between events
 		if r.Context().Err() != nil {
 			return
 		}
 	}
 
-	// All progress drained, send the final result
 	response := <-doneCh
 	common.WriteSSE(w, map[string]any{"type": "result", "data": response})
 
-	// Persist research reports in the background
 	go s.persistReports(response)
 }
 
-// ---------------------------------------------------------------------------
-// persistReports saves each report to the database in the background.
-// ---------------------------------------------------------------------------
+// ProcessResearchJob is the worker process function for research jobs.
+func (s *Server) ProcessResearchJob(job *worker.ResearchJob) {
+	ctx := context.Background()
+	ticker := job.Ticker
+
+	emit := func(step, message string, progress int) {
+		if job.ProgressCh == nil {
+			return
+		}
+		job.ProgressCh <- progressEvent{
+			Ticker:   ticker,
+			Step:     step,
+			Message:  message,
+			Progress: progress,
+		}
+	}
+
+	// Wrapped in a closure so each failure can return early and still report the
+	// result on the job's channel exactly once, below.
+	run := func() (database.StockReport, error) {
+		emit("building_prompt", "Building research prompt...", 10)
+		loader := prompts.NewPromptLoader()
+		prompt, err := loader.GetResearchPrompt(prompts.ResearchParams{
+			Ticker: ticker,
+			Date:   time.Now().Format(time.RFC3339),
+		})
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to build prompt: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("build prompt for %s: %w", ticker, err)
+		}
+
+		emit("submitting", "Submitting research request...", 25)
+		requestID, err := s.services.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
+			Input:        prompt,
+			Model:        job.ResearchModel,
+			Stream:       false,
+			OutputSchema: tavily.ResearchOutputSchema(),
+		})
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to submit: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("submit research for %s: %w", ticker, err)
+		}
+		slog.Info("tavily research submitted", "ticker", ticker, "request_id", requestID)
+
+		emit("polling", "Gathering and analyzing data...", 40)
+		pollResp, err := s.services.Tavily.PollResearch(ctx, requestID)
+		if err != nil {
+			emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
+			return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
+		}
+
+		emit("parsing", "Parsing research results...", 85)
+		report, err := parseResearchResult(ticker, pollResp)
+		if err != nil {
+			emit("failed", fmt.Sprintf("Failed to parse: %v", err), 0)
+			return database.StockReport{}, err
+		}
+
+		emit("completed", "Research complete", 100)
+		return report, nil
+	}
+
+	report, err := run()
+	job.ResultCh <- worker.ResearchResult{Ticker: ticker, Report: report, Err: err}
+}
+
+// GET /v1/stock/research-reports - List stored research reports with live prices
+func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Request) {
+	var reports []ResearchReport
+	reportFromDB, err := s.queries.GetResearchReports(r.Context())
+	if err != nil {
+		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, report := range reportFromDB {
+		price, err := GetLatestMatchPrice(context.Background(), report.Ticker)
+		if err != nil {
+			common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		reports = append(reports, ResearchReport{
+			GetResearchReportsRow: report,
+			Price:                 price,
+		})
+	}
+	common.WriteJSON(w, http.StatusOK, reports)
+}
+
+// GET /v1/stock/research-reports/{id} - Get one stored research report
+func (s *Server) GetResearchReportByIDHandler(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	report, err := s.queries.GetResearchReportById(r.Context(), uuid.Must(uuid.Parse(id)))
+	if err != nil {
+		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	common.WriteJSON(w, http.StatusOK, report)
+}
+
+func decodeAndValidateRequest(r *http.Request) (ResearchRequestPayload, error) {
+	var req ResearchRequestPayload
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return req, fmt.Errorf("Invalid JSON")
+	}
+	if len(req.Tickers) == 0 {
+		return req, fmt.Errorf("tickers must be a non-empty list")
+	}
+	if req.ResearchModel != "mini" && req.ResearchModel != "pro" {
+		return req, fmt.Errorf("research_model must be 'mini' or 'pro'")
+	}
+	return req, nil
+}
 
 func (s *Server) persistReports(report database.ResearchReport) {
 	for _, ticker := range report.Reports {
@@ -255,8 +328,7 @@ func (s *Server) persistReports(report database.ResearchReport) {
 			slog.Error("Failed to fetch stock price", "ticker", ticker.Ticker, "error", err)
 		}
 
-		// Use the first whitespace-delimited word of the recommendation,
-		// defaulting to "Unknown" when it is empty or blank.
+		// The model returns prose like "BUY — strong Q2"; only the verdict is stored.
 		recommendation := "Unknown"
 		if words := strings.Fields(ticker.Recommendation); len(words) > 0 {
 			recommendation = words[0]
@@ -274,13 +346,11 @@ func (s *Server) persistReports(report database.ResearchReport) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Orchestrator — researches tickers via the worker pool.
-// ---------------------------------------------------------------------------
-
 func (s *Server) stockDigestAgent(request ResearchRequestPayload, progressCh chan<- progressEvent) database.ResearchReport {
 	resultCh := make(chan worker.ResearchResult, len(request.Tickers))
 
+	// The worker pool speaks `chan any`; this proxy narrows it back to the typed
+	// channel the SSE handler ranges over.
 	var progressAnyCh chan<- any
 	if progressCh != nil {
 		proxy := make(chan any, 50)
@@ -330,85 +400,6 @@ func (s *Server) stockDigestAgent(request ResearchRequestPayload, progressCh cha
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Single-ticker research with optional progress reporting
-// ---------------------------------------------------------------------------
-
-// ProcessResearchJob is the worker process function for research jobs.
-func (s *Server) ProcessResearchJob(job *worker.ResearchJob) {
-	ctx := context.Background()
-	ticker := job.Ticker
-
-	// emit forwards a progress event to the job's progress channel (a no-op when
-	// no consumer is attached).
-	emit := func(step, message string, progress int) {
-		if job.ProgressCh == nil {
-			return
-		}
-		job.ProgressCh <- progressEvent{
-			Ticker:   ticker,
-			Step:     step,
-			Message:  message,
-			Progress: progress,
-		}
-	}
-
-	// run performs the research flow; its early returns keep error handling local.
-	run := func() (database.StockReport, error) {
-		// 1. Build the prompt
-		emit("building_prompt", "Building research prompt...", 10)
-		loader := prompts.NewPromptLoader()
-		prompt, err := loader.GetResearchPrompt(prompts.ResearchParams{
-			Ticker: ticker,
-			Date:   time.Now().Format(time.RFC3339),
-		})
-		if err != nil {
-			emit("failed", fmt.Sprintf("Failed to build prompt: %v", err), 0)
-			return database.StockReport{}, fmt.Errorf("build prompt for %s: %w", ticker, err)
-		}
-
-		// 2. Submit async research job
-		emit("submitting", "Submitting research request...", 25)
-		requestID, err := s.services.Tavily.SubmitResearch(ctx, tavily.ResearchRequest{
-			Input:        prompt,
-			Model:        job.ResearchModel,
-			Stream:       false,
-			OutputSchema: tavily.ResearchOutputSchema(),
-		})
-		if err != nil {
-			emit("failed", fmt.Sprintf("Failed to submit: %v", err), 0)
-			return database.StockReport{}, fmt.Errorf("submit research for %s: %w", ticker, err)
-		}
-		slog.Info("tavily research submitted", "ticker", ticker, "request_id", requestID)
-
-		// 3. Poll until completed
-		emit("polling", "Gathering and analyzing data...", 40)
-		pollResp, err := s.services.Tavily.PollResearch(ctx, requestID)
-		if err != nil {
-			emit("failed", fmt.Sprintf("Research timed out: %v", err), 0)
-			return database.StockReport{}, fmt.Errorf("poll research for %s: %w", ticker, err)
-		}
-
-		// 4. Parse structured content
-		emit("parsing", "Parsing research results...", 85)
-		report, err := parseResearchResult(ticker, pollResp)
-		if err != nil {
-			emit("failed", fmt.Sprintf("Failed to parse: %v", err), 0)
-			return database.StockReport{}, err
-		}
-
-		emit("completed", "Research complete", 100)
-		return report, nil
-	}
-
-	report, err := run()
-	job.ResultCh <- worker.ResearchResult{Ticker: ticker, Report: report, Err: err}
-}
-
-// ---------------------------------------------------------------------------
-// Response parsing — bridges tavily response to domain types
-// ---------------------------------------------------------------------------
-
 func parseResearchResult(ticker string, resp *tavily.ResearchPollResponse) (database.StockReport, error) {
 	report := database.StockReport{Ticker: ticker}
 
@@ -416,23 +407,23 @@ func parseResearchResult(ticker string, resp *tavily.ResearchPollResponse) (data
 		return report, nil
 	}
 
-	// Try structured JSON first — unmarshals directly into StockReport.
-	// Source's custom UnmarshalJSON handles both plain strings and objects.
+	// Content arrives in three shapes and none of them is worth failing over:
+	// structured JSON (Source has a custom UnmarshalJSON for string-or-object), a
+	// plain string summary, or something unrecognised — which yields the ticker
+	// alone rather than an error.
 	if err := json.Unmarshal(resp.Content, &report); err != nil {
-		// Fallback: content may be a plain string summary.
 		var plainSummary string
 		if err := json.Unmarshal(resp.Content, &plainSummary); err == nil {
 			report.Summary = plainSummary
 			return report, nil
 		}
-		// Neither structured nor string — return what we have.
 		return report, nil
 	}
 
-	// Ensure ticker is set (the AI response may omit it or use a different casing).
+	// The model may omit the ticker or change its casing.
 	report.Ticker = ticker
 
-	// Merge top-level Tavily sources (these carry titles) if the AI didn't provide any.
+	// Tavily's own sources carry titles, so they fill in when the model gave none.
 	if len(resp.Sources) > 0 && len(report.Sources) == 0 {
 		for _, src := range resp.Sources {
 			report.Sources = append(report.Sources, database.Source{
@@ -443,41 +434,4 @@ func parseResearchResult(ticker string, resp *tavily.ResearchPollResponse) (data
 	}
 
 	return report, nil
-}
-
-// ---------------------------------------------------------------------------
-// Report retrieval handlers
-// ---------------------------------------------------------------------------
-
-// GET /v1/stock/research-reports
-func (s *Server) GetResearchReportsHandler(w http.ResponseWriter, r *http.Request) {
-	var reports []ResearchReport
-	reportFromDB, err := s.queries.GetResearchReports(r.Context())
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for _, report := range reportFromDB {
-		price, err := GetLatestMatchPrice(context.Background(), report.Ticker)
-		if err != nil {
-			common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		reports = append(reports, ResearchReport{
-			GetResearchReportsRow: report,
-			Price:                 price,
-		})
-	}
-	common.WriteJSON(w, http.StatusOK, reports)
-}
-
-// GET /v1/stock/research-reports/{id}
-func (s *Server) GetResearchReportByIDHandler(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	report, err := s.queries.GetResearchReportById(r.Context(), uuid.Must(uuid.Parse(id)))
-	if err != nil {
-		common.WriteJSONError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	common.WriteJSON(w, http.StatusOK, report)
 }

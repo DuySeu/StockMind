@@ -1,3 +1,4 @@
+import { QUOTA_ERROR_CODE } from "@/types/message";
 import api from "./index";
 
 export interface ChatMessage {
@@ -27,6 +28,17 @@ export class ChatRequestError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Failure code for a rejected request, so the UI can treat a quota refusal as its
+ * own case. Quota normally arrives as an in-stream `error` event carrying the
+ * server's code; this covers the other shape — a 402/429 from the app or from a
+ * gateway in front of it, which never reaches the stream at all.
+ */
+export const requestFailureCode = (error: unknown): string | undefined => {
+  if (!(error instanceof ChatRequestError)) return undefined;
+  return error.status === 402 || error.status === 429 ? QUOTA_ERROR_CODE : undefined;
+};
 
 /** Pull `{"error": "..."}` out of a non-2xx response, falling back to the status. */
 async function readErrorBody(response: Response): Promise<string> {

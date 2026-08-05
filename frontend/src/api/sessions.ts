@@ -78,6 +78,13 @@ function flattenMetadata(raw: unknown): Metadata[] {
       }
     }
 
+    // Replayed closed: on the live stream it is open while the turn is being
+    // generated, and a finished turn has nothing left to watch.
+    const thinking = (container as { thinking?: unknown }).thinking;
+    if (typeof thinking === "string" && thinking) {
+      out.push({ type: "thinking", thinking, is_open: false });
+    }
+
     const failure = (container as { error?: unknown }).error;
     if (failure && typeof failure === "object") {
       const e = failure as Record<string, unknown>;

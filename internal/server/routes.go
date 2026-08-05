@@ -39,6 +39,10 @@ func (s *Server) RegisterRoutes() http.Handler {
 
 		// Websocket
 		// r.Get("/ws", s.websocketHandler)
+
+		// One turn, streamed as SSE. `max_mode` picks the flow: off runs the single
+		// agentic loop, on runs the planned multi-agent pipeline. Both share the
+		// session, persistence and relay path — see ChatHandler.
 		r.Post("/chat", s.ChatHandler)
 
 		// Users
@@ -75,12 +79,6 @@ func (s *Server) RegisterRoutes() http.Handler {
 			r.Post("/", s.CreateAgentFlowHandler)
 			// r.Put("/{id}", s.UpdateAgentFlowHandler)
 			// r.Delete("/{id}", s.DeleteAgentFlowHandler)
-		})
-
-		// Multi-agent pipeline: plan a goal, then run the plan's steps in order.
-		r.Route("/agent", func(r chi.Router) {
-			r.Post("/pipeline", s.AgentPipelineHandler)
-			r.Post("/pipeline/stream", s.AgentPipelineStreamHandler)
 		})
 
 		// Stock

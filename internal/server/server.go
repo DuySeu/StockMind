@@ -55,11 +55,14 @@ func NewServer(deps ServerDeps, port string) *http.Server {
 	}
 
 	return &http.Server{
-		Addr:         ":" + port,
-		Handler:      srv.RegisterRoutes(),
-		IdleTimeout:  time.Minute,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 5 * time.Minute,
+		Addr:        ":" + port,
+		Handler:     srv.RegisterRoutes(),
+		IdleTimeout: time.Minute,
+		ReadTimeout: 10 * time.Second,
+		// Bounds the longest single response, which is a max-mode chat turn: it
+		// must stay above orchestration.DefaultTotalBudget or the pipeline gets cut
+		// off mid-answer by the server rather than by its own budget.
+		WriteTimeout: 10 * time.Minute,
 	}
 }
 

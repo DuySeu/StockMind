@@ -9,16 +9,20 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"stockmind/internal/agents"
 )
 
-// Default budgets. Chosen so a worst-case run (MaxSteps steps, each hitting the
-// step timeout) stays inside the HTTP server's 5-minute WriteTimeout.
+// Default budgets, sized against the HTTP server's WriteTimeout (10 minutes).
+//
+// Raised from 90s/4m after a real run: a single step asked to fetch prices,
+// history and three financial statements needed more than 90s of tool calls, and
+// a four-step plan finished at 237s — three seconds inside the old total budget.
 const (
-	DefaultStepTimeout = 90 * time.Second
-	DefaultTotalBudget = 4 * time.Minute
+	DefaultStepTimeout = 150 * time.Second
+	DefaultTotalBudget = 8 * time.Minute
 )
 
 // Planner is the planning dependency, kept as an interface so the orchestrator is
@@ -74,14 +78,38 @@ type Result struct {
 	Final string       `json:"final"`
 }
 
-// Run plans and executes a pipeline for goal.
+// Request is one pipeline run's input.
+//
+// Goal and History are separate because they are read by different consumers for
+// different reasons. The planner needs the conversation to resolve a follow-up
+// ("what about VNM?"), while every agent takes its cue for tone and — critically —
+// *language* from Goal alone. Folding the conversation into Goal, complete with
+// English section labels, is enough to make a model answer a Vietnamese question
+// in another language entirely.
+type Request struct {
+	// Goal is the user's request, verbatim. This is what agents receive.
+	Goal string
+	// History is the prior conversation, already rendered. Planning-only, and
+	// optional: an opening turn has none.
+	History string
+}
+
+// planningGoal is what the planner is asked to decompose.
+func (r Request) planningGoal() string {
+	if r.History == "" {
+		return r.Goal
+	}
+	return r.History + "\n\nCURRENT REQUEST:\n" + r.Goal
+}
+
+// Run plans and executes a pipeline for req.
 //
 // It returns immediately with a buffered channel and does the work in one
 // goroutine, closing the channel when finished — the same shape as
 // core.LLMService.LLMChat, so handlers can relay it the same way. The returned
 // error covers only refusal to start; everything after that arrives as an
 // EventError followed by EventDone.
-func (o *Orchestrator) Run(ctx context.Context, goal string) (<-chan Event, error) {
+func (o *Orchestrator) Run(ctx context.Context, req Request) (<-chan Event, error) {
 	out := make(chan Event, 16)
 
 	go func() {
@@ -90,19 +118,19 @@ func (o *Orchestrator) Run(ctx context.Context, goal string) (<-chan Event, erro
 		ctx, cancel := context.WithTimeout(ctx, o.opts.TotalBudget)
 		defer cancel()
 
-		plan, err := o.planner.Plan(ctx, goal, o.registry.Roster())
+		plan, err := o.planner.Plan(ctx, req.planningGoal(), o.registry.Roster())
 		if err != nil {
 			out <- Event{Type: EventError, Data: fmt.Sprintf("planning failed: %v", err)}
 			out <- Event{Type: EventDone}
 			return
 		}
 
-		plan = ensureSynthesizer(plan, o.registry)
+		plan = ensureSynthesizer(plan, o.registry, req.Goal)
 		out <- Event{Type: EventPlan, Data: plan}
 
 		// An empty final means every step failed or the budget ran out — an
 		// EventError has already gone out, so don't follow it with an empty answer.
-		if final := o.execute(ctx, goal, plan, out); final != "" {
+		if final := o.execute(ctx, req.Goal, plan, out); final != "" {
 			out <- Event{Type: EventFinal, Content: final}
 		}
 		out <- Event{Type: EventDone}
@@ -112,8 +140,8 @@ func (o *Orchestrator) Run(ctx context.Context, goal string) (<-chan Event, erro
 }
 
 // Collect drains a run into a Result, for the non-streaming endpoint.
-func (o *Orchestrator) Collect(ctx context.Context, goal string) (Result, error) {
-	ch, err := o.Run(ctx, goal)
+func (o *Orchestrator) Collect(ctx context.Context, req Request) (Result, error) {
+	ch, err := o.Run(ctx, req)
 	if err != nil {
 		return Result{}, err
 	}
@@ -178,9 +206,20 @@ func (o *Orchestrator) execute(ctx context.Context, goal string, plan agents.Pla
 			if o.opts.StopOnError {
 				return last
 			}
-			// Record the failure as this step's output. A downstream step told
-			// "this lookup failed" can work around it; silently substituting an
-			// empty string would let it report a gap as a finding.
+			// A failed step often still produced something: a step that answers in
+			// full and then trips the deadline on its closing token comes back with
+			// both. Discarding that threw away 26 KB of finished analysis in testing.
+			// The note stays attached so the synthesizer keeps reporting the gap
+			// rather than presenting partial work as complete.
+			if strings.TrimSpace(content) != "" {
+				outputs[step.ID] = fmt.Sprintf("[step %q did not finish cleanly: %v — partial output follows]\n%s",
+					step.ID, err, content)
+				last = content
+				continue
+			}
+			// Nothing usable. A downstream step told "this lookup failed" can work
+			// around it; silently substituting an empty string would let it report a
+			// gap as a finding.
 			outputs[step.ID] = fmt.Sprintf("[step %q failed: %v]", step.ID, err)
 			continue
 		}
@@ -256,7 +295,7 @@ func selectContext(outputs map[string]string, refs []string) map[string]string {
 //
 // If the registry has no synthesizer (a test roster, say), the plan is returned
 // unchanged — the last step's output then becomes the final answer.
-func ensureSynthesizer(plan agents.Plan, registry *agents.Registry) agents.Plan {
+func ensureSynthesizer(plan agents.Plan, registry *agents.Registry, goal string) agents.Plan {
 	if len(plan.Steps) == 0 {
 		return plan
 	}
@@ -273,7 +312,12 @@ func ensureSynthesizer(plan agents.Plan, registry *agents.Registry) agents.Plan 
 		refs = append(refs, s.ID)
 	}
 
-	goal := plan.Goal
+	// The user's own words, not plan.Goal: the planner's restatement is a
+	// paraphrase, usually rewritten into English, and this task line is one of the
+	// few places the synthesizer sees what was actually asked.
+	if goal == "" {
+		goal = plan.Goal
+	}
 	if goal == "" {
 		goal = "the user's request"
 	}

@@ -16,8 +16,10 @@ import (
 	"stockmind/internal/llm/prompts"
 )
 
-// ──────── Output types ────────
-// faSynthesis holds only the analytical fields synthesized by the LLM.
+var faHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
+
+// faSynthesis holds only the analytical fields synthesized by the LLM. The
+// factual ones are fetched, never generated.
 type faSynthesis struct {
 	BusinessActivity BusinessActivity `json:"business_activity"`
 	EconomicMoat     string           `json:"economic_moat"`
@@ -26,8 +28,8 @@ type faSynthesis struct {
 	Macro            string           `json:"macro"`
 }
 
-// ──────── VietCap iq-insight-service response shapes ────────
-
+// The fa* shapes below mirror VietCap's iq-insight-service responses; the field
+// tags are its camelCase names, not ours.
 type faCompanyDetails struct {
 	Ticker              string  `json:"ticker"`
 	ViOrganName         string  `json:"viOrganName"`
@@ -160,9 +162,8 @@ func faBuildEcosystem(rel faRelationship) map[string]any {
 	}
 }
 
-var faHTMLTagRe = regexp.MustCompile(`<[^>]*>`)
-
-// faStripHTML removes HTML tags, decodes entities, and collapses whitespace.
+// faStripHTML removes HTML tags, decodes entities, and collapses whitespace:
+// the VietCap profile fields arrive as HTML fragments.
 func faStripHTML(s string) string {
 	if s == "" {
 		return ""
@@ -172,7 +173,6 @@ func faStripHTML(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
-// faFirstNonEmpty returns the first non-empty string from the arguments.
 func faFirstNonEmpty(vals ...string) string {
 	for _, v := range vals {
 		if strings.TrimSpace(v) != "" {

@@ -1,4 +1,4 @@
-import { sendChatMessage } from "@/api/chat";
+import { requestFailureCode, sendChatMessage } from "@/api/chat";
 import type { ChatEvent } from "@/api/chat";
 import { errorMessage, getSessionMessages, isNotFoundError, updateSessionTitle } from "@/api/sessions";
 import stockmindLogo from "@/assets/stockmind.png";
@@ -12,7 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import type { Message, Metadata, ToolCallContent } from "@/types/message";
-import { isToolCall, statusFromResult, toIsError } from "@/types/message";
+import { isQuotaError, isToolCall, statusFromResult, toIsError } from "@/types/message";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -59,6 +59,20 @@ const settleRunningTools = (metadata: Metadata[], reason: string): Metadata[] =>
  * the stream died before producing one. Mirrors what the server persists, so the
  * bubble on screen and the bubble after a reload are the same bubble.
  */
+/**
+ * Drop the trailing assistant turn when it ended without producing anything — a
+ * stop, or a stream that closed before its first event. Left in place, the
+ * placeholder appended on send would keep the "Thinking…" indicator running for a
+ * turn that is already over. An empty turn is also what the server declines to
+ * persist, so removing it keeps the thread and the DB in step.
+ */
+const dropEmptyTurn = (messages: Message[]): Message[] => {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== "assistant") return messages;
+  if (last.content || (last.metadata?.length ?? 0) > 0) return messages;
+  return messages.slice(0, -1);
+};
+
 const appendTurnError = (messages: Message[], message: string, code?: string): Message[] => {
   const failure: Metadata = { type: "error", message, code };
   const lastIndex = messages.length - 1;
@@ -306,7 +320,10 @@ const ChatbotPage = () => {
       case "error": {
         const message = typeof data === "string" ? data : ((data as { message?: string })?.message ?? "Stream error");
         const code = typeof data === "object" ? (data as { code?: string })?.code : undefined;
-        toast.error(message);
+        // Quota is thread-only: the message explains a state of the account, not
+        // an event to be alerted about, and a toast that fades hides the one
+        // failure the user has to read in full before retrying.
+        if (!isQuotaError(code)) toast.error(message);
         // Also rendered in the thread: a toast is dismissible and disappears on
         // reload, which left the failed turn looking like it had never replied.
         // `appendTurnError` settles any pending tool on the way.
@@ -335,6 +352,12 @@ const ChatbotPage = () => {
             ]
           : [],
       },
+      // The turn being generated, appended with the question rather than on the
+      // first event: an empty assistant turn is what renders the "Thinking…"
+      // indicator, and the wait before the first event is long enough — a whole
+      // planning round-trip in max mode — that a thread with nothing in it reads
+      // as a send that was dropped.
+      { role: "assistant", content: "" },
     ]);
 
     const controller = new AbortController();
@@ -371,9 +394,10 @@ const ChatbotPage = () => {
           // show that, not a placeholder that hides an unknown session behind
           // the same words as a malformed body.
           const message = errorMessage(error, "An error occurred while processing your request.");
+          const code = requestFailureCode(error);
           console.error("Stream error:", error);
-          toast.error(message);
-          setMessages((prev) => appendTurnError(prev, message));
+          if (!isQuotaError(code)) toast.error(message);
+          setMessages((prev) => appendTurnError(prev, message, code));
         },
         controller.signal,
       );
@@ -384,9 +408,11 @@ const ChatbotPage = () => {
       // A stopped stream leaves tools mid-flight; close them out so no chip is
       // left spinning after the request is gone.
       setMessages((prev) =>
-        controller.signal.aborted
-          ? patchLastAssistant(prev, (metadata) => settleRunningTools(metadata, "Stopped"))
-          : prev,
+        dropEmptyTurn(
+          controller.signal.aborted
+            ? patchLastAssistant(prev, (metadata) => settleRunningTools(metadata, "Stopped"))
+            : prev,
+        ),
       );
       abortRef.current = null;
       streamingSessionRef.current = null;

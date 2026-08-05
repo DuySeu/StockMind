@@ -15,7 +15,7 @@ import (
 	"stockmind/internal/service/worker"
 )
 
-// UploadDocumentHandler receives multipart form uploads with up to a 10MB limit.
+// POST /v1/documents - Upload a document for indexing (multipart, 10MB cap)
 func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
 
@@ -60,7 +60,7 @@ func (s *Server) UploadDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(doc)
 }
 
-// ListDocumentsHandler returns all indexed documents.
+// GET /v1/documents - List indexed documents
 func (s *Server) ListDocumentsHandler(w http.ResponseWriter, r *http.Request) {
 	docs, err := s.queries.ListDocuments(r.Context())
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *Server) ListDocumentsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]any{"data": docs})
 }
 
-// GetDocumentHandler returns metadata for a single document by UUID.
+// GET /v1/documents/{id} - Get one document's metadata
 func (s *Server) GetDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
@@ -91,7 +91,7 @@ func (s *Server) GetDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(doc)
 }
 
-// DeleteDocumentHandler deletes a document and its embeddings.
+// DELETE /v1/documents/{id} - Delete a document, its vectors and its stored file
 func (s *Server) DeleteDocumentHandler(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)

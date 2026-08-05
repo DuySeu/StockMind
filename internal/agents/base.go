@@ -110,16 +110,18 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 	}
 
 	streamCh, err := a.deps.LLM.LLMChat(ctx, history, core.LLMOptions{
-		SystemPrompt: systemPrompt,
-		Tools:        toolNames,
+		SystemPrompt:   systemPrompt,
+		Tools:          toolNames,
+		StreamThinking: true,
 	})
 	if err != nil {
 		return Output{}, fmt.Errorf("agent %s: start completion: %w", a.name, err)
 	}
 
 	var (
-		text  strings.Builder
-		calls []database.Tool
+		text     strings.Builder
+		thinking strings.Builder
+		calls    []database.Tool
 	)
 
 	for ev := range streamCh {
@@ -127,6 +129,11 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 		case database.EventText:
 			text.WriteString(ev.Content)
 			emit("step_text", ev.Content, nil)
+
+		case database.EventThinking:
+			// Kept, not emitted: it is a fallback for an empty answer, not progress
+			// the reader should see twice.
+			thinking.WriteString(ev.Content)
 
 		case database.EventToolCall:
 			// Data is typed any; assert defensively so a provider quirk degrades
@@ -150,17 +157,51 @@ func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error)
 	// A context deadline kills the provider stream, which closes the channel with
 	// no error event — surface it rather than returning a silently empty result.
 	if err := ctx.Err(); err != nil {
-		return Output{Content: text.String(), Tools: calls},
+		return Output{Content: bestEffortContent(text.String(), thinking.String(), calls), Tools: calls},
 			fmt.Errorf("agent %s: %w", a.name, err)
 	}
 
-	out := Output{Content: strings.TrimSpace(text.String()), Tools: calls}
+	out := Output{Content: bestEffortContent(text.String(), thinking.String(), calls), Tools: calls}
 	if out.Content == "" {
 		return out, fmt.Errorf("agent %s: produced no output", a.name)
 	}
 
 	slog.Info("agent completed", "agent", a.name, "text_len", len(out.Content), "tool_calls", len(calls))
 	return out, nil
+}
+
+// bestEffortContent picks the best answer the round actually produced.
+//
+// The straightforward reading — "the assistant's text is the answer" — loses whole
+// steps with the current provider: a reasoning model regularly returns an answer
+// with `content` empty and everything in the reasoning channel, and an agent that
+// then reports nothing also throws away the tool results it paid for. Preference
+// order is written text, then reasoning, then the raw tool output, so a downstream
+// step gets something real to work from in every case but a completely silent round.
+func bestEffortContent(text, thinking string, calls []database.Tool) string {
+	if out := strings.TrimSpace(text); out != "" {
+		return out
+	}
+	if out := strings.TrimSpace(thinking); out != "" {
+		return out
+	}
+	return renderToolResults(calls)
+}
+
+// renderToolResults is the last resort: the tool output as retrieved, labelled so a
+// later agent can tell it is raw data rather than an analysis.
+func renderToolResults(calls []database.Tool) string {
+	var sb strings.Builder
+	for _, c := range calls {
+		if strings.TrimSpace(c.Result) == "" {
+			continue
+		}
+		if sb.Len() == 0 {
+			sb.WriteString("Raw tool output (the agent returned no written summary):\n")
+		}
+		fmt.Fprintf(&sb, "\n--- %s ---\n%s\n", c.Name, c.Result)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // renderTask builds the single user message an agent receives: the user's goal for
