@@ -4,8 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { LogoTile } from "@/components/Logo";
 import {
-  TrendingUp,
   Search,
   ArrowRight,
   Globe,
@@ -94,7 +94,10 @@ function HeroSection() {
       <div className="mx-auto max-w-3xl text-center">
         <h1 className="mb-5 text-4xl font-bold leading-[1.1] tracking-tight lg:text-5xl">
           Your AI Copilot for <br />
-          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+          {/* --accent is a dark surface in dark mode, so the old from-primary
+              to-accent gradient faded the second half of the headline into the
+              background. chart-3 is a readable violet in both themes. */}
+          <span className="bg-gradient-to-r from-primary to-chart-3 bg-clip-text text-transparent">
             Vietnam Stock Investing
           </span>
         </h1>
@@ -136,7 +139,7 @@ function HeroSection() {
   );
 }
 
-function TickerCard({ listingInfo, matchPrice }: PriceBoard) {
+function TickerCard({ listingInfo, matchPrice, index = 0 }: PriceBoard & { index?: number }) {
   if (!listingInfo || !matchPrice) return null;
 
   const ticker = listingInfo.symbol;
@@ -165,7 +168,12 @@ function TickerCard({ listingInfo, matchPrice }: PriceBoard) {
   const style = PRICE_STATE[state];
 
   return (
-    <Card className="gap-0 rounded-xl p-5">
+    /* `backwards` fill so the card stays hidden through its stagger delay —
+       without it the card paints solid, then blinks out to start animating. */
+    <Card
+      className="gap-0 rounded-xl p-5 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out"
+      style={{ animationDelay: `${index * 60}ms`, animationFillMode: "backwards" }}
+    >
       <div className="mb-4 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-lg font-bold">{ticker}</h3>
@@ -228,7 +236,7 @@ function WatchlistSection() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         {priceBoard.length > 0
-          ? priceBoard.map((d, i) => <TickerCard key={d.listingInfo?.symbol ?? i} {...d} />)
+          ? priceBoard.map((d, i) => <TickerCard key={d.listingInfo?.symbol ?? i} index={i} {...d} />)
           : /* Reserved space rather than nothing, so the section does not
                jump when data lands. */
             Array.from({ length: 4 }).map((_, i) => (
@@ -480,7 +488,10 @@ function NewsSection() {
                 target="_blank"
                 rel="noopener noreferrer"
                 key={i}
-                className="group block rounded-xl transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                /* animation-duration-*, not duration-*: the latter also retimes
+                   the hover lift's transition, doubling it to 300ms. */
+                className="group block rounded-xl transition-transform hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring animate-in fade-in slide-in-from-bottom-2 animation-duration-300 ease-out"
+                style={{ animationDelay: `${i * 60}ms`, animationFillMode: "backwards" }}
               >
                 <Card className="h-full gap-0 rounded-xl p-5">
                   <div className="mb-3 flex items-center gap-2">
@@ -571,68 +582,43 @@ function Footer() {
        and are contrast-gated as a pair. */
     <footer className="bg-sidebar px-4 py-16 text-sidebar-foreground/70 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4 lg:grid-cols-5">
-          <div className="col-span-2 lg:col-span-2">
+        {/* Not a four-column link farm: every link below goes somewhere that
+            exists. The old footer held nine href="#" dead ends. */}
+        <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-sm">
             <div className="mb-4 flex items-center gap-2.5">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary">
-                <TrendingUp
-                  className="size-4 text-sidebar-primary-foreground"
-                  strokeWidth={2.5}
-                  aria-hidden="true"
-                />
-              </span>
+              <LogoTile className="size-8 shrink-0" />
               <span className="text-lg font-bold tracking-tight text-sidebar-foreground">StockMind</span>
             </div>
-            <p className="max-w-xs text-sm leading-relaxed">
-              Empowering the next generation of Vietnamese investors with state-of-the-art AI technology.
+            <p className="text-sm leading-relaxed">
+              Research tooling for the Vietnamese market, built to read filings and price data in the language they
+              were published in.
             </p>
           </div>
 
-          <div>
-            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Product</h2>
-            <ul className="space-y-3 text-sm">
-              {["Features", "Pricing", "Changelog"].map((l) => (
-                <li key={l}>
-                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
-                    {l}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Company</h2>
-            <ul className="space-y-3 text-sm">
-              {["About Us", "Careers", "Privacy"].map((l) => (
-                <li key={l}>
-                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
-                    {l}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div>
-            <h2 className="mb-4 text-sm font-semibold text-sidebar-foreground">Social</h2>
-            <ul className="space-y-3 text-sm">
-              {["Facebook", "LinkedIn", "TikTok"].map((l) => (
-                <li key={l}>
-                  <a href="#" className="transition-colors hover:text-sidebar-foreground">
-                    {l}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <nav aria-label="Footer" className="grid grid-cols-2 gap-x-12 gap-y-3 text-sm sm:grid-cols-3">
+            {[
+              { label: "Assistant", to: "/c" },
+              { label: "Watchlist", to: "/watchlist" },
+              { label: "Research", to: "/research" },
+              { label: "Knowledge base", to: "/documents" },
+              { label: "Features", to: "/#features" },
+              { label: "Pricing", to: "/#pricing" },
+            ].map((link) => (
+              <Link key={link.label} to={link.to} className="transition-colors hover:text-sidebar-foreground">
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
         <Separator className="my-8 bg-sidebar-border" />
 
-        <div className="flex flex-col items-center justify-between gap-3 text-xs md:flex-row">
-          <p>© 2024 StockMind AI. All rights reserved.</p>
-          <p>Data provided by HSX/HNX. AI insights are for informational purposes only.</p>
+        <div className="flex flex-col gap-3 text-xs md:flex-row md:items-center md:justify-between">
+          <p>© 2026 StockMind</p>
+          <p className="max-w-md md:text-right">
+            Prices from HSX and HNX, delayed. Nothing here is investment advice.
+          </p>
         </div>
       </div>
     </footer>

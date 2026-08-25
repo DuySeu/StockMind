@@ -26,7 +26,7 @@ export function StatusBadge({ status, errorMessage, className }: StatusBadgeProp
       );
     case "ready":
       return (
-        <Badge variant="secondary" className={`bg-green-500/10 text-green-500 hover:bg-green-500/20 ${className || ""}`}>
+        <Badge variant="secondary" className={`bg-status-ok-bg text-status-ok ${className || ""}`}>
           Ready
         </Badge>
       );

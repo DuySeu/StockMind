@@ -7,7 +7,7 @@ import (
 	"stockmind/internal/common"
 	"stockmind/internal/database"
 	"stockmind/internal/llm/models"
-	"stockmind/internal/llm/tools"
+	"stockmind/internal/tools"
 )
 
 // LLMService handles LLM interactions (agentic tool loop + summarization).

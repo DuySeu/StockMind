@@ -9,7 +9,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	"stockmind/internal/llm/tools"
+	"stockmind/internal/tools"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/bedrock"

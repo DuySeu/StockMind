@@ -18,12 +18,12 @@ import (
 	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
 	"stockmind/internal/llm/prompts"
-	"stockmind/internal/llm/tools"
 	"stockmind/internal/mcp"
 	"stockmind/internal/orchestration"
 	"stockmind/internal/server"
 	"stockmind/internal/service"
 	"stockmind/internal/storage"
+	"stockmind/internal/tools"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"

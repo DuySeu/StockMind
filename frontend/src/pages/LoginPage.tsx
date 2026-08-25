@@ -1,37 +1,62 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { TrendingUp, Sparkles, BarChart } from "lucide-react";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Sparkles, BarChart3 } from "lucide-react";
+import { LogoTile } from "@/components/Logo";
 import { Link } from "react-router-dom";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { useState } from "react";
+
+/* Sign-in has no backend yet (there is no auth in the API). The form validates
+   for real and then says so, instead of a button that silently does nothing. */
+const credentialsSchema = z.object({
+  email: z.string().min(1, "Enter your email address.").email("That does not look like an email address."),
+  password: z.string().min(8, "Passwords are at least 8 characters."),
+});
+
+type Credentials = z.infer<typeof credentialsSchema>;
 
 /* ───────────────────── Left: Login Form ───────────────────── */
 
+// Render the credentials form: validated client-side, no sign-in endpoint yet
 function LoginForm() {
+  const [submitError, setSubmitError] = useState("");
+
+  const form = useForm<Credentials>({
+    resolver: zodResolver(credentialsSchema),
+    defaultValues: { email: "", password: "" },
+  });
+
+  // Validation runs, then the honest failure: the endpoint does not exist.
+  const onSubmit = () => {
+    setSubmitError("Sign-in is not available yet. StockMind runs without an account for now.");
+  };
+
   return (
-    <div className="flex flex-col w-full lg:w-1/2 p-8 md:p-16 lg:p-24 justify-center bg-card">
-      <div className="max-w-md w-full mx-auto">
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-12">
-          <div className="text-primary">
-            <TrendingUp className="size-8" strokeWidth={2.5} />
-          </div>
-          <Link to="/" className="text-2xl font-bold tracking-tight">
-            StockMind
-          </Link>
-        </div>
+    <div className="flex w-full flex-col justify-center bg-card-solid px-6 py-16 sm:px-12 lg:w-1/2 lg:px-24">
+      <div className="mx-auto w-full max-w-md">
+        <Link
+          to="/"
+          className="mb-12 inline-flex items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <LogoTile className="size-9 shrink-0 rounded-[25%] shadow-xs" />
+          <span className="text-xl font-bold tracking-tight">StockMind</span>
+        </Link>
 
-        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
-          <p className="text-muted-foreground">Enter your credentials to access your account</p>
+          <h1 className="mb-2 text-3xl font-bold tracking-tight">Welcome back</h1>
+          <p className="text-muted-foreground">Sign in to sync your watchlist and research history.</p>
         </div>
 
-        {/* Social Logins */}
-        <div className="flex flex-col gap-3 mb-8">
-          <Button variant="outline" className="w-full h-12 rounded-xl font-medium gap-3 text-sm">
-            <svg className="size-5" viewBox="0 0 24 24">
+        {/* Providers are not wired either, so they are disabled with a reason
+            rather than looking live. */}
+        <div className="mb-8 flex flex-col gap-3">
+          <Button variant="outline" className="h-11 w-full gap-3 text-sm font-medium" disabled>
+            <svg className="size-5" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
                 fill="#4285F4"
@@ -49,61 +74,80 @@ function LoginForm() {
                 fill="#EA4335"
               />
             </svg>
-            <span>Continue with Google</span>
+            Continue with Google
           </Button>
 
-          <Button variant="outline" className="w-full h-12 rounded-xl font-medium gap-3 text-sm">
-            <svg className="size-5" fill="currentColor" viewBox="0 0 24 24">
+          <Button variant="outline" className="h-11 w-full gap-3 text-sm font-medium" disabled>
+            <svg className="size-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
             </svg>
-            <span>Continue with Apple</span>
+            Continue with Apple
           </Button>
         </div>
 
-        {/* Divider */}
         <div className="relative mb-8">
           <div className="absolute inset-0 flex items-center">
             <Separator />
           </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-4 bg-card text-muted-foreground uppercase tracking-wider text-xs font-semibold">
+          <div className="relative flex justify-center">
+            <span className="bg-card-solid px-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Or continue with email
             </span>
           </div>
         </div>
 
-        {/* Form */}
-        <form className="space-y-5" onSubmit={(e) => e.preventDefault()}>
-          <div>
-            <Label htmlFor="email" className="mb-1.5 text-sm font-semibold">
-              Email Address
-            </Label>
-            <Input id="email" type="email" placeholder="name@company.com" className="h-12 px-4 rounded-xl" />
-          </div>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5" noValidate>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm font-semibold">Email address</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="email" autoComplete="email" placeholder="name@company.com" className="h-11" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <div>
-            <div className="flex justify-between mb-1.5">
-              <Label htmlFor="password" className="text-sm font-semibold">
-                Password
-              </Label>
-              <a href="#" className="text-xs font-semibold text-primary hover:underline">
-                Forgot password?
-              </a>
-            </div>
-            <Input id="password" type="password" placeholder="••••••••" className="h-12 px-4 rounded-xl" />
-          </div>
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between">
+                    <FormLabel className="text-sm font-semibold">Password</FormLabel>
+                    <span className="text-xs text-muted-foreground">Recovery coming soon</span>
+                  </div>
+                  <FormControl>
+                    <Input {...field} type="password" autoComplete="current-password" className="h-11" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <Button type="submit" className="w-full h-12 rounded-xl font-bold mt-4 shadow-sm">
-            Sign In
-          </Button>
-        </form>
+            {/* Inline, next to the control that failed — never window.alert. */}
+            {submitError && (
+              <p role="alert" className="rounded-md bg-status-error-bg px-3 py-2 text-sm text-status-error">
+                {submitError}
+              </p>
+            )}
 
-        {/* Footer */}
+            <Button type="submit" className="h-11 w-full font-semibold">
+              Sign in
+            </Button>
+          </form>
+        </Form>
+
         <p className="mt-8 text-center text-sm text-muted-foreground">
-          Don't have an account?
-          <a href="#" className="text-primary font-bold hover:underline ml-1">
-            Sign up
-          </a>
+          No account needed to try it —{" "}
+          <Link to="/c" className="font-semibold text-primary hover:underline">
+            open the assistant
+          </Link>
+          .
         </p>
       </div>
     </div>
@@ -112,53 +156,63 @@ function LoginForm() {
 
 /* ───────────────── Right: Visual / Hero Panel ───────────────── */
 
+// Render the decorative right half of the split login screen
 function HeroPanel() {
   return (
-    <div className="hidden lg:flex w-1/2 bg-[radial-gradient(circle_at_center,rgba(160,255,155,0.15)_0%,var(--background)_100%)] relative overflow-hidden items-center justify-center p-24">
-      {/* Decorative blurs */}
-      <div className="absolute top-0 right-0 w-96 h-96 bg-primary/20 blur-[120px] rounded-full -mr-48 -mt-48" />
-      <div className="absolute bottom-0 left-0 w-96 h-96 bg-primary/10 blur-[100px] rounded-full -ml-48 -mb-48" />
+    /* Was a hardcoded rgba(160,255,155,…) mint radial — the pre-theme accent,
+       frozen into the markup. This is the shared --surface-wash instead, so the
+       panel follows the dark-mode toggle like every other surface. */
+    <aside
+      aria-hidden="true"
+      className="relative hidden w-1/2 items-center justify-center overflow-hidden bg-background p-24 lg:flex"
+      style={{ backgroundImage: "var(--surface-wash)" }}
+    >
+      <div className="absolute -right-48 -top-48 size-96 rounded-full bg-primary/15 blur-[120px]" />
+      <div className="absolute -bottom-48 -left-48 size-96 rounded-full bg-accent/15 blur-[100px]" />
 
       <div className="relative z-10 max-w-lg text-center">
-        {/* Illustration Card */}
-        <div className="mb-12 relative">
-          <div className="aspect-square w-full max-w-[400px] mx-auto bg-card/40 backdrop-blur-xl rounded-3xl border border-card/50 shadow-2xl flex items-center justify-center overflow-hidden">
-            <div className="relative w-full h-full p-8 flex flex-col items-center justify-center">
-              <BarChart className="size-30 text-primary/80" />
-              <div className="mt-6 space-y-3 w-full">
-                <div className="h-2 w-3/4 bg-primary/40 rounded-full mx-auto" />
-                <div className="h-2 w-1/2 bg-primary/30 rounded-full mx-auto" />
-                <div className="h-2 w-2/3 bg-primary/20 rounded-full mx-auto" />
+        <div className="relative mb-14">
+          <div className="glass-raised mx-auto flex aspect-square w-full max-w-[380px] items-center justify-center overflow-hidden rounded-3xl">
+            <div className="flex size-full flex-col items-center justify-center p-8">
+              <BarChart3 className="size-24 text-primary/70" />
+              <div className="mt-6 w-full space-y-3">
+                <div className="mx-auto h-2 w-3/4 rounded-full bg-primary/40" />
+                <div className="mx-auto h-2 w-1/2 rounded-full bg-primary/30" />
+                <div className="mx-auto h-2 w-2/3 rounded-full bg-primary/20" />
               </div>
             </div>
           </div>
 
-          {/* Floating Badge */}
-          <Card className="absolute -bottom-6 -right-6 p-4 rounded-2xl shadow-xl flex-row items-center gap-3 border">
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+          {/* Overlapping the card corner rather than sitting beside it — the
+              negative offset is what gives the panel any depth. */}
+          <Card className="absolute -bottom-6 -right-2 flex-row items-center gap-3 rounded-2xl p-4 shadow-xl xl:-right-6">
+            <span className="flex size-10 items-center justify-center rounded-full bg-secondary text-primary">
               <Sparkles className="size-5" />
-            </div>
+            </span>
             <div className="text-left">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">VNINDEX</p>
-              <p className="text-sm font-bold">+12.4% Growth</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">VNINDEX</p>
+              <p className="font-mono text-sm font-semibold tabular-nums text-price-up">+1,247.62</p>
             </div>
           </Card>
         </div>
 
-        <h2 className="text-4xl font-semibold leading-tight mb-6">Your AI Copilot for Vietnam Stock Investing</h2>
-        <p className="text-lg text-muted-foreground">
-          Analyze market trends and optimize your portfolio with AI-powered insights tailored for the Vietnamese market.
+        <h2 className="mb-5 text-4xl font-bold leading-[1.1] tracking-tight text-balance">
+          Your AI copilot for Vietnam stock investing
+        </h2>
+        <p className="text-lg leading-relaxed text-muted-foreground text-pretty">
+          Read the market in Vietnamese, get answers in either language, and keep the research beside the prices.
         </p>
       </div>
-    </div>
+    </aside>
   );
 }
 
 /* ────────────────────── Main Page ──────────────────────── */
 
+// Render the split-screen sign-in page
 const LoginPage = () => {
   return (
-    <div className="flex min-h-screen w-full bg-background text-foreground font-sans antialiased overflow-hidden">
+    <div className="flex min-h-dvh w-full bg-background font-sans text-foreground">
       <LoginForm />
       <HeroPanel />
     </div>

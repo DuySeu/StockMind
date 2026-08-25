@@ -31,13 +31,13 @@ Infra (`docker-compose up -d`) starts PostgreSQL 17, Qdrant, MinIO. DB migration
 
 Entry point `cmd/main.go` → `runServer()` wires everything in order: DB pool → migrate → MinIO → knowledge base (Qdrant + embedder + BM25) → external MCP client manager → services (worker pool) → tools → LLM service → HTTP server. `runServer` returns a `shutdown()` closure that drains HTTP, then worker pool, then MCP sessions.
 
-Request path: **React SPA → chi HTTP (`internal/server`) → `LLMService` agentic loop (`internal/llm`) → tools (`internal/llm/tools`) + provider (`internal/llm/providers`) → Postgres/Qdrant/MinIO.**
+Request path: **React SPA → chi HTTP (`internal/server`) → `LLMService` agentic loop (`internal/llm`) → tools (`internal/tools`) + provider (`internal/llm/providers`) → Postgres/Qdrant/MinIO.**
 
 ### Tools — the central concept
 
 There is **no standalone MCP server anymore.** Tools come from two sources and are merged into one `tools.Manager`:
 
-1. **In-process Go tools** (`internal/llm/tools/implementations/`): `retrieve_knowledge`, `get_stock_price`, `get_report`, `get_news`, `fundamental_analysis`. Registered in `tools.RegisterTools()` (`schemas.go`), which injects deps (KB retriever, services) via closures. Each uses the generic `NewTool[In](...)` — JSON Schema is inferred from struct tags (`json` + `jsonschema`), or from a custom `Schema()` method if the input implements `SchemaProvider`.
+1. **In-process Go tools** (`internal/tools/implementations/`): `retrieve_knowledge`, `get_stock_price`, `get_report`, `get_news`, `fundamental_analysis`. Registered in `tools.RegisterTools()` (`schemas.go`), which injects deps (KB retriever, services) via closures. Each uses the generic `NewTool[In](...)` — JSON Schema is inferred from struct tags (`json` + `jsonschema`), or from a custom `Schema()` method if the input implements `SchemaProvider`.
 2. **Bridged external MCP tools** (`internal/mcp` + `tools.BridgeMCPTools`): `internal/mcp` is now an MCP **client** manager, not a server. At startup it lazily spawns configured external MCP servers (currently AWS docs via `uvx awslabs.aws-documentation-mcp-server`, skipped if `uvx` is absent), lists their tools, and wraps each as a local `*Tool` named `<server>_<tool>`. Calls route through `Manager.CallTool`, which evicts and reconnects once on failure.
 
 To add a native tool: write a handler in `implementations/`, add its input struct + `Handle*` func, register it in `RegisterTools`.
@@ -72,4 +72,4 @@ No auth (hardcoded default user UUID). WebSocket handler exists but route is com
 
 ## Recent refactor (uncommitted at time of writing)
 
-`internal/agent/` → `internal/llm/`; `internal/knowledge_base/` → `internal/knowledge/`; the 5 MCP financial tools became in-process handlers under `internal/llm/tools/implementations/`; `internal/mcp` flipped from server to client/bridge; `fundamental_analysis` tool + endpoint added.
+`internal/agent/` → `internal/llm/`; `internal/knowledge_base/` → `internal/knowledge/`; the 5 MCP financial tools became in-process handlers under `internal/tools/implementations/`; `internal/mcp` flipped from server to client/bridge; `fundamental_analysis` tool + endpoint added.

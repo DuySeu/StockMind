@@ -1,9 +1,26 @@
 import { Link, Outlet } from "react-router-dom";
 import { Navbar } from "./Navbar";
-import { TrendingUp } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { LogoTile } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
+const THEMES = [
+  { value: "system", label: "System", icon: Monitor },
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+];
+
+// Render the app chrome: skip link, logo, nav, theme menu, and the routed page
 export function MainLayout() {
+  const { theme, setTheme } = useTheme();
+
   return (
     <div className="flex min-h-screen flex-col bg-background font-sans text-foreground">
       {/* Skip link: the nav carries six items, so keyboard users need a way
@@ -21,9 +38,9 @@ export function MainLayout() {
             to="/"
             className="flex shrink-0 items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
-            <span className="flex size-9 items-center justify-center rounded-lg bg-primary shadow-xs">
-              <TrendingUp className="size-5 text-primary-foreground" strokeWidth={2.5} aria-hidden="true" />
-            </span>
+            {/* Percentage radius, not `rounded-lg`: it has to track the tile the
+                SVG draws at rx=25%, or the box-shadow corners miss the artwork. */}
+            <LogoTile className="size-9 shrink-0 rounded-[25%] shadow-xs" />
             <span className="text-lg font-bold tracking-tight">StockMind</span>
           </Link>
 
@@ -34,6 +51,29 @@ export function MainLayout() {
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {/* A three-way menu, not a sun/moon flip: "system" is a real
+                choice and a two-state toggle cannot express it. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Change theme">
+                  <Sun className="size-4 dark:hidden" aria-hidden="true" />
+                  <Moon className="hidden size-4 dark:block" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-36">
+                {THEMES.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    onSelect={() => setTheme(option.value)}
+                    className={theme === option.value ? "font-semibold text-primary" : ""}
+                  >
+                    <option.icon className="size-4" aria-hidden="true" />
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
               <Link to="/login">Login</Link>
             </Button>

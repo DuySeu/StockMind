@@ -1,4 +1,11 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+
+/* Tailwind v4 resolves `dark:` from prefers-color-scheme by default, but the
+   palette below hangs off a `.dark` class. Without this the two disagree the
+   moment a reader picks a theme that is not their system one. next-themes sets
+   the class for system dark too, so system preference still wins by default. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 :root {
   --radius: 0.75rem;
@@ -51,6 +58,17 @@
   --price-down-bg: #fbe3e3;
   --price-floor: #155e75;
   --price-floor-bg: #d3f2f8;
+
+  /* Status is a separate family from --price-*, deliberately duplicated rather
+     than aliased. They happen to share hues today, but "up" and "succeeded" are
+     not the same idea: flipping the board to the Asian red-is-up convention must
+     not turn every success chip red. */
+  --status-ok: #047857;
+  --status-ok-bg: #d3f5e4;
+  --status-warn: #7c4a0b;
+  --status-warn-bg: #fbf0d2;
+  --status-error: #b91c1c;
+  --status-error-bg: #fbe3e3;
 
   --surface-border-width: 1px;
   --surface-shadow: 0 8px 32px -12px rgb(0 0 0 / 0.28);
@@ -129,6 +147,13 @@
   --price-floor: #6fd8ee;
   --price-floor-bg: #0f3440;
 
+  --status-ok: #4ade97;
+  --status-ok-bg: #12331f;
+  --status-warn: #e8c063;
+  --status-warn-bg: #3a2d0c;
+  --status-error: #ff8080;
+  --status-error-bg: #3f1a1a;
+
   --shadow-color: 250 60% 2%;
   --shadow-2xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.24);
   --shadow-xs: 0 1px 2px 0 hsl(var(--shadow-color) / 0.3);
@@ -186,6 +211,13 @@
   --color-price-floor: var(--price-floor);
   --color-price-floor-bg: var(--price-floor-bg);
 
+  --color-status-ok: var(--status-ok);
+  --color-status-ok-bg: var(--status-ok-bg);
+  --color-status-warn: var(--status-warn);
+  --color-status-warn-bg: var(--status-warn-bg);
+  --color-status-error: var(--status-error);
+  --color-status-error-bg: var(--status-error-bg);
+
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
@@ -205,9 +237,29 @@
   --shadow-2xl: var(--shadow-2xl);
 }
 
+/* Motion vocabulary. The built-in Tailwind curves are too weak to read as
+   deliberate; these are the three curves the whole app animates on. Names match
+   the Tailwind `ease-*` namespace, so `ease-out` resolves to the strong curve
+   everywhere rather than cubic-bezier(0, 0, 0.2, 1). */
+@theme {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
 @layer base {
   * {
     @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Lets `height: auto` be interpolated, which is what makes a disclosure able
+     to animate open to its own content height. */
+  :root {
+    interpolate-size: allow-keywords;
   }
 
   body {
@@ -279,6 +331,24 @@
     background-image: none;
     backdrop-filter: none;
   }
+
+  /* A <details> that opens and closes over its own height instead of snapping.
+     The thought-process block opens and closes on its own while a turn streams,
+     so a whole paragraph would otherwise appear and vanish in one frame. Height
+     is the one layout property worth animating here — it is what the Accordion
+     primitive animates too. Browsers without ::details-content support keep the
+     instant behaviour. */
+  .disclosure::details-content {
+    block-size: 0;
+    overflow: hidden;
+    transition:
+      block-size 200ms var(--ease-out),
+      content-visibility 200ms allow-discrete;
+  }
+
+  .disclosure[open]::details-content {
+    block-size: auto;
+  }
 }
 
 @keyframes fadeRight {
@@ -331,5 +401,29 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Gentler, not none. Surfaces that enter and exit keep a short fade with no
+     travel and no scale: a dialog that teleports in is harder to follow than
+     one that fades, and the preference is for less movement, not less
+     information. tw-animate-css drives all of its motion through these
+     variables, so zeroing them leaves the opacity change and nothing else. */
+  .animate-in,
+  .animate-out {
+    --tw-enter-translate-x: 0 !important;
+    --tw-enter-translate-y: 0 !important;
+    --tw-enter-scale: 1 !important;
+    --tw-enter-rotate: 0 !important;
+    --tw-exit-translate-x: 0 !important;
+    --tw-exit-translate-y: 0 !important;
+    --tw-exit-scale: 1 !important;
+    --tw-exit-rotate: 0 !important;
+    animation-duration: 150ms !important;
+  }
+
+  /* Colour still carries state changes — a tool chip going grey to green is
+     information, not decoration. */
+  .transition-colors {
+    transition-duration: 150ms !important;
   }
 }

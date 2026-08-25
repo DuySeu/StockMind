@@ -165,7 +165,7 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
           {/* Thinking blocks (assistant messages) */}
           {thinkingBlocks.map((block, idx) => (
             <div key={`think-${idx}`} className="mb-2 w-full">
-              <details open={block.is_open} className="glass group overflow-hidden rounded-lg">
+              <details open={block.is_open} className="disclosure glass group overflow-hidden rounded-lg">
                 <summary className="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
                   <Brain className="size-3.5 shrink-0" aria-hidden="true" />
                   <span>Thought process</span>
@@ -232,7 +232,7 @@ const MessageList = ({ messages, onRetry, retryDisabled }: MessageListProps) => 
                   return (
                     <span
                       key={tc.id || `tc-${idx}`}
-                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs ${chipClass}`}
+                      className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs transition-colors animate-in fade-in zoom-in-95 duration-200 ease-out ${chipClass}`}
                       title={tc.arguments ? `${tc.name}(${tc.arguments})` : tc.name}
                     >
                       <Kind className="size-3 shrink-0 opacity-60" aria-hidden="true" />

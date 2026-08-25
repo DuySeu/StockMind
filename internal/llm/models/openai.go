@@ -8,7 +8,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	"stockmind/internal/llm/tools"
+	"stockmind/internal/tools"
 
 	openai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"

@@ -21,12 +21,12 @@ tmp/
 # IDE specific files
 .vscode
 .idea
-# .agent
+.agents
 # .cursor
 
 # .env file
 .env
-AWS.json
+skills-lock.json
 
 # Project build
 main

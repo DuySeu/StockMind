@@ -6,7 +6,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
-	"stockmind/internal/llm/tools"
+	"stockmind/internal/tools"
 )
 
 // Provider is the provider-agnostic contract the LLM service depends on.

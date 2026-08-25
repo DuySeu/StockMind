@@ -55,8 +55,8 @@ The repository holds both tiers: a Go monolith (`cmd/` + `internal/`) and the Re
 | `llm/` | Agentic loop (`service.go`), history compression (`summarizer.go`) | — |
 | `llm/models/` | One adapter per LLM provider, selected by `LLM_PROVIDER` | `<provider>.go` |
 | `llm/prompts/` | Prompt templates as text files, loaded at runtime | `<task>_prompt.txt`, `agent_<name>.txt` |
-| `llm/tools/` | Tool contract + registry merging native and bridged MCP tools | `base_tool.go`, `tool_registry.go` |
-| `llm/tools/implementations/` | Execution logic for each native tool | `<tool_name>.handler.go` — filename matches the tool name the LLM sees |
+| `tools/` | Tool contract + registry merging native and bridged MCP tools | `base_tool.go`, `tool_registry.go` |
+| `tools/implementations/` | Execution logic for each native tool | `<tool_name>.handler.go` — filename matches the tool name the LLM sees |
 | `agents/` | Specialist agents for the planned multi-agent pipeline (max mode) | `<name>.agent.go`, one agent per file |
 | `orchestration/` | Executes a plan's steps in order, emits progress events. Depends on `agents/`, never the reverse | — |
 | `knowledge/` | Hybrid RAG: parse → chunk → embed → BM25 → Qdrant, fused with RRF | one file per pipeline stage |

@@ -13,8 +13,10 @@ import type { Document } from "@/types/document";
 import { getDocuments } from "@/api/document";
 import { DocumentListTable } from "@/components/DocumentListTable";
 import { DocumentUploadForm } from "@/components/DocumentUploadForm";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useDocumentPolling } from "@/hooks/useDocumentPolling";
 
+// Render the knowledge-base document list with upload and polling refresh
 const DocumentPage = () => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -44,22 +46,23 @@ const DocumentPage = () => {
 
   return (
     <div className="w-full flex-1 flex flex-col">
-      <header className="w-full border-b border-primary/20 bg-background/80 backdrop-blur-md px-6 lg:px-10 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex flex-col items-start gap-2">
-            <h2 className="text-2xl tracking-tight">Document Management</h2>
-            <p className="text-sm text-muted-foreground">Manage files to power AI Responses</p>
+      <header className="w-full border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-bold tracking-tight">Knowledge base</h1>
+            <p className="text-sm text-muted-foreground">Documents the assistant can cite when it answers.</p>
           </div>
 
           <div className="flex gap-2">
-            <Button variant="outline" size="icon" onClick={() => fetchDocuments()}>
-              <RotateCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
+            <Button variant="outline" size="icon" onClick={fetchDocuments} aria-label="Refresh documents">
+              <RotateCw className={isLoading ? "animate-spin" : ""} aria-hidden="true" />
             </Button>
-            
+
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
+                {/* mr-2 fought the button's own gap-2 and pushed the label off-centre. */}
                 <Button>
-                  <Plus className="mr-2 size-4" />
+                  <Plus aria-hidden="true" />
                   Upload
                 </Button>
               </DialogTrigger>
@@ -79,9 +82,18 @@ const DocumentPage = () => {
         </div>
       </header>
 
-      <div className="p-4 max-w-7xl mx-auto w-full">
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {isLoading && documents.length === 0 ? (
-          <div className="flex justify-center p-10"><RotateCw className="animate-spin text-muted-foreground size-6" /></div>
+          /* Skeleton rows in the table's own shape, not a spinner in empty space. */
+          <div className="overflow-hidden rounded-lg border border-border">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 border-b border-border p-4 last:border-b-0">
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
         ) : (
           <DocumentListTable documents={documents} onRefresh={fetchDocuments} />
         )}

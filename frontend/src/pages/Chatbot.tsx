@@ -1,7 +1,7 @@
 import { requestFailureCode, sendChatMessage } from "@/api/chat";
 import type { ChatEvent } from "@/api/chat";
 import { errorMessage, getSessionMessages, isNotFoundError, updateSessionTitle } from "@/api/sessions";
-import stockmindLogo from "@/assets/stockmind.png";
+import { LogoTile } from "@/components/Logo";
 import ChatInput from "@/components/containers/ChatInput";
 import Header from "@/components/containers/Header";
 import MessageList from "@/components/containers/MessageList";
@@ -476,8 +476,8 @@ const ChatbotPage = () => {
                   {messages.length > 0 || id ? (
                     <MessageList messages={messages} onRetry={handleRetry} retryDisabled={isStreaming} />
                   ) : (
-                    <div className="mt-8 flex flex-1 flex-col items-center justify-center gap-5 text-center">
-                      <img src={stockmindLogo} alt="" width={128} height={128} className="size-32 drop-shadow-sm" />
+                    <div className="mt-8 flex flex-1 flex-col items-center justify-center gap-5 text-center animate-in fade-in slide-in-from-bottom-1 duration-200 ease-out">
+                      <LogoTile className="size-20 drop-shadow-sm" />
                       <div className="max-w-md space-y-2">
                         <h2 className="text-xl font-bold tracking-tight text-foreground">Welcome to StockMind</h2>
                         <p className="text-sm leading-relaxed text-muted-foreground">
@@ -493,11 +493,18 @@ const ChatbotPage = () => {
                           "Explain P/E ratio",
                           "get FPT stock price and report",
                         ].map((suggestion, idx) => (
+                          // Fade only, no second slide: the block above already
+                          // travels, and a chip that moved as well would drift
+                          // away from it. `backwards` keeps each one hidden
+                          // through its delay instead of flashing first, and
+                          // animation-duration-* leaves Button's own press
+                          // transition at its 150ms rather than retiming it.
                           <Button
                             key={idx}
                             variant="outline"
                             onClick={() => onHandleSuggestion(suggestion)}
-                            className="h-auto min-h-11 justify-start whitespace-normal px-3.5 py-2.5 text-left text-sm font-normal"
+                            className="h-auto min-h-11 justify-start whitespace-normal px-3.5 py-2.5 text-left text-sm font-normal animate-in fade-in animation-duration-200 ease-out"
+                            style={{ animationDelay: `${100 + idx * 40}ms`, animationFillMode: "backwards" }}
                           >
                             {suggestion}
                           </Button>

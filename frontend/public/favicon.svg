@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <title>StockMind</title>
+  <rect width="32" height="32" rx="8" fill="#4338CA"/>
+  <path d="M27.83 3.78 L21.04 8.9 A6.4 4.8 0 1 0 15.5 16.1 A6.4 4.8 0 1 1 9.96 23.3"
+        fill="none" stroke="#ffffff" stroke-width="3.9" stroke-linejoin="round"/>
+</svg>

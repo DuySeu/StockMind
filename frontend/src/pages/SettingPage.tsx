@@ -1,10 +1,10 @@
 import { getAgentFlows } from "@/api/agent_flows";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AgentFlow } from "@/types/agent_flow";
 import { Box, ExternalLink, GitBranch, Layers, ShieldCheck, ShieldX, Workflow, Terminal } from "lucide-react";
 import { useEffect, useState } from "react";
 
+// Render one agent-flow config value, recursing into objects and arrays
 const ConfigValue = ({ value, depth = 0 }: { value: unknown; depth?: number }) => {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground/50 text-xs italic">N/A</span>;
@@ -13,11 +13,15 @@ const ConfigValue = ({ value, depth = 0 }: { value: unknown; depth?: number }) =
   if (typeof value === "boolean") {
     return (
       <div
-        className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium ${
-          value ? "text-green-600 bg-green-500/10" : "text-red-600 bg-red-500/10"
+        className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-medium ${
+          value ? "bg-status-ok-bg text-status-ok" : "bg-status-error-bg text-status-error"
         }`}
       >
-        {value ? <ShieldCheck className="w-3 h-3" /> : <ShieldX className="w-3 h-3" />}
+        {value ? (
+          <ShieldCheck className="size-3" aria-hidden="true" />
+        ) : (
+          <ShieldX className="size-3" aria-hidden="true" />
+        )}
         {value ? "True" : "False"}
       </div>
     );
@@ -126,6 +130,7 @@ const ConfigValue = ({ value, depth = 0 }: { value: unknown; depth?: number }) =
   return <span className="text-sm text-foreground/90 break-words whitespace-pre-wrap">{String(value)}</span>;
 };
 
+// Render every registered agent flow as an expandable config panel
 const SettingPage = () => {
   const [agentFlows, setAgentFlows] = useState<AgentFlow[]>([]);
 
@@ -143,77 +148,71 @@ const SettingPage = () => {
   }, []);
 
   return (
-    <div className="flex flex-col items-center p-3 gap-4">
-      <div className="text-2xl font-bold">Agent Flows</div>
-      <div className="text-sm text-muted-foreground">Configure and monitor your active agent workflows.</div>
-      <div className="flex flex-col w-full max-w-6xl p-3 gap-4 bg-secondary rounded-lg">
-        <ScrollArea className="flex-1 w-full min-h-0">
-          <div className="flex-1 flex flex-col gap-8 p-4 md:p-6 max-w-7xl mx-auto w-full">
-            <div className="flex flex-col gap-6">
-              <Accordion type="single" collapsible className="w-full space-y-4">
-                {agentFlows.map((agentFlow) => (
-                  <AccordionItem
-                    value={agentFlow.id}
-                    key={agentFlow.id}
-                    className="group border border-border/60 bg-card/40 backdrop-blur-sm rounded-xl px-2 overflow-hidden shadow-sm hover:shadow-md hover:border-primary/20 transition-all duration-300"
-                  >
-                    <AccordionTrigger className="hover:no-underline py-5 px-4 [&[data-state=open]]:text-primary">
-                      <div className="flex items-center gap-5 w-full">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/20 group-hover:scale-105 transition-transform duration-300">
-                          <GitBranch className="w-6 h-6" />
-                        </div>
-                        <div className="flex flex-col items-start gap-1">
-                          <span className="text-secondary-foreground text-xl font-semibold tracking-tight">
-                            {agentFlow.name}
-                          </span>
-                          <span className="text-xs text-muted-foreground font-mono bg-muted/80 px-2 py-0.5 rounded-md border border-border/50">
-                            ID: {agentFlow.id}
-                          </span>
-                        </div>
-                      </div>
-                    </AccordionTrigger>
+    <div className="flex w-full flex-1 flex-col">
+      <header className="w-full border-b border-border bg-background/85 backdrop-blur-md">
+        <div className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-5 sm:px-6 lg:px-8">
+          <h1 className="text-xl font-bold tracking-tight">Agent Flows</h1>
+          <p className="text-sm text-muted-foreground">The agent graphs this workspace can run, and their config.</p>
+        </div>
+      </header>
 
-                    <AccordionContent>
-                      <div className="border-t border-border/50 p-6">
-                        {agentFlow.config && typeof agentFlow.config === "object" ? (
-                          // Just a wrapper to ensure layout context
-                          <div className="w-full">
-                            <ConfigValue value={agentFlow.config} />
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-center gap-3 text-muted-foreground p-8 bg-muted/10 rounded-xl border border-dashed border-border/60">
-                            <Box className="w-5 h-5 opacity-50" />
-                            <span className="text-sm font-medium">
-                              {agentFlow.config ? (
-                                <ConfigValue value={agentFlow.config} />
-                              ) : (
-                                "No configuration available"
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
+      {/* The old shell nested a max-w-6xl bg-secondary box around a ScrollArea
+          around a max-w-7xl box — two competing widths and a scroll container
+          that could never scroll, since nothing constrained its height. */}
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {agentFlows.length > 0 ? (
+          <Accordion type="single" collapsible className="w-full space-y-4">
+            {agentFlows.map((agentFlow) => (
+              <AccordionItem
+                value={agentFlow.id}
+                key={agentFlow.id}
+                className="glass group overflow-hidden rounded-xl px-2 transition-colors hover:border-ring"
+              >
+                <AccordionTrigger className="px-4 py-5 hover:no-underline [&[data-state=open]]:text-primary">
+                  <div className="flex w-full items-center gap-4">
+                    <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-secondary text-primary">
+                      <GitBranch className="size-5" aria-hidden="true" />
+                    </span>
+                    <span className="flex min-w-0 flex-col items-start gap-1">
+                      <span className="text-lg font-semibold tracking-tight">{agentFlow.name}</span>
+                      <span className="truncate rounded-md border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+                        {agentFlow.id}
+                      </span>
+                    </span>
+                  </div>
+                </AccordionTrigger>
 
-              {agentFlows.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-24 text-center gap-6 opacity-60">
-                  <div className="p-4 rounded-full bg-muted/50">
-                    <Layers className="w-12 h-12 text-muted-foreground" />
+                <AccordionContent>
+                  <div className="border-t border-border p-6">
+                    {agentFlow.config ? (
+                      <ConfigValue value={agentFlow.config} />
+                    ) : (
+                      <div className="flex items-center justify-center gap-3 rounded-lg border border-dashed border-border p-8 text-sm text-muted-foreground">
+                        <Box className="size-5 opacity-50" aria-hidden="true" />
+                        This flow has no configuration stored.
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    <h3 className="text-lg font-medium text-foreground">No flows found</h3>
-                    <p className="text-muted-foreground text-sm">
-                      There are currently no agent flows available to display.
-                    </p>
-                  </div>
-                </div>
-              )}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        ) : (
+          /* A composed empty state rather than a dimmed icon: it says what the
+             page will hold and where flows come from. */
+          <div className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border px-6 py-20 text-center">
+            <span className="flex size-12 items-center justify-center rounded-lg bg-secondary">
+              <Layers className="size-6 text-muted-foreground" aria-hidden="true" />
+            </span>
+            <div className="space-y-1">
+              <h2 className="font-semibold">No agent flows yet</h2>
+              <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+                Flows are seeded from the backend on startup. Once one is registered it appears here with its full
+                agent and node configuration.
+              </p>
             </div>
           </div>
-        </ScrollArea>
+        )}
       </div>
     </div>
   );

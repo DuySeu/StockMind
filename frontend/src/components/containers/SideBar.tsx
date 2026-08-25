@@ -20,7 +20,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2, TrendingUp } from "lucide-react";
+import { Bolt, EllipsisVertical, LogOut, Moon, Plus, SquarePen, Sun, Trash2 } from "lucide-react";
+import { LogoTile } from "@/components/Logo";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -149,9 +150,7 @@ const SideBar = ({ setTitle, sessionVersion }: { setTitle: (title: string) => vo
     <Sidebar className="border-none" collapsible="icon">
       <SidebarHeader className="gap-3 p-3">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary">
-            <TrendingUp className="size-5 text-sidebar-primary-foreground" strokeWidth={2.5} aria-hidden="true" />
-          </span>
+          <LogoTile className="size-9 shrink-0" />
           <span className="truncate text-lg font-bold tracking-tight group-data-[collapsible=icon]:hidden">
             StockMind
           </span>

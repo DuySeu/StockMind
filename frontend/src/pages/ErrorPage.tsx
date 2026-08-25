@@ -1,58 +1,86 @@
 import { Link, useRouteError, isRouteErrorResponse } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Home, RefreshCw } from "lucide-react";
+import { ArrowLeft, Home, RefreshCw } from "lucide-react";
+import { LogoTile } from "@/components/Logo";
 
+// Render the route error boundary, branded and with three ways back
 const ErrorPage = () => {
   const error = useRouteError();
 
+  let errorCode = "";
   let errorTitle = "Something went wrong";
-  let errorMessage = "An unexpected error occurred.";
+  let errorMessage = "The page failed to load. Trying again usually fixes it.";
   let is404 = false;
 
   if (isRouteErrorResponse(error)) {
     if (error.status === 404) {
-      errorTitle = "Page Not Found";
-      errorMessage = "Sorry, we couldn't find the page you're looking for.";
+      errorCode = "404";
+      errorTitle = "We couldn't find that page";
+      errorMessage = "The link may be out of date, or the ticker in the URL no longer exists.";
       is404 = true;
     } else {
-      errorTitle = `Error ${error.status}`;
-      errorMessage = error.statusText;
+      errorCode = String(error.status);
+      errorTitle = "The server rejected that request";
+      errorMessage = error.statusText || "No further detail was returned.";
     }
   } else if (error instanceof Error) {
     errorMessage = error.message;
   } else if (!error) {
-    // Fallback if rendered directly or as a catch-all for 404
-    errorTitle = "Page Not Found";
-    errorMessage = "Sorry, we couldn't find the page you're looking for.";
+    // Rendered directly, or reached as the catch-all for an unmatched path.
+    errorCode = "404";
+    errorTitle = "We couldn't find that page";
+    errorMessage = "The link may be out of date, or the ticker in the URL no longer exists.";
     is404 = true;
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 text-center">
-      <div className="flex flex-col items-center space-y-6 max-w-md">
-        <div className="rounded-full bg-muted p-4">
-          <AlertCircle className="h-12 w-12 text-destructive" />
-        </div>
+    <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-16">
+      {/* Branded rather than an anonymous alert circle — a dead end is still a
+          page of the product, and it needs a way back into it. */}
+      <Link
+        to="/"
+        className="mb-12 inline-flex items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <LogoTile className="size-9 shrink-0 rounded-[25%] shadow-xs" />
+        <span className="text-xl font-bold tracking-tight">StockMind</span>
+      </Link>
 
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tighter sm:text-4xl text-foreground">{errorTitle}</h1>
-          <p className="text-muted-foreground text-lg">{errorMessage}</p>
-        </div>
+      <div className="w-full max-w-lg text-center">
+        {errorCode && (
+          <p className="mb-4 font-mono text-6xl font-bold tabular-nums text-muted-foreground/40">{errorCode}</p>
+        )}
 
-        <div className="flex flex-col sm:flex-row gap-4 min-w-[200px] justify-center">
-          <Button asChild size="lg" className="w-full sm:w-auto">
+        <h1 className="mb-3 text-3xl font-bold tracking-tight text-balance sm:text-4xl">{errorTitle}</h1>
+        <p className="mx-auto max-w-md leading-relaxed text-muted-foreground text-pretty">{errorMessage}</p>
+
+        <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+          <Button asChild size="lg">
             <Link to="/">
-              <Home className="mr-2 h-4 w-4" />
-              Go to Home
+              <Home aria-hidden="true" />
+              Back to home
             </Link>
           </Button>
-          {!is404 && (
-            <Button variant="outline" size="lg" onClick={() => window.location.reload()} className="w-full sm:w-auto">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Try Again
+          {is404 ? (
+            <Button asChild variant="outline" size="lg">
+              <Link to="/c">Ask the assistant instead</Link>
+            </Button>
+          ) : (
+            <Button variant="outline" size="lg" onClick={() => window.location.reload()}>
+              <RefreshCw aria-hidden="true" />
+              Try again
             </Button>
           )}
         </div>
+
+        {/* A third, quieter route out — not every dead end wants a filled button. */}
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="mx-auto mt-8 flex items-center gap-1.5 rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Go back to the previous page
+        </button>
       </div>
     </div>
   );
