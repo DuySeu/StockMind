@@ -4,13 +4,16 @@ const (
 	TRADING_URL     = "https://trading.vietcap.com.vn/api/"
 	PRICE_BOARD_URL = "price/symbols/getList"
 	CHART_URL       = "chart/OHLCChart/gap-chart"
-	INTRADAY_URL    = "market-watch"
-	GRAPHQL_URL     = "https://trading.vietcap.com.vn/data-mt/graphql"
 
-	// IQ_INSIGHT_URL is VietCap's company-insight REST service (company profile,
-	// shareholders, relationships) — distinct from the GraphQL ratio endpoint.
+	// IQ_INSIGHT_URL is VietCap's company-insight REST service: company profile,
+	// shareholders, relationships, financial ratios and statements. It replaced
+	// the data-mt GraphQL endpoint, which now answers every query with `{}`.
 	IQ_INSIGHT_URL = "https://iq.vietcap.com.vn/api/iq-insight-service"
 	COMPANY_URL    = "/v1/company"
+
+	// SEARCH_BAR_URL is the whole-market company directory: every ticker with its
+	// exchange and its four ICB industry levels. language=2 selects English.
+	SEARCH_BAR_URL = "/v2/company/search-bar?language=2"
 
 	TAVILY_URL = "https://api.tavily.com"
 )

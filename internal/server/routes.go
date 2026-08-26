@@ -85,12 +85,15 @@ func (s *Server) RegisterRoutes() http.Handler {
 		r.Route("/stock", func(r chi.Router) {
 			r.Get("/price-board", s.GetPriceBoardHandler)
 			r.Get("/watchlist", s.GetWatchlistHandler)
+			r.Get("/sectors", s.GetSectorsHandler)
+			r.Get("/sectors/{code}/price-board", s.GetSectorPriceBoardHandler)
 			r.Get("/research-reports", s.GetResearchReportsHandler)
 			r.Get("/research-reports/{id}", s.GetResearchReportByIDHandler)
 			r.Post("/add-symbol", s.AddSymbolInPriceBoardHandler)
 			r.Post("/research", s.MarketResearchHandler)
 			r.Post("/research/stream", s.MarketResearchStreamHandler)
 			r.Post("/fundamental-analysis", s.FundamentalAnalysisHandler)
+			r.Delete("/watchlist/{id}", s.DeleteSymbolFromWatchlistHandler)
 		})
 
 		r.Route("/news", func(r chi.Router) {

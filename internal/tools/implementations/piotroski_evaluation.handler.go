@@ -1,236 +1,297 @@
 package implementations
 
 import (
-	"bytes"
+	"cmp"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
+	"slices"
+	"sync"
 
 	"stockmind/internal/common"
 )
 
-const piotroskiQuery = "fragment Ratios on CompanyFinancialRatio { ticker yearReport revenue revenueGrowth netProfit roa currentRatio grossMargin at issueShare pe eps pcf de le __typename } query Query($ticker: String!, $period: String!) { CompanyFinancialRatio(ticker: $ticker, period: $period) { ratio { ...Ratios __typename } period __typename } }"
+// fiscalPeriod identifies one reporting quarter. Periods are matched by value
+// rather than by slice position: VietCap's history has holes (2021 Q2 is absent
+// for every ticker checked), so "four rows back" is not "one year back".
+type fiscalPeriod struct {
+	Year    int
+	Quarter int
+}
 
-// GraphQLPayload represents the GraphQL request payload
-type GraphQLPayload struct {
-	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables"`
+// String renders a period the way a Vietnamese report cites it.
+func (p fiscalPeriod) String() string {
+	return fmt.Sprintf("Q%d/%d", p.Quarter, p.Year)
+}
+
+// ratioPeriod is the subset of a statistics-financial row the F-score reads.
+// The comparison metrics are pointers so a metric VietCap does not report for a
+// company type is distinguishable from a real zero, and cannot be scored as an
+// improvement over nothing.
+type ratioPeriod struct {
+	YearReport        int      `json:"yearReport"`
+	Quarter           int      `json:"quarter"`
+	RatioType         string   `json:"ratioType"`
+	ROA               *float64 `json:"roa"`
+	CurrentRatio      *float64 `json:"currentRatio"`
+	GrossMargin       *float64 `json:"grossMargin"`
+	AssetTurnover     *float64 `json:"assetTurnover"`
+	DebtToEquity      *float64 `json:"debtToEquity"`
+	SharesOutstanding *float64 `json:"numberOfSharesMktCap"`
+}
+
+// statementRow carries the two raw statement figures the ratio table does not
+// expose. isa20 is net profit after tax and cfa18 is net cash from operating
+// activities; both are populated for corporates, banks and securities firms
+// alike, since banks carry their isb*/cfb* codes in addition, not instead.
+// lengthReport is the quarter for quarterly rows and 5 for annual ones.
+type statementRow struct {
+	YearReport   int     `json:"yearReport"`
+	LengthReport int     `json:"lengthReport"`
+	NetProfit    float64 `json:"isa20"`
+	CashFromOps  float64 `json:"cfa18"`
+}
+
+type statementSections struct {
+	Quarters []statementRow `json:"quarters"`
+	Years    []statementRow `json:"years"`
+}
+
+// PiotroskiSignals is the nine-signal breakdown behind the score.
+type PiotroskiSignals struct {
+	PositiveROA            bool `json:"positive_roa"`
+	PositiveOperatingCash  bool `json:"positive_operating_cash_flow"`
+	ImprovingROA           bool `json:"improving_roa"`
+	CashExceedsNetIncome   bool `json:"cash_flow_exceeds_net_income"`
+	DecreasingLeverage     bool `json:"decreasing_leverage"`
+	ImprovingCurrentRatio  bool `json:"improving_current_ratio"`
+	NoShareDilution        bool `json:"no_share_dilution"`
+	ImprovingGrossMargin   bool `json:"improving_gross_margin"`
+	ImprovingAssetTurnover bool `json:"improving_asset_turnover"`
 }
 
 type PiotroskiEvaluation struct {
-	Symbol  string  `json:"symbol"`
-	Period  string  `json:"period"`
-	Score   int     `json:"score"`
-	Details Details `json:"details"`
-}
-
-type Details struct {
-	NetIncome              bool `json:"net_income"`
-	ROA                    bool `json:"roa"`
-	NetOperatingCashFlow   bool `json:"net_operating_cash_flow"`
-	CashFlowFromOperations bool `json:"cash_flow_from_operations"`
-	LongTermDebt           bool `json:"long_term_debt"`
-	CurrentRatio           bool `json:"current_ratio"`
-	NewsIssued             bool `json:"news_issued"`
-	GrossMargin            bool `json:"gross_margin"`
-	AssetTurnoverRatio     bool `json:"asset_turnover_ratio"`
+	Symbol      string           `json:"symbol"`
+	Period      string           `json:"period"`
+	PriorPeriod string           `json:"prior_period"`
+	Score       int              `json:"score"`
+	Signals     PiotroskiSignals `json:"signals"`
+	// Unscorable names the signals VietCap reports no data for, so a bank's
+	// missing current ratio reads as "not applicable" rather than as a failure.
+	Unscorable []string `json:"unscorable_signals,omitempty"`
 }
 
 type PiotroskiInput struct {
 	Symbol string `json:"symbol" jsonschema:"Stock symbol, e.g., HPG"`
 }
 
-// GetPiotroskiEvaluation scores a symbol on the nine Piotroski F-score signals,
-// comparing the latest quarter against the same quarter a year earlier.
-func GetPiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, PiotroskiEvaluation, error) {
+// HandlePiotroskiEvaluation scores a symbol on the nine Piotroski F-score
+// signals, comparing its latest quarter against the same quarter a year earlier.
+func HandlePiotroskiEvaluation(ctx context.Context, input PiotroskiInput) (any, error) {
 	if input.Symbol == "" {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("symbol is required")
+		return nil, fmt.Errorf("symbol is required")
 	}
 
-	// Fetch the quarterly financial ratios.
-	payload := GraphQLPayload{
-		Query: piotroskiQuery,
-		Variables: map[string]interface{}{
-			"ticker": input.Symbol,
-			"period": "Q",
-		},
+	// Ratios, income statement and cash flow are three independent endpoints
+	var (
+		wg       sync.WaitGroup
+		rawRatio []ratioPeriod
+		income   statementSections
+		cash     statementSections
+		errs     [3]error
+	)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		rawRatio, errs[0] = common.FetchIQInsight[[]ratioPeriod](ctx,
+			fmt.Sprintf("%s/%s/statistics-financial", common.COMPANY_URL, input.Symbol))
+	}()
+	go func() {
+		defer wg.Done()
+		income, errs[1] = common.FetchIQInsight[statementSections](ctx,
+			fmt.Sprintf("%s/%s/financial-statement?section=INCOME_STATEMENT", common.COMPANY_URL, input.Symbol))
+	}()
+	go func() {
+		defer wg.Done()
+		cash, errs[2] = common.FetchIQInsight[statementSections](ctx,
+			fmt.Sprintf("%s/%s/financial-statement?section=CASH_FLOW", common.COMPANY_URL, input.Symbol))
+	}()
+	wg.Wait()
+
+	if err := errors.Join(errs[0], errs[1], errs[2]); err != nil {
+		return nil, fmt.Errorf("fetch financials for %s: %w", input.Symbol, err)
 	}
 
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("failed to marshal payload: %w", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", common.GRAPHQL_URL, bytes.NewBuffer(payloadJSON))
-	if err != nil {
-		return nil, PiotroskiEvaluation{}, err
-	}
-	for k, v := range common.VCI_HEADERS {
-		httpReq.Header.Set(k, v)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, PiotroskiEvaluation{}, err
-	}
-	defer resp.Body.Close()
-
-	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
-	if err != nil {
-		return nil, PiotroskiEvaluation{}, err
-	}
-	defer reader.Close()
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, PiotroskiEvaluation{}, err
-	}
-
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, PiotroskiEvaluation{}, err
-	}
-
-	// Unwrap the GraphQL envelope.
-	data, ok := result["data"].(map[string]interface{})
-	if !ok {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("invalid response format: data field missing")
-	}
-	financialRatio, ok := data["CompanyFinancialRatio"].(map[string]interface{})
-	if !ok {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("invalid response format: CompanyFinancialRatio missing")
-	}
-	ratios, ok := financialRatio["ratio"].([]interface{})
-	if !ok {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("invalid response format: ratio missing")
-	}
-	periods, ok := financialRatio["period"].([]interface{})
-	if !ok {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("invalid response format: period missing")
-	}
-
-	if len(periods) == 0 || len(ratios) == 0 {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("no financial data found")
-	}
-
-	latestPeriod := periods[0].(string)
-
-	if len(ratios) < 5 {
-		return nil, PiotroskiEvaluation{}, fmt.Errorf("insufficient data for year-over-year comparison (need at least 5 quarters)")
-	}
-
-	current := ratios[0].(map[string]interface{})
-	prevYear := ratios[4].(map[string]interface{})
-
-	getFloat := func(m map[string]interface{}, key string) float64 {
-		if val, ok := m[key]; ok && val != nil {
-			return val.(float64)
+	// Index all three sources by period so they can be matched by value
+	ratios := make(map[fiscalPeriod]ratioPeriod, len(rawRatio))
+	for _, row := range rawRatio {
+		if row.RatioType != ratioBasisTTM {
+			continue
 		}
-		return 0.0
+
+		// VietCap encodes "not applicable" as a literal 0 rather than as null for
+		// the two ratios that mean nothing for a bank. No operating company has a
+		// current ratio or an asset turnover of exactly zero, so read it as absent
+		// and let the signal report unscorable instead of failing the bank on it.
+		row.CurrentRatio = nilIfZero(row.CurrentRatio)
+		row.AssetTurnover = nilIfZero(row.AssetTurnover)
+
+		ratios[fiscalPeriod{Year: row.YearReport, Quarter: row.Quarter}] = row
+	}
+	netProfit := indexStatement(income.Quarters, func(r statementRow) float64 { return r.NetProfit })
+	cashFromOps := indexStatement(cash.Quarters, func(r statementRow) float64 { return r.CashFromOps })
+
+	current, prior, err := latestComparablePeriod(ratios, netProfit, cashFromOps)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", input.Symbol, err)
 	}
 
-	// Score the nine signals.
-	netIncome := getFloat(current, "netProfit")
-	scoreNetIncome := netIncome > 0
+	signals, unscorable := scorePiotroski(
+		ratios[current], ratios[prior],
+		netProfit[current], cashFromOps[current],
+	)
 
-	roa := getFloat(current, "roa")
-	scoreROA := roa > 0
+	return PiotroskiEvaluation{
+		Symbol:      input.Symbol,
+		Period:      current.String(),
+		PriorPeriod: prior.String(),
+		Score:       countSignals(signals),
+		Signals:     signals,
+		Unscorable:  unscorable,
+	}, nil
+}
 
-	pe := getFloat(current, "pe")
-	eps := getFloat(current, "eps")
-	shares := getFloat(current, "issueShare")
-	pcf := getFloat(current, "pcf")
+// nilIfZero treats an exact zero as an absent value.
+func nilIfZero(value *float64) *float64 {
+	if value == nil || *value == 0 {
+		return nil
+	}
+	return value
+}
 
-	var ocf float64
-	var scoreOCF bool
-	if pcf != 0 {
-		price := pe * eps
-		marketCap := price * shares
-		ocf = marketCap / pcf
-		scoreOCF = ocf > 0
+// indexStatement keys quarterly statement rows by period, reading one figure out
+// of each. Annual rows (lengthReport 5) are skipped.
+func indexStatement(rows []statementRow, value func(statementRow) float64) map[fiscalPeriod]float64 {
+	indexed := make(map[fiscalPeriod]float64, len(rows))
+	for _, row := range rows {
+		if row.LengthReport < 1 || row.LengthReport > 4 {
+			continue
+		}
+		indexed[fiscalPeriod{Year: row.YearReport, Quarter: row.LengthReport}] = value(row)
+	}
+	return indexed
+}
+
+// latestComparablePeriod finds the newest quarter that all three sources cover
+// and whose year-earlier quarter they also cover.
+//
+// It walks backwards rather than taking the newest period outright because a
+// hole in VietCap's history would otherwise leave the comparison without a
+// counterpart. Both chosen periods are reported in the output, so stepping back
+// is visible to the caller rather than silent.
+func latestComparablePeriod(
+	ratios map[fiscalPeriod]ratioPeriod,
+	netProfit, cashFromOps map[fiscalPeriod]float64,
+) (current, prior fiscalPeriod, err error) {
+	covered := func(p fiscalPeriod) bool {
+		_, hasRatio := ratios[p]
+		_, hasProfit := netProfit[p]
+		_, hasCash := cashFromOps[p]
+		return hasRatio && hasProfit && hasCash
 	}
 
-	scoreCFO := ocf > netIncome
-	scoreQualityOfEarnings := ocf > netIncome
-
-	deCurr := getFloat(current, "de")
-	dePrev := getFloat(prevYear, "de")
-	levCurr := 0.0
-	if deCurr != -1 {
-		levCurr = deCurr / (1 + deCurr)
+	// Newest first
+	periods := make([]fiscalPeriod, 0, len(ratios))
+	for period := range ratios {
+		periods = append(periods, period)
 	}
-	levPrev := 0.0
-	if dePrev != -1 {
-		levPrev = dePrev / (1 + dePrev)
+	slices.SortFunc(periods, func(a, b fiscalPeriod) int {
+		if a.Year != b.Year {
+			return cmp.Compare(b.Year, a.Year)
+		}
+		return cmp.Compare(b.Quarter, a.Quarter)
+	})
+
+	for _, period := range periods {
+		yearEarlier := fiscalPeriod{Year: period.Year - 1, Quarter: period.Quarter}
+		if covered(period) && covered(yearEarlier) {
+			return period, yearEarlier, nil
+		}
 	}
-	scoreLTD := levCurr < levPrev
 
-	crCurr := getFloat(current, "currentRatio")
-	crPrev := getFloat(prevYear, "currentRatio")
-	scoreCR := crCurr > crPrev
+	return current, prior, errors.New("no quarter has both ratio and statement data alongside its year-earlier counterpart")
+}
 
-	sharesPrev := getFloat(prevYear, "issueShare")
-	scoreDilution := shares <= sharesPrev
+// scorePiotroski evaluates the nine signals and names the ones that could not be
+// scored because VietCap reports no value for them.
+func scorePiotroski(current, prior ratioPeriod, netProfit, cashFromOps float64) (PiotroskiSignals, []string) {
+	// A metric is only an improvement if both sides of the comparison exist
+	improved := func(now, before *float64) bool {
+		return now != nil && before != nil && *now > *before
+	}
 
-	gmCurr := getFloat(current, "grossMargin")
-	gmPrev := getFloat(prevYear, "grossMargin")
-	scoreGM := gmCurr > gmPrev
+	signals := PiotroskiSignals{
+		PositiveROA:           current.ROA != nil && *current.ROA > 0,
+		PositiveOperatingCash: cashFromOps > 0,
+		ImprovingROA:          improved(current.ROA, prior.ROA),
+		CashExceedsNetIncome:  cashFromOps > netProfit,
+		ImprovingCurrentRatio: improved(current.CurrentRatio, prior.CurrentRatio),
+		ImprovingGrossMargin:  improved(current.GrossMargin, prior.GrossMargin),
+		// Fewer shares outstanding than a year ago means no dilution
+		NoShareDilution:        improved(prior.SharesOutstanding, current.SharesOutstanding) || equalShares(current, prior),
+		ImprovingAssetTurnover: improved(current.AssetTurnover, prior.AssetTurnover),
+	}
 
-	atCurr := getFloat(current, "at")
-	atPrev := getFloat(prevYear, "at")
-	scoreAT := atCurr > atPrev
+	// Leverage falls when debt/equity falls; the monotonic transform only
+	// matters for reporting, so compare the ratio directly.
+	signals.DecreasingLeverage = improved(prior.DebtToEquity, current.DebtToEquity)
 
-	// Sum the signals that passed.
+	// Name the signals that had no data behind them, so a bank's absent current
+	// ratio is not read as a genuine failure to improve
+	both := func(now, before *float64) bool { return now != nil && before != nil }
+	scorable := []struct {
+		name      string
+		available bool
+	}{
+		{"positive_roa", current.ROA != nil},
+		{"improving_roa", both(current.ROA, prior.ROA)},
+		{"decreasing_leverage", both(current.DebtToEquity, prior.DebtToEquity)},
+		{"improving_current_ratio", both(current.CurrentRatio, prior.CurrentRatio)},
+		{"no_share_dilution", both(current.SharesOutstanding, prior.SharesOutstanding)},
+		{"improving_gross_margin", both(current.GrossMargin, prior.GrossMargin)},
+		{"improving_asset_turnover", both(current.AssetTurnover, prior.AssetTurnover)},
+	}
+
+	var unscorable []string
+	for _, signal := range scorable {
+		if !signal.available {
+			unscorable = append(unscorable, signal.name)
+		}
+	}
+
+	return signals, unscorable
+}
+
+// equalShares reports whether the share count is unchanged, which counts as no
+// dilution just as a reduction does.
+func equalShares(current, prior ratioPeriod) bool {
+	return current.SharesOutstanding != nil && prior.SharesOutstanding != nil &&
+		*current.SharesOutstanding == *prior.SharesOutstanding
+}
+
+// countSignals sums the signals that passed.
+func countSignals(s PiotroskiSignals) int {
+	passed := []bool{
+		s.PositiveROA, s.PositiveOperatingCash, s.ImprovingROA, s.CashExceedsNetIncome,
+		s.DecreasingLeverage, s.ImprovingCurrentRatio, s.NoShareDilution,
+		s.ImprovingGrossMargin, s.ImprovingAssetTurnover,
+	}
+
 	score := 0
-	if scoreNetIncome {
-		score++
+	for _, ok := range passed {
+		if ok {
+			score++
+		}
 	}
-	if scoreROA {
-		score++
-	}
-	if scoreOCF {
-		score++
-	}
-	if scoreQualityOfEarnings {
-		score++
-	}
-	if scoreLTD {
-		score++
-	}
-	if scoreCR {
-		score++
-	}
-	if scoreDilution {
-		score++
-	}
-	if scoreGM {
-		score++
-	}
-	if scoreAT {
-		score++
-	}
-
-	_ = scoreCFO // included in scoreQualityOfEarnings logic
-
-	evaluation := PiotroskiEvaluation{
-		Symbol: input.Symbol,
-		Period: latestPeriod,
-		Score:  score,
-		Details: Details{
-			NetIncome:              scoreNetIncome,
-			ROA:                    scoreROA,
-			NetOperatingCashFlow:   scoreOCF,
-			CashFlowFromOperations: scoreCFO,
-			LongTermDebt:           scoreLTD,
-			CurrentRatio:           scoreCR,
-			NewsIssued:             scoreDilution,
-			GrossMargin:            scoreGM,
-			AssetTurnoverRatio:     scoreAT,
-		},
-	}
-	return nil, evaluation, nil
+	return score
 }

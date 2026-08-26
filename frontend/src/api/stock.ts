@@ -10,6 +10,24 @@ export const getWatchlist = async () => {
   return response.data;
 };
 
+// Fetch the ICB industries the price board can be filtered by
+export const getSectors = async () => {
+  const response = await api.get(`/stock/sectors`);
+  return response.data;
+};
+
+// Fetch the price board for one ICB industry, most actively traded first
+export const getSectorPriceBoard = async (code: string, limit?: number) => {
+  const response = await api.get(`/stock/sectors/${code}/price-board${limit ? `?limit=${limit}` : ""}`);
+  return response.data;
+};
+
+// Remove one watchlist entry by its row id
+export const deleteWatchlistSymbol = async (id: string) => {
+  const response = await api.delete(`/stock/watchlist/${id}`);
+  return response.data;
+};
+
 export const addSymbolInPriceBoard = async (symbol: string) => {
   const response = await api.post(`/stock/add-symbol`, { symbol });
   return response.data;

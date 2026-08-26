@@ -27,24 +27,27 @@ type ServerDeps struct {
 }
 
 type Server struct {
-	queries        *database.Queries
-	dbPool         *pgxpool.Pool
-	agent          *core.LLMService
-	knowledgeStore kb.Store
-	objectStore    storage.ObjectStore
-	services       *service.Services
-	orchestrator   *orchestration.Orchestrator
+	queries         *database.Queries
+	dbPool          *pgxpool.Pool
+	agent           *core.LLMService
+	knowledgeStore  kb.Store
+	objectStore     storage.ObjectStore
+	services        *service.Services
+	orchestrator    *orchestration.Orchestrator
+	sectorDirectory *symbolDirectory
+	averageVolume   averageVolumeCache
 }
 
 func NewServer(deps ServerDeps, port string) *http.Server {
 	srv := &Server{
-		queries:        database.New(deps.DBPool),
-		dbPool:         deps.DBPool,
-		agent:          deps.Agent,
-		knowledgeStore: deps.KBStore,
-		objectStore:    deps.ObjectStore,
-		services:       deps.Services,
-		orchestrator:   deps.Orchestrator,
+		queries:         database.New(deps.DBPool),
+		dbPool:          deps.DBPool,
+		agent:           deps.Agent,
+		knowledgeStore:  deps.KBStore,
+		objectStore:     deps.ObjectStore,
+		services:        deps.Services,
+		orchestrator:    deps.Orchestrator,
+		sectorDirectory: &symbolDirectory{},
 	}
 
 	// Initialize research worker pool now that the server (and its methods) exist.

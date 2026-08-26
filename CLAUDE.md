@@ -37,10 +37,16 @@ Request path: **React SPA → chi HTTP (`internal/server`) → `LLMService` agen
 
 There is **no standalone MCP server anymore.** Tools come from two sources and are merged into one `tools.Manager`:
 
-1. **In-process Go tools** (`internal/tools/implementations/`): `retrieve_knowledge`, `get_stock_price`, `get_report`, `get_news`, `fundamental_analysis`. Registered in `tools.RegisterTools()` (`schemas.go`), which injects deps (KB retriever, services) via closures. Each uses the generic `NewTool[In](...)` — JSON Schema is inferred from struct tags (`json` + `jsonschema`), or from a custom `Schema()` method if the input implements `SchemaProvider`.
+1. **In-process Go tools** (`internal/tools/implementations/`): `retrieve_knowledge`, `get_stock_price`, `get_report`, `piotroski_evaluation`, `get_news`, `fundamental_analysis`. Registered in `tools.RegisterTools()` (`tool_registry.go`), which injects deps (KB retriever, services) via closures. Each uses the generic `NewTool[In](...)` — JSON Schema is inferred from struct tags (`json` + `jsonschema`), or from a custom `Schema()` method if the input implements `SchemaProvider`.
 2. **Bridged external MCP tools** (`internal/mcp` + `tools.BridgeMCPTools`): `internal/mcp` is now an MCP **client** manager, not a server. At startup it lazily spawns configured external MCP servers (currently AWS docs via `uvx awslabs.aws-documentation-mcp-server`, skipped if `uvx` is absent), lists their tools, and wraps each as a local `*Tool` named `<server>_<tool>`. Calls route through `Manager.CallTool`, which evicts and reconnects once on failure.
 
 To add a native tool: write a handler in `implementations/`, add its input struct + `Handle*` func, register it in `RegisterTools`.
+
+### VietCap data sources
+
+VietCap's GraphQL endpoint (`trading.vietcap.com.vn/data-mt/graphql`) is **decommissioned** — it answers every query with `{}`, including invalid ones. `get_report` and `piotroski_evaluation` now read the IQ REST service (`common.IQ_INSIGHT_URL`) via `common.FetchIQInsight`, which is the single choke point for that service and rejects an empty payload rather than returning a zero value. Price board and OHLC chart still come from `trading.vietcap.com.vn/api`.
+
+Live canaries for these endpoints live behind a build tag: `go test -tags integration ./internal/...`. They fail by name if VietCap changes shape again.
 
 ### LLM providers
 

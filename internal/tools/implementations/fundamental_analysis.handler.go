@@ -2,16 +2,12 @@ package implementations
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
-	"io"
 	"log/slog"
-	"net/http"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"stockmind/internal/common"
 )
@@ -101,7 +97,7 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 	}
 
 	// 1. Company details (required for grounding).
-	details, err := fetchIQ[companyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
+	details, err := common.FetchIQInsight[companyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
 	if err != nil {
 		return nil, fmt.Errorf("fetch company details for %s: %w", symbol, err)
 	}
@@ -118,7 +114,7 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		h, err := fetchIQ[shareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
+		h, err := common.FetchIQInsight[shareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
 		if err != nil {
 			slog.Warn("fundamental_analysis: shareholder structure", "symbol", symbol, "error", err)
 			return
@@ -127,7 +123,7 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 	}()
 	go func() {
 		defer wg.Done()
-		r, err := fetchIQ[relationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
+		r, err := common.FetchIQInsight[relationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
 		if err != nil {
 			slog.Warn("fundamental_analysis: relationship", "symbol", symbol, "error", err)
 			return
@@ -161,45 +157,6 @@ func HandleFundamentalAnalysis(ctx context.Context, input FundamentalAnalysisInp
 	}
 
 	return output, nil
-}
-
-// fetchIQ performs a GET against the VietCap iq-insight-service, decompresses the
-// response, and unwraps the standard {status, data} envelope into T.
-// style: keep — called for all three iq-insight endpoints.
-func fetchIQ[T any](ctx context.Context, path string) (T, error) {
-	var env struct {
-		Successful bool `json:"successful"`
-		Data       T    `json:"data"`
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, common.IQ_INSIGHT_URL+path, nil)
-	if err != nil {
-		return env.Data, err
-	}
-	for k, v := range common.VCI_HEADERS {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		return env.Data, err
-	}
-	defer resp.Body.Close()
-
-	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
-	if err != nil {
-		return env.Data, err
-	}
-	defer reader.Close()
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return env.Data, err
-	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return env.Data, fmt.Errorf("unmarshal iq-insight response: %w", err)
-	}
-	return env.Data, nil
 }
 
 // buildEcosystem maps subsidiaries/affiliates into a serializable structure, and

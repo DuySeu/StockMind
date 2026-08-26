@@ -1,8 +1,3 @@
-// Helper function to format numbers with commas
-export const formatNumber = (num: number): string => {
-  return num.toLocaleString("vi-VN");
-};
-
 // Helper function to format price (divide by 1000 for display in thousands)
 export const formatPrice = (price: number): string => {
   return (price / 1000).toFixed(2);
@@ -68,6 +63,23 @@ export const PRICE_STATE: Record<
   reference: { text: "text-price-ref", bg: "bg-price-ref-bg", label: "Unchanged", vi: "Tham chiếu", sign: "–" },
   down: { text: "text-price-down", bg: "bg-price-down-bg", label: "Down", vi: "Giảm", sign: "▼" },
   floor: { text: "text-price-floor", bg: "bg-price-floor-bg", label: "Floor", vi: "Sàn", sign: "▼" },
+};
+
+// Helper function to format a traded volume in thousands of shares
+export const formatVolume = (volume: number): string => {
+  if (volume <= 0) return "0";
+  return `${(volume / 1000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}k`;
+};
+
+/* VietCap's price board calls Ho Chi Minh City's exchange HSX, while its own
+   company directory, every broker and every listing document call it HOSE. HNX
+   and UPCOM already agree, so this is the one name that needs translating. */
+const EXCHANGE_NAMES: Record<string, string> = { HSX: "HOSE" };
+
+// Helper function to name the exchange a price board row is listed on
+export const formatExchange = (board?: string): string => {
+  if (!board) return "-";
+  return EXCHANGE_NAMES[board] ?? board;
 };
 
 /** Token-based text colour for a price. Replaces the old getPriceColorClass. */

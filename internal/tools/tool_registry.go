@@ -30,8 +30,13 @@ func RegisterTools(retriever kb.Retriever, services *service.Services) []*Tool {
 		),
 
 		NewTool("get_report",
-			"Get quarterly or yearly financial report for a stock.",
+			"Get a stock's financial ratios (valuation, profitability, margins, liquidity, leverage, efficiency) by period, newest first. Period Q returns trailing-twelve-month ratios stamped by quarter, Y returns annual ratios.",
 			impl.HandleGetReport,
+		),
+
+		NewTool("piotroski_evaluation",
+			"Score a Vietnamese stock on the nine Piotroski F-score signals (profitability, leverage, liquidity, operating efficiency), comparing its latest quarter against the same quarter a year earlier.",
+			impl.HandlePiotroskiEvaluation,
 		),
 
 		NewTool("get_news",

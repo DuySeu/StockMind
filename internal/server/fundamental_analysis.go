@@ -5,13 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"io"
-	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
-	"stockmind/internal/common"
 	core "stockmind/internal/llm"
 	"stockmind/internal/llm/prompts"
 )
@@ -100,44 +96,6 @@ func faSynthesizeAnalysis(ctx context.Context, agent *core.LLMService, symbol st
 }
 
 // ──────── Helpers ────────
-
-// faFetchIQ performs a GET against the VietCap iq-insight-service, decompresses
-// the response, and unwraps the standard {status, data} envelope into T.
-func faFetchIQ[T any](ctx context.Context, path string) (T, error) {
-	var env struct {
-		Successful bool `json:"successful"`
-		Data       T    `json:"data"`
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, common.IQ_INSIGHT_URL+path, nil)
-	if err != nil {
-		return env.Data, err
-	}
-	for k, v := range common.VCI_HEADERS {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
-	if err != nil {
-		return env.Data, err
-	}
-	defer resp.Body.Close()
-
-	reader, err := common.GZIPCompression(resp.Body, resp.Header.Get("Content-Encoding"))
-	if err != nil {
-		return env.Data, err
-	}
-	defer reader.Close()
-
-	body, err := io.ReadAll(reader)
-	if err != nil {
-		return env.Data, err
-	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return env.Data, fmt.Errorf("unmarshal iq-insight response: %w", err)
-	}
-	return env.Data, nil
-}
 
 // faBuildEcosystem maps subsidiaries/affiliates into a serializable structure.
 // Returns nil when no relationships exist (field is omitempty).

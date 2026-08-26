@@ -92,7 +92,7 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 
 	// Company details ground everything below, so this one is fatal.
-	details, err := faFetchIQ[faCompanyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
+	details, err := common.FetchIQInsight[faCompanyDetails](ctx, fmt.Sprintf("%s/details?ticker=%s", common.COMPANY_URL, symbol))
 	if err != nil {
 		common.WriteJSONError(w, http.StatusInternalServerError, fmt.Sprintf("fetch company details for %s: %v", symbol, err))
 		return
@@ -112,7 +112,7 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		h, err := faFetchIQ[faShareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
+		h, err := common.FetchIQInsight[faShareholderStructure](ctx, fmt.Sprintf("%s/%s/shareholder-structure", common.COMPANY_URL, symbol))
 		if err != nil {
 			slog.Warn("fundamental_analysis: fetch shareholder structure", "symbol", symbol, "error", err)
 			return
@@ -121,7 +121,7 @@ func (s *Server) FundamentalAnalysisHandler(w http.ResponseWriter, r *http.Reque
 	}()
 	go func() {
 		defer wg.Done()
-		rl, err := faFetchIQ[faRelationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
+		rl, err := common.FetchIQInsight[faRelationship](ctx, fmt.Sprintf("%s/%s/relationship", common.COMPANY_URL, symbol))
 		if err != nil {
 			slog.Warn("fundamental_analysis: fetch relationship", "symbol", symbol, "error", err)
 			return
