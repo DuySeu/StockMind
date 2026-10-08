@@ -213,4 +213,5 @@ type Watchlist struct {
 	ID        uuid.UUID          `db:"id" json:"id"`
 	Ticker    string             `db:"ticker" json:"ticker"`
 	CreatedAt pgtype.Timestamptz `db:"created_at" json:"created_at"`
+	Position  int32              `db:"position" json:"position"`
 }

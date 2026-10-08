@@ -3,6 +3,11 @@ export const formatPrice = (price: number): string => {
   return (price / 1000).toFixed(2);
 };
 
+/* An index stands in points, not VND, so it keeps its own formatter: dividing by
+   a thousand the way formatPrice does would report VNINDEX at 1.82. */
+export const formatIndexPoints = (points: number): string =>
+  points.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // Helper function to calculate price change percentage
 export const calculateChangePercent = (
   currentPrice: number,

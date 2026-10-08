@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,10 @@ const vciHTTPTimeout = 10 * time.Second
 
 type AddSymbolInPriceBoardRequest struct {
 	Symbol string `json:"symbol"`
+}
+
+type MoveWatchlistSymbolRequest struct {
+	Direction string `json:"direction"`
 }
 
 // FetchStockPrice is the single source of truth for calling the VCI price board:
@@ -162,7 +167,7 @@ func (s *Server) GetPriceBoardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	common.WriteJSON(w, http.StatusOK, dropUnresolvedRows(rows, symbols))
+	common.WriteJSON(w, http.StatusOK, orderRowsBy(dropUnresolvedRows(rows, symbols), symbols))
 }
 
 // distinctTickers lists the watchlist's tickers once each, in the order they
@@ -223,6 +228,34 @@ func dropUnresolvedRows(rows []map[string]any, requested []string) []map[string]
 	}
 
 	return resolved
+}
+
+// orderRowsBy sorts price board rows into the order their symbols were asked
+// for, which is the watchlist's own order.
+//
+// VietCap does not promise to answer in the order it was asked, and the board is
+// manually ordered, so the position a user chose has to be reimposed here. A row
+// for a symbol nobody asked for sorts last rather than being dropped.
+func orderRowsBy(rows []map[string]any, requested []string) []map[string]any {
+	rank := make(map[string]int, len(requested))
+	for i, symbol := range requested {
+		rank[symbol] = i
+	}
+
+	position := func(row map[string]any) int {
+		listing, _ := row["listingInfo"].(map[string]any)
+		symbol, _ := listing["symbol"].(string)
+		if at, ok := rank[symbol]; ok {
+			return at
+		}
+		return len(requested)
+	}
+
+	slices.SortStableFunc(rows, func(a, b map[string]any) int {
+		return cmp.Compare(position(a), position(b))
+	})
+
+	return rows
 }
 
 // POST /v1/stock/add-symbol - Add a ticker to the watchlist
@@ -302,6 +335,96 @@ func (s *Server) DeleteSymbolFromWatchlistHandler(w http.ResponseWriter, r *http
 
 	slog.Info("[PriceBoard] removed symbol from watchlist", "symbol", removed.Ticker, "id", id)
 	common.WriteJSON(w, http.StatusOK, removed)
+}
+
+// PATCH /v1/stock/watchlist/{id}/move - Move a watchlist entry one row up or down
+//
+// The whole list is renumbered rather than just the two rows swapped: positions
+// seeded by the migration, appended on insert and left behind by a delete drift
+// into gaps and ties, and a tie makes the next move ambiguous.
+func (s *Server) MoveWatchlistSymbolHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		common.WriteJSONError(w, http.StatusBadRequest, "Invalid watchlist id")
+		return
+	}
+
+	var req MoveWatchlistSymbolRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		common.WriteJSONError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	var offset int
+	switch req.Direction {
+	case "up":
+		offset = -1
+	case "down":
+		offset = 1
+	default:
+		common.WriteJSONError(w, http.StatusBadRequest, `Direction must be "up" or "down"`)
+		return
+	}
+
+	watchlist, err := s.queries.GetWatchlist(r.Context(), 0)
+	if err != nil {
+		slog.Error("[PriceBoard] failed to get watchlist", "error", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to reorder the watchlist")
+		return
+	}
+
+	// Locate the row being moved and the one it changes places with
+	current := slices.IndexFunc(watchlist, func(entry database.Watchlist) bool { return entry.ID == id })
+	if current < 0 {
+		common.WriteJSONError(w, http.StatusNotFound, "Watchlist entry not found")
+		return
+	}
+
+	target := current + offset
+	if target < 0 || target >= len(watchlist) {
+		edge := "top"
+		if offset > 0 {
+			edge = "bottom"
+		}
+		common.WriteJSONError(w, http.StatusConflict,
+			fmt.Sprintf("%s is already at the %s of your watchlist", watchlist[current].Ticker, edge))
+		return
+	}
+
+	watchlist[current], watchlist[target] = watchlist[target], watchlist[current]
+
+	// Write the new order as one unit, so a failure halfway cannot leave the board
+	// in an order the user never asked for
+	tx, err := s.dbPool.Begin(r.Context())
+	if err != nil {
+		slog.Error("[PriceBoard] failed to open a transaction", "error", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to reorder the watchlist")
+		return
+	}
+	// Rolling back an already-committed transaction is the no-op pgx documents
+	defer tx.Rollback(r.Context())
+
+	ordered := s.queries.WithTx(tx)
+	for i, entry := range watchlist {
+		params := database.SetWatchlistPositionParams{ID: entry.ID, Position: int32(i + 1)}
+		if err := ordered.SetWatchlistPosition(r.Context(), params); err != nil {
+			slog.Error("[PriceBoard] failed to set watchlist position",
+				"symbol", entry.Ticker, "position", params.Position, "error", err)
+			common.WriteJSONError(w, http.StatusInternalServerError, "Failed to reorder the watchlist")
+			return
+		}
+		watchlist[i].Position = params.Position
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		slog.Error("[PriceBoard] failed to commit the new watchlist order", "error", err)
+		common.WriteJSONError(w, http.StatusInternalServerError, "Failed to reorder the watchlist")
+		return
+	}
+
+	slog.Info("[PriceBoard] moved symbol on the watchlist",
+		"symbol", watchlist[target].Ticker, "direction", req.Direction)
+	common.WriteJSON(w, http.StatusOK, watchlist)
 }
 
 // GET /v1/stock/watchlist - Get the watchlist

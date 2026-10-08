@@ -1,24 +1,38 @@
 import api from ".";
 
-export const getPriceBoard = async (limit?: number) => {
-  const response = await api.get(`/stock/price-board${limit ? `?limit=${limit}` : ""}`);
+export const getPriceBoard = async (limit?: number, signal?: AbortSignal) => {
+  const response = await api.get(`/stock/price-board${limit ? `?limit=${limit}` : ""}`, { signal });
   return response.data;
 };
 
-export const getWatchlist = async () => {
-  const response = await api.get(`/stock/watchlist`);
+export const getWatchlist = async (signal?: AbortSignal) => {
+  const response = await api.get(`/stock/watchlist`, { signal });
+  return response.data;
+};
+
+// Fetch the current standing of VNINDEX, VN30 and VN100
+export const getMarketIndices = async (signal?: AbortSignal) => {
+  const response = await api.get(`/stock/indices`, { signal });
+  return response.data;
+};
+
+// Move one watchlist entry a single row up or down
+export const moveWatchlistSymbol = async (id: string, direction: "up" | "down") => {
+  const response = await api.patch(`/stock/watchlist/${id}/move`, { direction });
   return response.data;
 };
 
 // Fetch the ICB industries the price board can be filtered by
-export const getSectors = async () => {
-  const response = await api.get(`/stock/sectors`);
+export const getSectors = async (signal?: AbortSignal) => {
+  const response = await api.get(`/stock/sectors`, { signal });
   return response.data;
 };
 
 // Fetch the price board for one ICB industry, most actively traded first
-export const getSectorPriceBoard = async (code: string, limit?: number) => {
-  const response = await api.get(`/stock/sectors/${code}/price-board${limit ? `?limit=${limit}` : ""}`);
+export const getSectorPriceBoard = async (code: string, limit?: number, signal?: AbortSignal) => {
+  const response = await api.get(`/stock/sectors/${code}/price-board${limit ? `?limit=${limit}` : ""}`, {
+    signal,
+  });
   return response.data;
 };
 

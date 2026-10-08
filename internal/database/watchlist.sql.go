@@ -12,29 +12,41 @@ import (
 )
 
 const createWatchlistData = `-- name: CreateWatchlistData :one
-INSERT INTO watchlist (ticker) VALUES ($1) RETURNING id, ticker, created_at
+INSERT INTO watchlist (ticker, position)
+VALUES ($1, (SELECT COALESCE(MAX(position), 0) + 1 FROM watchlist))
+RETURNING id, ticker, created_at, position
 `
 
 func (q *Queries) CreateWatchlistData(ctx context.Context, ticker string) (Watchlist, error) {
 	row := q.db.QueryRow(ctx, createWatchlistData, ticker)
 	var i Watchlist
-	err := row.Scan(&i.ID, &i.Ticker, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.CreatedAt,
+		&i.Position,
+	)
 	return i, err
 }
 
 const deleteWatchlistData = `-- name: DeleteWatchlistData :one
-DELETE FROM watchlist WHERE id = $1 RETURNING id, ticker, created_at
+DELETE FROM watchlist WHERE id = $1 RETURNING id, ticker, created_at, position
 `
 
 func (q *Queries) DeleteWatchlistData(ctx context.Context, id uuid.UUID) (Watchlist, error) {
 	row := q.db.QueryRow(ctx, deleteWatchlistData, id)
 	var i Watchlist
-	err := row.Scan(&i.ID, &i.Ticker, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Ticker,
+		&i.CreatedAt,
+		&i.Position,
+	)
 	return i, err
 }
 
 const getWatchlist = `-- name: GetWatchlist :many
-SELECT id, ticker, created_at FROM watchlist ORDER BY created_at DESC LIMIT NULLIF($1::int, 0)
+SELECT id, ticker, created_at, position FROM watchlist ORDER BY position, created_at DESC LIMIT NULLIF($1::int, 0)
 `
 
 func (q *Queries) GetWatchlist(ctx context.Context, dollar_1 int32) ([]Watchlist, error) {
@@ -46,7 +58,12 @@ func (q *Queries) GetWatchlist(ctx context.Context, dollar_1 int32) ([]Watchlist
 	items := []Watchlist{}
 	for rows.Next() {
 		var i Watchlist
-		if err := rows.Scan(&i.ID, &i.Ticker, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Ticker,
+			&i.CreatedAt,
+			&i.Position,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -55,4 +72,18 @@ func (q *Queries) GetWatchlist(ctx context.Context, dollar_1 int32) ([]Watchlist
 		return nil, err
 	}
 	return items, nil
+}
+
+const setWatchlistPosition = `-- name: SetWatchlistPosition :exec
+UPDATE watchlist SET position = $2 WHERE id = $1
+`
+
+type SetWatchlistPositionParams struct {
+	ID       uuid.UUID `db:"id" json:"id"`
+	Position int32     `db:"position" json:"position"`
+}
+
+func (q *Queries) SetWatchlistPosition(ctx context.Context, arg SetWatchlistPositionParams) error {
+	_, err := q.db.Exec(ctx, setWatchlistPosition, arg.ID, arg.Position)
+	return err
 }
