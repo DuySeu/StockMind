@@ -45,6 +45,18 @@ func (s *Server) RegisterRoutes() http.Handler {
 		// session, persistence and relay path — see ChatHandler.
 		r.Post("/chat", s.ChatHandler)
 
+		// Eval: run one module of the chat path alone, streaming its trace. The
+		// full flow is POST /chat with `trace: true`.
+		r.Route("/eval", func(r chi.Router) {
+			r.Get("/catalog", s.EvalCatalogHandler)
+			r.Post("/guardrail", s.EvalGuardrailHandler)
+			r.Post("/sanitize", s.EvalSanitizeHandler)
+			r.Post("/plan", s.EvalPlanHandler)
+			r.Post("/pipeline", s.EvalPipelineHandler)
+			r.Post("/agent", s.EvalAgentHandler)
+			r.Post("/tool", s.EvalToolHandler)
+		})
+
 		// Users
 		r.Route("/users", func(r chi.Router) {
 			r.Post("/", s.CreateUserHandler)

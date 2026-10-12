@@ -9,6 +9,7 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/guardrail"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -117,6 +118,11 @@ func (s *Server) UpdateSessionTitleHandler(w http.ResponseWriter, r *http.Reques
 	if title == "" {
 		common.WriteJSONError(w, http.StatusBadRequest, "title is required")
 		return
+	}
+	// The client derives a new conversation's title from the raw first message,
+	// so it is masked here too, before truncation can split a number.
+	if s.guard != nil {
+		title, _ = guardrail.Redact(title)
 	}
 	if runes := []rune(title); len(runes) > maxTitleRunes {
 		title = string(runes[:maxTitleRunes])

@@ -65,6 +65,12 @@ type AgentPromptParams struct {
 	Date string
 }
 
+// GuardTopicParams holds the variables for the guardrail topic classifier prompt.
+type GuardTopicParams struct {
+	History string
+	Message string
+}
+
 // PromptLoader renders prompts from embedded Go templates.
 type PromptLoader struct{}
 
@@ -110,6 +116,11 @@ func (p *PromptLoader) GetPlanPrompt(params PlanParams) (string, error) {
 // .txt file but no new loader method.
 func (p *PromptLoader) GetAgentPrompt(tplName string) (string, error) {
 	return p.render(tplName, AgentPromptParams{Date: time.Now().Format("2006-01-02")})
+}
+
+// GetGuardTopicPrompt renders the guardrail topic classifier prompt with the given params.
+func (p *PromptLoader) GetGuardTopicPrompt(params GuardTopicParams) (string, error) {
+	return p.render("guard_topic.txt", params)
 }
 
 // render executes a named template with the given data and returns the result.

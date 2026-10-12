@@ -19,6 +19,19 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
+
+/** Readable names for the kinds the server's guardrail masks (internal/guardrail/redact.go). */
+const REDACTED_KIND_LABELS: Record<string, string> = {
+  PHONE: "phone number",
+  EMAIL: "email",
+  CCCD: "ID number",
+  BANK_ACCOUNT: "bank account",
+  CARD: "card number",
+  PASSWORD: "password",
+  API_KEY: "API key",
+  TOKEN: "token",
+  OTP: "OTP",
+};
 /** Titles derived from a first message get cut here; the server caps at 120. */
 const DERIVED_TITLE_MAX = 60;
 
@@ -303,6 +316,24 @@ const ChatbotPage = () => {
             ),
           ),
         );
+        break;
+      }
+
+      case "guardrail": {
+        const raw = (data ?? {}) as { action?: string; kinds?: string[]; content?: string };
+        // Only `redacted` needs handling: a blocked turn arrives as ordinary text.
+        if (raw.action !== "redacted" || typeof raw.content !== "string") break;
+        const masked = raw.content;
+        // The server never stored the original, so the thread must not keep it either.
+        setMessages((prev) => {
+          const userIndex = prev.map((m) => m.role).lastIndexOf("user");
+          if (userIndex < 0) return prev;
+          const updated = [...prev];
+          updated[userIndex] = { ...updated[userIndex], content: masked };
+          return updated;
+        });
+        const labels = (raw.kinds ?? []).map((k) => REDACTED_KIND_LABELS[k] ?? k.toLowerCase());
+        toast.info(`Hidden before sending: ${labels.join(", ")}`);
         break;
       }
 

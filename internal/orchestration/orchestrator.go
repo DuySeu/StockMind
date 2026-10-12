@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"stockmind/internal/agents"
+	"stockmind/internal/trace"
 )
 
 // Default budgets, sized against the HTTP server's WriteTimeout (10 minutes).
@@ -118,7 +119,10 @@ func (o *Orchestrator) Run(ctx context.Context, req Request) (<-chan Event, erro
 		ctx, cancel := context.WithTimeout(ctx, o.opts.TotalBudget)
 		defer cancel()
 
-		plan, err := o.planner.Plan(ctx, req.planningGoal(), o.registry.Roster())
+		planCtx, endPlan := trace.Start(ctx, "orchestrator", "orchestrator.plan", req.planningGoal())
+		plan, err := o.planner.Plan(planCtx, req.planningGoal(), o.registry.Roster())
+		trace.Annotate(planCtx, "steps", len(plan.Steps))
+		endPlan(plan, err)
 		if err != nil {
 			out <- Event{Type: EventError, Data: fmt.Sprintf("planning failed: %v", err)}
 			out <- Event{Type: EventDone}
@@ -241,7 +245,13 @@ func (o *Orchestrator) runStep(
 	step agents.Step,
 	outputs map[string]string,
 	out chan<- Event,
-) (string, error) {
+) (content string, err error) {
+	ctx, end := trace.Start(ctx, "orchestrator", "orchestrator.step", map[string]any{
+		"id": step.ID, "agent": step.Agent, "task": step.Task, "use_output_of": step.UseOutputOf,
+	})
+	trace.Annotate(ctx, "timeout", o.opts.StepTimeout.String())
+	defer func() { end(content, err) }()
+
 	agent, err := o.registry.Get(step.Agent)
 	if err != nil {
 		// Validation already rejected unknown agents, so reaching here means the

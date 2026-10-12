@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"stockmind/internal/database"
+	"stockmind/internal/guardrail"
 	"strings"
 
 	openrouter "github.com/OpenRouterTeam/go-sdk"
@@ -63,7 +64,7 @@ func DBToAnthropicMessages(messages []database.Message) ([]anthropic.MessagePara
 							OfToolResult: &anthropic.ToolResultBlockParam{
 								ToolUseID: t.ID,
 								Content: []anthropic.ToolResultBlockParamContentUnion{
-									{OfText: &anthropic.TextBlockParam{Text: t.Result}},
+									{OfText: &anthropic.TextBlockParam{Text: guardrail.WrapToolOutput(t.Name, t.Result)}},
 								},
 								IsError: anthropic.Bool(isError),
 							},
@@ -157,7 +158,7 @@ func DBToOpenAIMessages(messages []database.Message) ([]openai.ChatCompletionMes
 							},
 						})
 
-						toolResults = append(toolResults, openai.ToolMessage(t.Result, t.ID))
+						toolResults = append(toolResults, openai.ToolMessage(guardrail.WrapToolOutput(t.Name, t.Result), t.ID))
 					}
 				}
 			}
@@ -189,7 +190,7 @@ func DBToOpenRouterMessages(messages []database.Message) ([]components.ChatMessa
 			msgs = append(msgs, components.CreateChatMessagesTool(components.ChatToolMessage{
 				Role:       components.ChatToolMessageRoleTool,
 				ToolCallID: t.ID,
-				Content:    components.CreateChatToolMessageContentStr(t.Result),
+				Content:    components.CreateChatToolMessageContentStr(guardrail.WrapToolOutput(t.Name, t.Result)),
 			}))
 		}
 	}

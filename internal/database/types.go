@@ -14,6 +14,9 @@ const (
 	EventToolResult         StreamEventType = "tool_result"
 	EventError              StreamEventType = "error"
 	EventDone               StreamEventType = "done"
+	EventGuardrail          StreamEventType = "guardrail"
+	EventTrace              StreamEventType = "trace"
+	EventResult             StreamEventType = "result"
 	ModelProviderAnthropic  ModelProvider   = "anthropic"
 	ModelProviderAWS        ModelProvider   = "aws"
 	ModelProviderOpenAI     ModelProvider   = "openai"
@@ -56,6 +59,14 @@ type Metadata struct {
 	// plan and each step's prose. Stored so a reload shows the same turn the stream
 	// showed instead of dropping the explanation and keeping only the conclusion.
 	Thinking string `json:"thinking,omitempty"`
+	// Guardrail marks an assistant message the guardrail wrote instead of the
+	// model, so a reload renders a refusal the way the stream did.
+	Guardrail *GuardrailInfo `json:"guardrail,omitempty"`
+}
+
+// GuardrailInfo records what the guardrail did to a turn.
+type GuardrailInfo struct {
+	Action string `json:"action"` // only "blocked" today
 }
 
 // TurnError records why an assistant turn failed. Persisting it is what keeps a

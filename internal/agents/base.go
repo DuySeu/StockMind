@@ -15,6 +15,7 @@ import (
 	"stockmind/internal/database"
 	core "stockmind/internal/llm"
 	"stockmind/internal/llm/prompts"
+	"stockmind/internal/trace"
 )
 
 // Input is what the orchestrator hands an agent for one plan step.
@@ -87,7 +88,11 @@ func (a *LLMAgent) Tools() []string { return a.toolNames }
 // Run renders the role prompt, sends the step's task (plus any routed prior
 // outputs) as a single user message, and drains the agentic loop — accumulating the
 // assistant text while forwarding tool activity through emit.
-func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (Output, error) {
+func (a *LLMAgent) Run(ctx context.Context, in Input, emit Emit) (out Output, err error) {
+	ctx, end := trace.Start(ctx, "agent", "agent."+a.name, in.Task)
+	trace.Annotate(ctx, "tools", a.toolNames)
+	defer func() { end(out.Content, err) }()
+
 	systemPrompt, err := a.deps.Prompts.GetAgentPrompt(a.promptTpl)
 	if err != nil {
 		return Output{}, fmt.Errorf("agent %s: render prompt: %w", a.name, err)

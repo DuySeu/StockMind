@@ -6,7 +6,12 @@ export interface ChatMessage {
   session_id?: string;
 }
 
-export type ChatEventType = "start" | "thinking" | "text" | "tool_call" | "tool_result" | "done" | "error";
+export type ChatEventType = "start" | "thinking" | "text" | "tool_call" | "tool_result" | "guardrail" | "trace" | "result" | "done" | "error";
+
+// Opt-in extras for one request. `trace` asks the server to stream its span tree.
+export interface ChatOptions {
+  trace?: boolean;
+}
 
 export interface ChatEvent {
   type: ChatEventType;
@@ -94,24 +99,38 @@ export const sendChatMessage = async (
   onEvent: (event: ChatEvent) => void,
   onError: (error: unknown) => void,
   signal?: AbortSignal,
+  options: ChatOptions = {},
+): Promise<void> => {
+  let body: BodyInit;
+  const headers: Record<string, string> = {};
+
+  if (file) {
+    const formData = new FormData();
+    formData.append("content", content);
+    if (sessionId) formData.append("session_id", sessionId);
+    if (maxMode) formData.append("max_mode", maxMode.toString());
+    if (options.trace) formData.append("trace", "true");
+    formData.append("file", file);
+    body = formData;
+  } else {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify({ content, session_id: sessionId, max_mode: maxMode, trace: options.trace });
+  }
+
+  await postSSE("/chat", headers, body, onEvent, onError, signal);
+};
+
+/** POST to an SSE endpoint and emit each `{type, data}` frame as it arrives. */
+export const postSSE = async (
+  path: string,
+  headers: Record<string, string>,
+  body: BodyInit,
+  onEvent: (event: ChatEvent) => void,
+  onError: (error: unknown) => void,
+  signal?: AbortSignal,
 ): Promise<void> => {
   try {
-    let body: BodyInit;
-    const headers: Record<string, string> = {};
-
-    if (file) {
-      const formData = new FormData();
-      formData.append("content", content);
-      if (sessionId) formData.append("session_id", sessionId);
-      if (maxMode) formData.append("max_mode", maxMode.toString());
-      formData.append("file", file);
-      body = formData;
-    } else {
-      headers["Content-Type"] = "application/json";
-      body = JSON.stringify({ content, session_id: sessionId, max_mode: maxMode });
-    }
-
-    const response = await fetch(`${api.defaults.baseURL}/chat`, {
+    const response = await fetch(`${api.defaults.baseURL}${path}`, {
       method: "POST",
       headers,
       body,

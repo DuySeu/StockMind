@@ -6,12 +6,15 @@ import (
 	"net/http"
 	"time"
 
+	"stockmind/internal/agents"
 	"stockmind/internal/database"
+	"stockmind/internal/guardrail"
 	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
 	"stockmind/internal/orchestration"
 	"stockmind/internal/service"
 	"stockmind/internal/storage"
+	"stockmind/internal/tools"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -24,6 +27,12 @@ type ServerDeps struct {
 	ObjectStore  storage.ObjectStore
 	Services     *service.Services
 	Orchestrator *orchestration.Orchestrator
+	// Guard screens chat turns; nil disables the guardrail.
+	Guard *guardrail.Classifier
+	// Planner, Registry and Tools let the eval endpoints run one module alone.
+	Planner  *agents.Planner
+	Registry *agents.Registry
+	Tools    *tools.Manager
 }
 
 type Server struct {
@@ -34,6 +43,10 @@ type Server struct {
 	objectStore     storage.ObjectStore
 	services        *service.Services
 	orchestrator    *orchestration.Orchestrator
+	guard           *guardrail.Classifier
+	planner         *agents.Planner
+	registry        *agents.Registry
+	tools           *tools.Manager
 	sectorDirectory *symbolDirectory
 	averageVolume   averageVolumeCache
 }
@@ -47,6 +60,10 @@ func NewServer(deps ServerDeps, port string) *http.Server {
 		objectStore:     deps.ObjectStore,
 		services:        deps.Services,
 		orchestrator:    deps.Orchestrator,
+		guard:           deps.Guard,
+		planner:         deps.Planner,
+		registry:        deps.Registry,
+		tools:           deps.Tools,
 		sectorDirectory: &symbolDirectory{},
 	}
 

@@ -12,7 +12,9 @@
 
 [] Add gruadrail for system
 
-[] Complete chat pipeline: gruadrail -> orchestrator -> single/multi-agent
+[] Complete chat pipeline: gruadrail -> orchestrator(maxMode) -> multi-agent
+
+[] Add evaluation metric for agent to validate: Guardrail, orchestrator, RAG
 
 ## Optimize code & Enhance performance
 

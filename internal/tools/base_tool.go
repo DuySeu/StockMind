@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"stockmind/internal/trace"
 )
 
 // SchemaProvider allows an input struct to define its own JSON Schema.
@@ -96,16 +98,19 @@ func (m *Manager) Subset(names []string) []*Tool {
 }
 
 // Execute calls the named tool with raw JSON args from the LLM.
-func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (string, error) {
+func (m *Manager) Execute(ctx context.Context, name string, rawArgs string) (result string, err error) {
+	ctx, end := trace.Start(ctx, "tool", "tool."+name, rawArgs)
+	defer func() { end(result, err) }()
+
 	t, ok := m.tools[name]
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
 	}
-	result, err := t.Execute(ctx, json.RawMessage(rawArgs))
+	raw, err := t.Execute(ctx, json.RawMessage(rawArgs))
 	if err != nil {
 		return "", err
 	}
-	return string(result), nil
+	return string(raw), nil
 }
 
 // schemaFrom generates a JSON Schema object from struct tags, using `json` for the

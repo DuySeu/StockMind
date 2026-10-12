@@ -15,8 +15,10 @@ import (
 	"stockmind/internal/agents"
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/guardrail"
 	kb "stockmind/internal/knowledge"
 	core "stockmind/internal/llm"
+	"stockmind/internal/llm/models"
 	"stockmind/internal/llm/prompts"
 	"stockmind/internal/mcp"
 	"stockmind/internal/orchestration"
@@ -159,15 +161,36 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 	}
 	toolMgr := tools.NewManager(toolDefs)
 
-	agent, err := core.NewLLMService(ctx, config.LLM, toolMgr)
+	var sanitize func(source, result string) string
+	if config.Guardrail.Enabled {
+		sanitize = guardrail.Sanitize
+	}
+	agent, err := core.NewLLMService(ctx, config.LLM, toolMgr, sanitize)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to init LLM service: %w", err)
+	}
+
+	// Guardrail classifier: its own model when GUARD_MODEL is set, else the chat model.
+	var guard *guardrail.Classifier
+	if config.Guardrail.Enabled {
+		var guardLLM guardrail.StructuredCompleter = agent
+		if config.Guardrail.Model != "" {
+			guardLLM, err = models.NewProviderForModel(ctx, config.LLM, config.Guardrail.Model)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to init guardrail model: %w", err)
+			}
+		}
+		guard = guardrail.NewClassifier(guardLLM, config.Guardrail.Timeout)
+		slog.Info("guardrail enabled", "model", config.Guardrail.Model, "timeout", config.Guardrail.Timeout)
+	} else {
+		slog.Warn("guardrail disabled by GUARDRAIL_ENABLED=false")
 	}
 
 	// Multi-agent pipeline: specialist agent roster + planner + sequential executor.
 	agentDeps := agents.Deps{LLM: agent, Prompts: prompts.NewPromptLoader()}
 	agentRegistry := agents.NewRegistry(agentDeps)
-	orchestrator := orchestration.New(agents.NewPlanner(agentDeps), agentRegistry)
+	planner := agents.NewPlanner(agentDeps)
+	orchestrator := orchestration.New(planner, agentRegistry)
 	slog.Info("agent pipeline ready", "agents", agentRegistry.Names())
 
 	// Create HTTP server
@@ -178,6 +201,10 @@ func runServer(ctx context.Context, port string) (context.Context, func(), error
 		ObjectStore:  objectStore,
 		Services:     services,
 		Orchestrator: orchestrator,
+		Guard:        guard,
+		Planner:      planner,
+		Registry:     agentRegistry,
+		Tools:        toolMgr,
 	}, port)
 
 	runContext, cancel := context.WithCancel(ctx)

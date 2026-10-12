@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"stockmind/internal/llm/prompts"
+	"stockmind/internal/trace"
 )
 
 // planRepairAttempts is how many times the planner re-prompts after a validation
@@ -69,12 +70,16 @@ func (p *Planner) Plan(ctx context.Context, goal string, roster []AgentInfo) (Pl
 
 		// A transport or parse failure is not something the repair prompt can fix —
 		// the model never produced a plan to correct.
+		attemptCtx, endAttempt := trace.Start(ctx, "orchestrator", fmt.Sprintf("planner.attempt#%d", attempt+1), nil)
 		var plan Plan
-		if err := p.deps.LLM.StructuredCompletion(ctx, prompt, &plan); err != nil {
+		if err := p.deps.LLM.StructuredCompletion(attemptCtx, prompt, &plan); err != nil {
+			endAttempt(nil, err)
 			return Plan{}, fmt.Errorf("planner: completion (attempt %d): %w", attempt+1, err)
 		}
 
-		if err := plan.Validate(names); err != nil {
+		err = plan.Validate(names)
+		endAttempt(plan, err)
+		if err != nil {
 			lastErr = err
 			slog.Warn("planner: plan rejected", "attempt", attempt+1, "error", err)
 			continue

@@ -10,6 +10,7 @@ import HomePage from "@/pages/HomePage";
 import PendingPage from "@/pages/PendingPage";
 import SettingPage from "@/pages/SettingPage";
 import DocumentPage from "@/pages/DocumentPage";
+import EvalPage from "@/pages/EvalPage";
 
 export const router = createBrowserRouter([
   {
@@ -64,6 +65,11 @@ export const router = createBrowserRouter([
         element: <ChatbotPage />,
       },
     ],
+    errorElement: <ErrorPage />,
+  },
+  {
+    path: "/eval",
+    element: <EvalPage />,
     errorElement: <ErrorPage />,
   },
   {

@@ -14,9 +14,11 @@ import (
 
 	"stockmind/internal/common"
 	"stockmind/internal/database"
+	"stockmind/internal/guardrail"
 	core "stockmind/internal/llm"
 	"stockmind/internal/llm/prompts"
 	"stockmind/internal/orchestration"
+	"stockmind/internal/trace"
 
 	"github.com/google/uuid"
 )
@@ -31,6 +33,10 @@ const maxPersistedThinking = 24 * 1024
 // Namespaced so a synthetic step ID can never collide with a provider's own
 // tool-call IDs: both travel in the same stream, matched back by ID.
 const stepToolPrefix = "step:"
+
+// Sized for a max-mode turn, roughly 60 spans and two events each, so the
+// recorder rarely drops while the relay is busy writing.
+const traceBuffer = 512
 
 const (
 	pipelineGoalTurns = 10
@@ -69,13 +75,23 @@ type chatRequest struct {
 	Content   string    `json:"content"`
 	SessionId uuid.UUID `json:"session_id,omitempty"`
 	MaxMode   bool      `json:"max_mode,omitempty"`
+	Trace     bool      `json:"trace,omitempty"`
 }
 
 type chatInput struct {
 	Content   string
 	SessionID uuid.UUID
 	MaxMode   bool
+	Trace     bool
 	Files     []database.Attachment
+}
+
+// turnTrace streams one turn's spans to the eval page. A nil *turnTrace is an
+// untraced turn, and every method is then a no-op.
+type turnTrace struct {
+	rec      *trace.Recorder
+	end      func(output any, err error)
+	finished bool
 }
 
 // Exists so a failed turn carries client-safe prose: handlers used to send
@@ -90,6 +106,23 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	in, ok := parseChatInput(w, r)
 	if !ok {
 		return
+	}
+
+	// Trace the turn for the eval page; every span below hangs off r's context
+	var tt *turnTrace
+	if in.Trace {
+		rec := trace.NewRecorder(traceBuffer)
+		ctx, end := trace.Start(trace.WithRecorder(r.Context(), rec), "handler", "chat.turn", nil)
+		trace.Annotate(ctx, "max_mode", in.MaxMode)
+		r = r.WithContext(ctx)
+		tt = &turnTrace{rec: rec, end: end}
+	}
+
+	// Mask before anything stores or forwards the message: from here on, the
+	// original text exists nowhere.
+	var redacted []string
+	if s.guard != nil {
+		in.Content, redacted = redactTraced(r.Context(), in.Content)
 	}
 
 	attachments, err := s.storeAttachments(r.Context(), in.Files)
@@ -120,18 +153,16 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
-		slog.Warn("sse: EnableFullDuplex", "error", err)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	common.FlushSSE(w)
+	startSSE(w)
 	common.WriteSSE(w, common.SSEEvent("start", map[string]any{"session_id": sessionID}))
+	if len(redacted) > 0 {
+		// The client swaps its optimistic bubble for the masked text.
+		_ = common.WriteSSE(w, common.SSEEvent(database.EventGuardrail, map[string]any{
+			"action": "redacted", "kinds": redacted, "content": in.Content,
+		}))
+	}
+	trace.Annotate(r.Context(), "session_id", sessionID.String())
+	tt.flush(w)
 
 	var history []database.Message
 	var convSummary database.ConversationSummary
@@ -139,24 +170,29 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 	// Failures below still precede the user's message being stored, so a reload
 	// shows the conversation unchanged rather than an orphan turn.
 	if !newSession {
+		historyCtx, endHistory := trace.Start(r.Context(), "handler", "history.load", nil)
 		row, err := s.queries.GetConversationWithMessages(r.Context(), database.GetConversationWithMessagesParams{
 			ID:     sessionID,
 			Limit:  20,
 			Offset: 0,
 		})
 		if err != nil {
-			endTurn(w, sessionID, &failLoadHistory, err)
+			endHistory(nil, err)
+			endTurn(w, sessionID, &failLoadHistory, err, tt)
 			return
 		}
 		if len(row.ConvMetadata) > 0 {
 			_ = json.Unmarshal(row.ConvMetadata, &convSummary)
 		}
 		if err := json.Unmarshal(row.Messages, &history); err != nil {
-			endTurn(w, sessionID, &failLoadHistory, err)
+			endHistory(nil, err)
+			endTurn(w, sessionID, &failLoadHistory, err, tt)
 			return
 		}
 		// History only — the current message already carries its data in memory.
 		s.resolveAttachments(r.Context(), history)
+		trace.Annotate(historyCtx, "messages", len(history))
+		endHistory(nil, nil)
 	}
 
 	loader := prompts.NewPromptLoader()
@@ -165,7 +201,7 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		KeyFacts: strings.Join(convSummary.KeyFacts, "\n- "),
 	})
 	if err != nil {
-		endTurn(w, sessionID, &failPrompt, err)
+		endTurn(w, sessionID, &failPrompt, err, tt)
 		return
 	}
 
@@ -182,19 +218,50 @@ func (s *Server) ChatHandler(w http.ResponseWriter, r *http.Request) {
 		userMeta = []database.Metadata{{Attachments: attachments}}
 	}
 
+	if s.guard != nil {
+		// Fails open: a classifier outage must not take chat down with it.
+		decision, err := s.guard.Classify(r.Context(), history)
+		if err != nil {
+			// The classifier's own deadline and a departed client both surface as
+			// context errors; only the request context tells them apart.
+			if r.Context().Err() != nil {
+				return
+			}
+			slog.Warn("guardrail: classify failed", "session", sessionID, "error", err)
+		}
+		if !decision.Allowed {
+			slog.Info("guardrail: turn blocked", "session", sessionID, "category", decision.Category, "reason", decision.Reason)
+			// Both rows are written synchronously, as on the normal path, so a
+			// reload shows the question with its refusal in order.
+			if err := s.persistMessageCtx(r.Context(), sessionID, "user", in.Content, userMeta); err != nil {
+				endTurn(w, sessionID, &failSaveMessage, err, tt)
+				return
+			}
+			_ = common.WriteSSE(w, common.SSEEvent(database.EventGuardrail, map[string]any{"action": guardrail.ActionBlocked}))
+			_ = common.WriteSSE(w, common.SSEEvent(database.EventText, guardrail.Refusal))
+			refusalMeta := []database.Metadata{{Guardrail: &database.GuardrailInfo{Action: guardrail.ActionBlocked}}}
+			if err := s.persistMessageCtx(r.Context(), sessionID, "assistant", guardrail.Refusal, refusalMeta); err != nil {
+				slog.Error("chat: save refusal", "session", sessionID, "error", err)
+			}
+			tt.finish(w, map[string]any{"answer": guardrail.Refusal, "guardrail": guardrail.ActionBlocked}, nil)
+			endTurn(w, sessionID, nil, nil, tt)
+			return
+		}
+	}
+
 	// The line dividing the two failure regimes: before it nothing is persisted,
 	// after it the conversation is owed an assistant turn even if that turn only
 	// records why it failed. Synchronous because a goroutine raced the assistant
 	// write for `created_at` and could reorder the pair on reload.
 	if err := s.persistMessageCtx(r.Context(), sessionID, "user", in.Content, userMeta); err != nil {
-		endTurn(w, sessionID, &failSaveMessage, err)
+		endTurn(w, sessionID, &failSaveMessage, err, tt)
 		return
 	}
 
 	streamCh, err := s.turnStream(r.Context(), in, history, systemPrompt, convSummary)
 	if err != nil {
 		fail := failureFor(err.Error(), failUpstream)
-		endTurn(w, sessionID, &fail, err)
+		endTurn(w, sessionID, &fail, err, tt)
 		// The question is on record, so the failure has to be too.
 		go s.persistMessage(sessionID, "assistant", "", []database.Metadata{{Error: fail.persisted()}})
 		return
@@ -230,6 +297,13 @@ relay:
 
 		case <-heartbeat.C:
 			if err := common.WriteSSEComment(w, "ping"); err != nil {
+				clientGone = true
+				break relay
+			}
+
+		case ev := <-tt.events():
+			heartbeat.Reset(sseHeartbeatInterval)
+			if err := common.WriteSSE(w, common.SSEEvent(database.EventTrace, ev)); err != nil {
 				clientGone = true
 				break relay
 			}
@@ -270,7 +344,10 @@ relay:
 			switch ev.Type {
 			case database.EventDone:
 				sawDone = true
-				werr = common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
+				// A traced turn writes done after the loop, once the last spans are out.
+				if tt == nil {
+					werr = common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
+				}
 			case database.EventError:
 				// The provider's raw message is a server-side detail; the client gets
 				// stable prose and the turn is persisted as failed.
@@ -294,7 +371,8 @@ relay:
 
 	// The service returns without emitting `done` after an error, and a closed
 	// channel is not a signal the client can see.
-	if !clientGone && !sawDone {
+	if !clientGone && (!sawDone || tt != nil) {
+		tt.finish(w, map[string]any{"answer": turnText.String(), "error": turnErr}, nil)
 		_ = common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
 	}
 
@@ -345,11 +423,12 @@ func (f chatFailure) persisted() *database.TurnError {
 
 // Always sends `done` so the client has exactly one termination signal, rather
 // than having to treat "channel closed" as an implicit end.
-func endTurn(w http.ResponseWriter, sessionID uuid.UUID, fail *chatFailure, cause error) {
+func endTurn(w http.ResponseWriter, sessionID uuid.UUID, fail *chatFailure, cause error, tt *turnTrace) {
 	if fail != nil {
 		slog.Error("chat: turn failed", "session", sessionID, "code", fail.code, "cause", cause)
 		_ = common.WriteSSE(w, common.SSEEvent(database.EventError, fail.payload()))
 	}
+	tt.finish(w, nil, cause)
 	_ = common.WriteSSE(w, common.SSEEvent(database.EventDone, map[string]any{"session_id": sessionID}))
 }
 
@@ -372,6 +451,7 @@ func parseChatInput(w http.ResponseWriter, r *http.Request) (chatInput, bool) {
 			}
 		}
 		in.MaxMode = r.FormValue("max_mode") == "true"
+		in.Trace = r.FormValue("trace") == "true"
 		if r.MultipartForm != nil {
 			for _, fh := range r.MultipartForm.File["file"] {
 				f, err := fh.Open()
@@ -400,6 +480,7 @@ func parseChatInput(w http.ResponseWriter, r *http.Request) (chatInput, bool) {
 		in.Content = body.Content
 		in.SessionID = body.SessionId
 		in.MaxMode = body.MaxMode
+		in.Trace = body.Trace
 
 	default:
 		common.WriteJSONError(w, http.StatusUnsupportedMediaType, "unsupported Content-Type: expected application/json or multipart/form-data")
@@ -479,13 +560,72 @@ func (s *Server) persistMessageCtx(ctx context.Context, sessionID uuid.UUID, rol
 	if content == "" && len(meta) == 0 {
 		return nil
 	}
-	return s.queries.CreateMessage(ctx, database.CreateMessageParams{
+	_, end := trace.Start(ctx, "handler", "persist."+role, nil)
+	err := s.queries.CreateMessage(ctx, database.CreateMessageParams{
 		ID:             uuid.New(),
 		ConversationID: sessionID,
 		Role:           role,
 		Content:        content,
 		Metadata:       meta,
 	})
+	end(nil, err)
+	return err
+}
+
+// startSSE writes the headers that open an SSE stream. After it, every failure
+// has to travel as an in-stream event.
+func startSSE(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
+		slog.Warn("sse: EnableFullDuplex", "error", err)
+	}
+
+	w.WriteHeader(http.StatusOK)
+	common.FlushSSE(w)
+}
+
+// redactTraced masks PII in text under a guardrail.redact span. The span never
+// records the input: the original must not leave this function.
+func redactTraced(ctx context.Context, text string) (string, []string) {
+	_, end := trace.Start(ctx, "guardrail", "guardrail.redact", nil)
+	masked, kinds := guardrail.Redact(text)
+	end(map[string]any{"content": masked, "kinds": kinds}, nil)
+	return masked, kinds
+}
+
+// events is the recorder's channel, or nil, which a select never picks.
+func (t *turnTrace) events() <-chan trace.Event {
+	if t == nil {
+		return nil
+	}
+	return t.rec.Events()
+}
+
+// flush writes every span event buffered so far.
+func (t *turnTrace) flush(w http.ResponseWriter) {
+	if t == nil {
+		return
+	}
+	for _, ev := range t.rec.Drain() {
+		_ = common.WriteSSE(w, common.SSEEvent(database.EventTrace, ev))
+	}
+}
+
+// finish closes the root span and writes the remaining spans plus the dropped
+// count. Only the first call does anything, so a branch can finish with its own
+// output before endTurn runs.
+func (t *turnTrace) finish(w http.ResponseWriter, output any, err error) {
+	if t == nil || t.finished {
+		return
+	}
+	t.finished = true
+	t.end(output, err)
+	t.flush(w)
+	_ = common.WriteSSE(w, common.SSEEvent(database.EventTrace, trace.Event{Phase: trace.PhaseSummary, Dropped: t.rec.Dropped()}))
 }
 
 // Uses context.Background() so it is safe to call fire-and-forget after the

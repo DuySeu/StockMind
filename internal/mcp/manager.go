@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+
+	"stockmind/internal/trace"
 )
 
 // ServerConfig stores the parameters required to spawn and configure an external MCP server.
@@ -67,19 +69,23 @@ func (m *Manager) GetOrStart(ctx context.Context, name string) (*Client, error) 
 
 // CallTool invokes a tool on the named server with automatic retry on dead sessions.
 // If the first attempt fails, the client is evicted and a fresh connection is tried once.
-func (m *Manager) CallTool(ctx context.Context, server, tool string, args map[string]any) (string, error) {
+func (m *Manager) CallTool(ctx context.Context, server, tool string, args map[string]any) (result string, err error) {
+	ctx, end := trace.Start(ctx, "mcp", "mcp.call", map[string]any{"server": server, "tool": tool, "args": args})
+	defer func() { end(result, err) }()
+
 	client, err := m.GetOrStart(ctx, server)
 	if err != nil {
 		return "", err
 	}
 
-	result, err := client.CallTool(ctx, tool, args)
+	result, err = client.CallTool(ctx, tool, args)
 	if err == nil {
 		return result, nil
 	}
 
 	// Evict dead client and retry once.
 	slog.Warn("MCP call failed, reconnecting", "server", server, "tool", tool, "error", err)
+	trace.Annotate(ctx, "reconnected", true)
 	m.evict(server)
 
 	client, err = m.GetOrStart(ctx, server)

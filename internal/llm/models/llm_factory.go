@@ -24,7 +24,12 @@ type Provider interface {
 // This is the single place where a provider is chosen and its client is built.
 // To add a provider: implement Provider in its own file and add one case here.
 func NewProvider(ctx context.Context, cfg common.LLM) (Provider, error) {
-	model := cfg.GetLLMModelName()
+	return NewProviderForModel(ctx, cfg, cfg.GetLLMModelName())
+}
+
+// NewProviderForModel constructs the Provider selected by cfg, talking to model
+// instead of LLM_MODEL. The guardrail uses it to run a cheaper model.
+func NewProviderForModel(ctx context.Context, cfg common.LLM, model string) (Provider, error) {
 	switch cfg.GetProviderName() {
 	case database.ModelProviderOpenAI:
 		client, err := NewOpenAIClient(cfg.OpenAI)

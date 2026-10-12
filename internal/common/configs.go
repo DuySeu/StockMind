@@ -10,10 +10,18 @@ import (
 )
 
 type Config struct {
-	Database Database `json:"database" yaml:"database"`
-	Qdrant   Qdrant   `json:"qdrant" yaml:"qdrant"`
-	MinIO    MinIO    `json:"minio" yaml:"minio"`
-	LLM      LLM      `json:"llm" yaml:"llm"`
+	Database  Database  `json:"database" yaml:"database"`
+	Qdrant    Qdrant    `json:"qdrant" yaml:"qdrant"`
+	MinIO     MinIO     `json:"minio" yaml:"minio"`
+	LLM       LLM       `json:"llm" yaml:"llm"`
+	Guardrail Guardrail `json:"guardrail" yaml:"guardrail"`
+}
+
+// Guardrail configures the chat guardrail. Model empty means the chat model.
+type Guardrail struct {
+	Enabled bool          `json:"enabled" yaml:"enabled"`
+	Model   string        `json:"model" yaml:"model"`
+	Timeout time.Duration `json:"timeout" yaml:"timeout"`
 }
 
 type MinIO struct {
@@ -119,6 +127,11 @@ func LoadConfig() Config {
 			// 	},
 			// },
 		},
+		Guardrail: Guardrail{
+			Enabled: os.Getenv("GUARDRAIL_ENABLED") != "false",
+			Model:   os.Getenv("GUARD_MODEL"),
+			Timeout: getEnvDuration("GUARD_TIMEOUT", 3*time.Second),
+		},
 	}
 }
 
@@ -128,6 +141,14 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	v, err := strconv.Atoi(s)
+	if err != nil {
+		return fallback
+	}
+	return v
+}
+
+func getEnvDuration(key string, fallback time.Duration) time.Duration {
+	v, err := time.ParseDuration(os.Getenv(key))
 	if err != nil {
 		return fallback
 	}
